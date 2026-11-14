@@ -1,0 +1,223 @@
+/**
+ * Backend error parsing. See "Conventions" in docs/API_CONTRACT.md:
+ * - mutations raise P0001 with the machine code as the message;
+ * - invitation RPCs return `{ ok: false, error: '<code>' }`.
+ *
+ * Pure TypeScript: no react-native or supabase-js imports (errors are
+ * inspected structurally).
+ */
+
+/** Every machine code the contract can produce. */
+export const BACKEND_ERROR_CODES = [
+  'not_authenticated',
+  'not_a_member',
+  'forbidden',
+  'not_found',
+  'validation_failed',
+  'invalid_code',
+  'expired',
+  'revoked',
+  'exhausted',
+  'rate_limited',
+  'invalid_display_name',
+  'session_not_editable',
+  'session_not_cancellable',
+  'rsvp_closed',
+  'session_full',
+] as const;
+
+export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
+
+/** Backend codes plus the two client-side ones. */
+export type AppErrorCode = BackendErrorCode | 'network_error' | 'unknown';
+
+const VALIDATION_PREFIX = 'validation_failed';
+
+const BACKEND_CODE_SET: ReadonlySet<string> = new Set(BACKEND_ERROR_CODES);
+
+function isBackendErrorCode(value: string): value is BackendErrorCode {
+  return BACKEND_CODE_SET.has(value);
+}
+
+export class AppError extends Error {
+  readonly code: AppErrorCode;
+  /** Column name for `validation_failed:<field>`, e.g. `max_participants`. */
+  readonly field: string | undefined;
+  /** The value that was thrown / returned, kept for logging. */
+  readonly original: unknown;
+
+  /**
+   * `message` is the original backend / runtime message (for logs), never
+   * user-facing text: use `userMessage(error.code, error.field)` for that.
+   */
+  constructor(
+    code: AppErrorCode,
+    options: { message?: string; field?: string; original?: unknown } = {},
+  ) {
+    super(options.message ?? code);
+    this.name = 'AppError';
+    this.code = code;
+    this.field = options.field;
+    this.original = options.original;
+  }
+}
+
+/**
+ * Parses a machine code string such as `rsvp_closed` or
+ * `validation_failed:max_participants`. Returns null when the string is not a
+ * contract code.
+ */
+export function parseErrorCode(
+  raw: string,
+): { code: BackendErrorCode; field: string | undefined } | null {
+  const text = raw.trim();
+  if (text === VALIDATION_PREFIX) return { code: 'validation_failed', field: undefined };
+  if (text.startsWith(`${VALIDATION_PREFIX}:`)) {
+    const field = text.slice(VALIDATION_PREFIX.length + 1).trim();
+    return { code: 'validation_failed', field: field === '' ? undefined : field };
+  }
+  return isBackendErrorCode(text) ? { code: text, field: undefined } : null;
+}
+
+function readString(value: unknown, key: string): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const found = (value as Record<string, unknown>)[key];
+  return typeof found === 'string' ? found : undefined;
+}
+
+const NETWORK_MESSAGE =
+  /network request failed|failed to fetch|fetch failed|load failed|networkerror|network error|internet connection appears to be offline|econnrefused|econnreset|enotfound|etimedout/i;
+
+/**
+ * True when the request never produced a server answer (offline, DNS, timeout).
+ * supabase-js reports these as an error object whose message carries the
+ * fetch failure text, or as `AuthRetryableFetchError` from the auth client.
+ */
+export function isNetworkError(error: unknown): boolean {
+  if (error instanceof AppError) return error.code === 'network_error';
+  if (typeof error === 'string') return NETWORK_MESSAGE.test(error);
+  if (typeof error !== 'object' || error === null) return false;
+
+  const name = readString(error, 'name');
+  if (name === 'AuthRetryableFetchError' || name === 'FunctionsFetchError') return true;
+  // A server answer always has a Postgres / PostgREST code; a failed fetch does not.
+  const code = readString(error, 'code');
+  if (code !== undefined && code !== '') return false;
+
+  const message = readString(error, 'message') ?? '';
+  const details = readString(error, 'details') ?? '';
+  return NETWORK_MESSAGE.test(message) || NETWORK_MESSAGE.test(details);
+}
+
+function describe(error: unknown): string {
+  if (typeof error === 'string') return error;
+  const message = readString(error, 'message');
+  if (message !== undefined && message !== '') return message;
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+}
+
+/**
+ * Converts anything thrown or returned as `error` by supabase-js into an
+ * AppError. Unknown errors become code `unknown` and keep their original
+ * message and value, so nothing is lost for logging.
+ */
+export function toAppError(error: unknown): AppError {
+  if (error instanceof AppError) return error;
+
+  const message = describe(error);
+
+  // P0001 = `raise exception` from our RPCs: the message is the machine code.
+  if (readString(error, 'code') === 'P0001') {
+    const parsed = parseErrorCode(message);
+    if (parsed) return new AppError(parsed.code, { message, field: parsed.field, original: error });
+    return new AppError('unknown', { message, original: error });
+  }
+
+  if (isNetworkError(error)) return new AppError('network_error', { message, original: error });
+
+  return new AppError('unknown', { message, original: error });
+}
+
+/**
+ * Converts the `error` of an `{ ok: false, error }` RPC result into an
+ * AppError. An unrecognized code becomes `unknown` with the raw code kept as
+ * the message.
+ */
+export function appErrorFromResult(errorCode: unknown): AppError {
+  if (typeof errorCode === 'string') {
+    const parsed = parseErrorCode(errorCode);
+    if (parsed) {
+      return new AppError(parsed.code, {
+        message: errorCode,
+        field: parsed.field,
+        original: errorCode,
+      });
+    }
+  }
+  return new AppError('unknown', { message: describe(errorCode), original: errorCode });
+}
+
+const MESSAGES: Record<AppErrorCode, string> = {
+  not_authenticated: 'Your session has ended. Please restart the app and try again.',
+  not_a_member: 'You are not a member of this community.',
+  forbidden: 'Only an organizer can do that.',
+  not_found: 'We could not find that. It may have been removed.',
+  validation_failed: 'Some details are not valid. Please check them and try again.',
+  invalid_code: 'That invitation code is not valid. Check it and try again.',
+  expired: 'This invitation code has expired. Ask your organizer for a new one.',
+  revoked: 'This invitation code is no longer active. Ask your organizer for a new one.',
+  exhausted: 'This invitation code has already been used the maximum number of times.',
+  rate_limited: 'Too many attempts. Please wait 15 minutes and try again.',
+  invalid_display_name: 'Your name must be between 2 and 40 characters.',
+  session_not_editable: 'This training can no longer be edited.',
+  session_not_cancellable: 'This training is already completed and cannot be cancelled.',
+  rsvp_closed: 'Responses are closed for this training.',
+  session_full: 'This training is full. No spots are left.',
+  network_error: 'No connection. Check your internet and try again.',
+  unknown: 'Something went wrong. Please try again.',
+};
+
+/** Friendly names for the columns `validation_failed:<field>` can point at. */
+const FIELD_LABELS: Record<string, string> = {
+  title: 'title',
+  description: 'description',
+  activity_type: 'activity type',
+  starts_at: 'start time',
+  ends_at: 'end time',
+  rsvp_deadline: 'RSVP deadline',
+  timezone: 'time zone',
+  location_name: 'location name',
+  address: 'address',
+  latitude: 'latitude',
+  longitude: 'longitude',
+  map_url: 'map link',
+  meeting_instructions: 'meeting instructions',
+  min_participants: 'minimum participants',
+  max_participants: 'maximum participants',
+  display_name: 'name',
+  expires_at: 'expiry date',
+  max_redemptions: 'maximum uses',
+  name: 'name',
+};
+
+/**
+ * Clear English text for a code. Accepts any string so callers can pass an
+ * unparsed value; anything unrecognized gets the generic fallback.
+ */
+export function userMessage(code: AppErrorCode | (string & {}), field?: string): string {
+  if (code === 'validation_failed' && field !== undefined) {
+    const label = FIELD_LABELS[field];
+    if (label !== undefined) return `The ${label} is not valid. Please check it and try again.`;
+  }
+  return Object.hasOwn(MESSAGES, code) ? MESSAGES[code as AppErrorCode] : MESSAGES.unknown;
+}
+
+/** Shortcut: friendly text for anything thrown. */
+export function userMessageFor(error: unknown): string {
+  const appError = toAppError(error);
+  return userMessage(appError.code, appError.field);
+}
