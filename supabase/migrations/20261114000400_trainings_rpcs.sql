@@ -148,7 +148,14 @@ $$;
 -- Only the keys listed in the contract are read: unknown keys (including going_count, status,
 -- organizer_id, decided_at and the cancel fields) are ignored.
 -- rsvp_deadline is returned null when not supplied; the caller applies the default.
-create function private.parse_training_input(p_input jsonb, p_default_timezone text)
+-- p_known_timezones: zones already validated and stored (the community's, and on update the
+-- session's current one). pg_timezone_names reads the whole time zone database, so the lookup
+-- is skipped for those.
+create function private.parse_training_input(
+  p_input jsonb,
+  p_default_timezone text,
+  p_known_timezones text[]
+)
 returns public.training_sessions
 language plpgsql
 stable
@@ -180,12 +187,10 @@ begin
   end if;
 
   r.rsvp_deadline := private.input_timestamptz(p_input, 'rsvp_deadline');
-  if r.rsvp_deadline is not null and r.rsvp_deadline > r.starts_at then
-    perform private.fail_validation('rsvp_deadline');
-  end if;
 
   r.timezone := coalesce(private.input_text(p_input, 'timezone', 64, false, false), p_default_timezone);
-  if not exists (select 1 from pg_catalog.pg_timezone_names tz where tz.name = r.timezone) then
+  if r.timezone <> all (p_known_timezones)
+     and not exists (select 1 from pg_catalog.pg_timezone_names tz where tz.name = r.timezone) then
     perform private.fail_validation('timezone');
   end if;
 
@@ -247,13 +252,13 @@ begin
 
   select c.timezone into v_timezone from public.communities c where c.id = p_community_id;
 
-  v_in := private.parse_training_input(p_input, v_timezone);
+  v_in := private.parse_training_input(p_input, v_timezone, array[v_timezone]);
   v_in.rsvp_deadline := coalesce(v_in.rsvp_deadline, v_in.starts_at - interval '2 hours');
 
   if v_in.starts_at <= now() then
     perform private.fail_validation('starts_at');
   end if;
-  if v_in.rsvp_deadline <= now() then
+  if v_in.rsvp_deadline <= now() or v_in.rsvp_deadline > v_in.starts_at then
     perform private.fail_validation('rsvp_deadline');
   end if;
 
@@ -319,7 +324,7 @@ begin
   end if;
 
   select c.timezone into v_timezone from public.communities c where c.id = v_community_id;
-  v_in := private.parse_training_input(p_input, v_timezone);
+  v_in := private.parse_training_input(p_input, v_timezone, array[v_timezone, v_session.timezone]);
 
   -- "Open" = still collecting RSVPs. A scheduled session whose deadline has passed is only
   -- waiting for the finalizer; it is treated like a confirmed one so that the pending
@@ -331,14 +336,19 @@ begin
     if v_in.starts_at <= now() then
       perform private.fail_validation('starts_at');
     end if;
-    if v_in.rsvp_deadline <= now() then
+    if v_in.rsvp_deadline <= now() or v_in.rsvp_deadline > v_in.starts_at then
       perform private.fail_validation('rsvp_deadline');
     end if;
     if v_in.max_participants is not null and v_in.max_participants < v_session.going_count then
       perform private.fail_validation('max_participants');
     end if;
   else
-    if v_in.rsvp_deadline is not null and v_in.rsvp_deadline is distinct from v_session.rsvp_deadline then
+    -- Compared as instants at millisecond precision: clients hold timestamps as JavaScript
+    -- dates, which cannot carry the microseconds a stored value may have. The stored value
+    -- is kept either way.
+    if v_in.rsvp_deadline is not null
+       and date_trunc('milliseconds', v_in.rsvp_deadline)
+           is distinct from date_trunc('milliseconds', v_session.rsvp_deadline) then
       perform private.fail_validation('rsvp_deadline');
     end if;
     v_in.rsvp_deadline := v_session.rsvp_deadline;
@@ -349,7 +359,8 @@ begin
       perform private.fail_validation('max_participants');
     end if;
     -- The start may move, but only to a future time (and never before the frozen deadline).
-    if v_in.starts_at is distinct from v_session.starts_at
+    if date_trunc('milliseconds', v_in.starts_at)
+         is distinct from date_trunc('milliseconds', v_session.starts_at)
        and (v_in.starts_at <= now() or v_in.starts_at < v_session.rsvp_deadline) then
       perform private.fail_validation('starts_at');
     end if;

@@ -9,12 +9,15 @@ import {
   closeDb,
   countRows,
   createCommunity,
+  createTraining,
   createUser,
   type Db,
+  getSession,
   INSUFFICIENT_PRIVILEGE,
   insertInvitation,
   resetData,
   rpc,
+  setRsvp,
 } from './helpers';
 
 const TABLES = [
@@ -24,6 +27,8 @@ const TABLES = [
   'invitation_codes',
   'invitation_redemptions',
   'invitation_attempts',
+  'training_sessions',
+  'training_rsvps',
 ] as const;
 
 const denied = { code: INSUFFICIENT_PRIVILEGE };
@@ -405,5 +410,151 @@ describe('service_role', () => {
     const communities = await asService((db) => ids(db, 'select id from public.communities'));
 
     expect(communities).toEqual([f.a.communityId, f.b.communityId].sort());
+  });
+});
+
+describe('trainings and RSVPs under RLS', () => {
+  /** Two communities, each with one session and one going RSVP. */
+  async function twoCommunitiesWithSessions() {
+    const f = await twoCommunities();
+    const sessionA = await createTraining(f.organizerA, f.a.communityId, { title: 'Alpha run' });
+    const sessionB = await createTraining(f.organizerB, f.b.communityId, { title: 'Beta run' });
+    await setRsvp(f.memberA, sessionA.id, 'going');
+    await setRsvp(f.memberB, sessionB.id, 'going');
+    return { ...f, sessionA, sessionB };
+  }
+
+  it('training_sessions: only active members of the community can read them', async () => {
+    const f = await twoCommunitiesWithSessions();
+    const sessionsFor = (viewer: string) =>
+      asUser(viewer, (db) => ids(db, 'select id from public.training_sessions'));
+
+    expect(await sessionsFor(f.memberA)).toEqual([f.sessionA.id]);
+    expect(await sessionsFor(f.organizerA)).toEqual([f.sessionA.id]);
+    expect(await sessionsFor(f.memberB)).toEqual([f.sessionB.id]);
+    expect(await sessionsFor(f.removedA)).toEqual([]);
+    expect(await sessionsFor(f.outsider)).toEqual([]);
+    expect(
+      await asUser(f.memberA, (db) =>
+        ids(db, 'select id from public.training_sessions where id = $1', [f.sessionB.id]),
+      ),
+    ).toEqual([]);
+  });
+
+  it('training_rsvps: only active members of the community can read them', async () => {
+    const f = await twoCommunitiesWithSessions();
+    const rsvpsFor = (viewer: string) =>
+      asUser(viewer, (db) => ids(db, 'select user_id as id from public.training_rsvps'));
+
+    expect(await rsvpsFor(f.organizerA)).toEqual([f.memberA]);
+    expect(await rsvpsFor(f.memberA)).toEqual([f.memberA]);
+    expect(await rsvpsFor(f.organizerB)).toEqual([f.memberB]);
+    expect(await rsvpsFor(f.removedA)).toEqual([]);
+    expect(await rsvpsFor(f.outsider)).toEqual([]);
+  });
+
+  it('the contract reads work under RLS: upcoming sessions, my RSVPs, participants with names', async () => {
+    const f = await twoCommunitiesWithSessions();
+
+    const rows = await asUser(f.organizerA, async (db) => {
+      const upcoming = await db.query(
+        'select title from public.training_sessions where community_id = $1 and starts_at > now() order by starts_at',
+        [f.a.communityId],
+      );
+      const mine = await db.query('select response from public.training_rsvps where user_id = auth.uid()');
+      const participants = await db.query(
+        `select p.display_name, r.response
+         from public.training_rsvps r
+         join public.profiles p on p.id = r.user_id
+         where r.session_id = $1`,
+        [f.sessionA.id],
+      );
+      return { upcoming: upcoming.rows, mine: mine.rows, participants: participants.rows };
+    });
+
+    expect(rows).toEqual({
+      upcoming: [{ title: 'Alpha run' }],
+      mine: [],
+      participants: [{ display_name: 'Mihai A', response: 'going' }],
+    });
+  });
+
+  it('activity_types: readable by any authenticated user, seeded, and not writable', async () => {
+    const outsider = await createUser();
+
+    const keys = await asUser(outsider, (db) =>
+      ids(db, 'select key as id from public.activity_types'),
+    );
+
+    expect(keys).toEqual(['functional_fitness', 'ocr', 'other', 'running', 'strength', 'trail_running']);
+    for (const sql of [
+      "insert into public.activity_types (key, label) values ('golf', 'Golf')",
+      "update public.activity_types set label = 'x'",
+      'delete from public.activity_types',
+      'truncate table public.activity_types cascade',
+    ]) {
+      await expect(asUser(outsider, (db) => db.query(sql)), sql).rejects.toMatchObject(denied);
+    }
+    for (const sql of ['select * from public.activity_types', 'delete from public.activity_types']) {
+      await expect(asAnon((db) => db.query(sql)), sql).rejects.toMatchObject(denied);
+    }
+  });
+
+  it('an organizer cannot write going_count, status or the deadline directly', async () => {
+    const f = await twoCommunitiesWithSessions();
+    const before = await getSession(f.sessionA.id);
+
+    for (const sql of [
+      'update public.training_sessions set going_count = 99 where id = $1',
+      "update public.training_sessions set status = 'confirmed' where id = $1",
+      "update public.training_sessions set rsvp_deadline = now() + interval '30 days' where id = $1",
+      'update public.training_sessions set min_participants = 1 where id = $1',
+      'delete from public.training_sessions where id = $1',
+    ]) {
+      await expect(
+        asUser(f.organizerA, (db) => db.query(sql, [f.sessionA.id])),
+        sql,
+      ).rejects.toMatchObject(denied);
+    }
+    expect(await getSession(f.sessionA.id)).toEqual(before);
+  });
+
+  it('a member cannot write RSVP rows directly, for themselves or for others', async () => {
+    const f = await twoCommunitiesWithSessions();
+    const attempts: [string, unknown[]][] = [
+      [
+        "insert into public.training_rsvps (session_id, community_id, user_id, response) values ($1, $2, $3, 'going')",
+        [f.sessionA.id, f.a.communityId, f.organizerA],
+      ],
+      ["update public.training_rsvps set response = 'not_going' where session_id = $1", [f.sessionA.id]],
+      ['delete from public.training_rsvps where session_id = $1', [f.sessionA.id]],
+    ];
+
+    for (const [sql, params] of attempts) {
+      await expect(asUser(f.memberA, (db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
+    }
+    expect(await countRows('training_rsvps', "response = 'going'")).toBe(2);
+  });
+
+  it('publishes training_sessions and training_rsvps to supabase_realtime', async () => {
+    const { rows } = await admin.query<{ tablename: string }>(
+      "select tablename from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' order by tablename",
+    );
+    expect(rows.map((row) => row.tablename)).toEqual(['memberships', 'training_rsvps', 'training_sessions']);
+  });
+
+  it('grants finalize_due_sessions to service_role only, and schedules nothing without pg_cron', async () => {
+    const { rows } = await admin.query<{ role: string; allowed: boolean }>(
+      `select r as role, has_function_privilege(r, 'public.finalize_due_sessions()', 'execute') as allowed
+       from unnest(array['anon', 'authenticated', 'service_role']) r`,
+    );
+    expect(rows).toEqual([
+      { role: 'anon', allowed: false },
+      { role: 'authenticated', allowed: false },
+      { role: 'service_role', allowed: true },
+    ]);
+    // The scheduling migration must be a clean no-op on a database without pg_cron.
+    const cron = await admin.query("select 1 from pg_namespace where nspname = 'cron'");
+    expect(cron.rows).toEqual([]);
   });
 });

@@ -69,6 +69,8 @@ export default async function setup(project: TestProject): Promise<() => Promise
     password: PASSWORD,
     persistent: true,
     initdbFlags: ['--encoding=UTF8', '--locale=C'],
+    // Throwaway cluster: durability is irrelevant, speed is not.
+    postgresFlags: ['-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off'],
     onLog: capture,
     onError: capture,
   });

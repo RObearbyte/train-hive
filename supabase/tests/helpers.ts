@@ -132,7 +132,7 @@ export interface CommunityFixture {
 }
 
 /** Creates a community through the real bootstrap RPC, as service_role. */
-export async function createCommunity(
+export async function bootstrapCommunity(
   name = 'Test Pack',
   timezone = 'Europe/Bucharest',
 ): Promise<CommunityFixture> {
@@ -143,6 +143,29 @@ export async function createCommunity(
     ]),
   );
   return { communityId: result.community_id, organizerCode: result.organizer_code };
+}
+
+/**
+ * Arranges a community and its single-use organizer invitation directly (superuser), in the
+ * state admin_create_community leaves behind. Used for fixtures because the RPC validates the
+ * time zone against pg_timezone_names, which takes ~250 ms per call on Windows; the RPC itself
+ * is covered through `bootstrapCommunity` and the admin_create_community tests.
+ */
+export async function createCommunity(
+  name = 'Test Pack',
+  timezone = 'Europe/Bucharest',
+): Promise<CommunityFixture> {
+  const { rows } = await admin.query<{ community_id: string; code: string }>(
+    `with community as (
+       insert into public.communities (name, timezone) values ($1, $2) returning id
+     )
+     insert into public.invitation_codes (community_id, code, role, max_redemptions, expires_at)
+     select id, private.generate_invitation_code(), 'organizer', 1, now() + interval '7 days'
+     from community
+     returning community_id, code`,
+    [name, timezone],
+  );
+  return { communityId: rows[0].community_id, organizerCode: rows[0].code };
 }
 
 /**

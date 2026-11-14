@@ -5,6 +5,7 @@ import {
   admin,
   asRole,
   asUser,
+  bootstrapCommunity,
   closeDb,
   countRows,
   createCommunity,
@@ -38,7 +39,7 @@ afterAll(closeDb);
 
 describe('redeem_invitation', () => {
   it('creates the profile and an organizer membership from the bootstrap code', async () => {
-    const { communityId, organizerCode } = await createCommunity();
+    const { communityId, organizerCode } = await bootstrapCommunity();
     const userId = await createUser();
 
     const result = await redeem(userId, organizerCode, 'Olga Organizer');
