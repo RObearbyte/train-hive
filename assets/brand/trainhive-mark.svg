@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TrainHive">
+  <!-- Source vector for the TrainHive mark: a navy hexagon holding a pack of three hexagons. -->
+  <rect width="512" height="512" fill="#14263D"/>
+  <path d="M256 56 L429 156 L429 356 L256 456 L83 356 L83 156 Z" fill="none" stroke="#F5F7F8" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M256 150 L306 179 L306 237 L256 266 L206 237 L206 179 Z" fill="#168F88"/>
+  <path d="M206 266 L256 295 L256 353 L206 382 L156 353 L156 295 Z" fill="#3478C0" transform="translate(0 -4)"/>
+  <path d="M306 266 L356 295 L356 353 L306 382 L256 353 L256 295 Z" fill="#F47735" transform="translate(0 -4)"/>
+</svg>
