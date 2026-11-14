@@ -33,7 +33,21 @@ export type IconName =
   | 'alert'
   | 'plus'
   | 'chevron-right'
-  | 'refresh';
+  | 'refresh'
+  | 'home'
+  | 'calendar'
+  | 'person'
+  | 'people'
+  | 'chevron-left'
+  | 'map-pin'
+  | 'edit'
+  | 'share'
+  | 'copy'
+  | 'bell'
+  | 'megaphone'
+  | 'chart'
+  | 'external-link'
+  | 'trash';
 
 export type StatusVisual = 'filled' | 'outlined' | 'tinted';
 

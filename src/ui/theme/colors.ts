@@ -34,7 +34,10 @@ export type ColorToken =
   | 'successSoft'
   | 'warningSoft'
   | 'infoSoft'
-  | 'overlay';
+  | 'overlay'
+  | 'hero'
+  | 'onHero'
+  | 'onHeroMuted';
 
 export type ColorPalette = Record<ColorToken, string>;
 
@@ -62,6 +65,9 @@ export const lightColors: ColorPalette = {
   warningSoft: '#F8EAD2',
   infoSoft: '#E1ECF8',
   overlay: 'rgba(20, 38, 61, 0.5)',
+  hero: '#14263D', // Midnight Navy brand surface (welcome)
+  onHero: '#F5F7F8', // Arctic White
+  onHeroMuted: '#E8D8B8', // Warm Sand
 };
 
 export const darkColors: ColorPalette = {
@@ -88,4 +94,7 @@ export const darkColors: ColorPalette = {
   warningSoft: '#4A3A14',
   infoSoft: '#1D3B5E',
   overlay: 'rgba(0, 0, 0, 0.6)',
+  hero: '#14263D',
+  onHero: '#F5F7F8',
+  onHeroMuted: '#E8D8B8',
 };

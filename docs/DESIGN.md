@@ -17,6 +17,7 @@ Brand: Midnight Navy `#14263D`, Community Teal `#168F88`, Endurance Blue `#3478C
 | accent / onAccent | #F47735 / #14263D | #F47735 / #14263D | Ember Orange **fill only**, with navy text (white on orange is 2.6:1, fails) |
 | danger / onDanger | #B3261E / #FFFFFF | #FF8F86 / #0D1A2B | destructive, errors |
 | success, warning, info | #1B6B43, #8A4B00, #2A67A8 | #62D39B, #F2C14E, #86B8EC | semantic text/icons |
+| hero / onHero / onHeroMuted | #14263D / #F5F7F8 / #E8D8B8 | #14263D / #F5F7F8 / #E8D8B8 | brand hero surface (welcome screen): Midnight Navy with Arctic White text and Warm Sand secondary text. Same in both themes; use with `HexMotif`. onHero 14.22:1, onHeroMuted 10.87:1 on hero |
 | dangerSoft, successSoft, warningSoft, infoSoft | tinted backgrounds for Banner and status | | |
 
 Other scales: spacing `xxs 2, xs 4, sm 8, md 12, lg 16, xl 24, xxl 32, xxxl 48`; radii `sm 6, md 10, lg 16, xl 24, pill`; `MIN_TOUCH_TARGET = 44`; elevation `none/low/medium`.
@@ -79,7 +80,7 @@ Status is always glyph + label + fill style, never color alone. Provisional stat
 | EmptyState, LoadingState, ErrorState | Centered blocks; ErrorState has a retry button; the error is announced as an alert. |
 | Divider | Hairline, hidden from accessibility. |
 | HexMotif | Decorative hexagon lattice that fades towards the left, absolutely fills its parent; place in a header or welcome background. Hidden from accessibility. Needs `react-native-svg`. |
-| Icon | Small SVG glyph set (`IconName`), decorative; the parent supplies the label. |
+| Icon | Small SVG glyph set (`IconName`, 24 viewBox, 2px round stroke), decorative; the parent supplies the label. Names: circle, circle-half, clock, check, check-circle, close, ban, flag, info, alert, plus, chevron-left, chevron-right, refresh, home, calendar, person, people, map-pin, edit, share, copy, bell, megaphone, chart, external-link, trash. |
 
 ## Screen guidance
 
