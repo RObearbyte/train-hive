@@ -43,3 +43,4 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 
 ## Log
 - 2026-11-14: Foundation complete. Backend choice: embedded Postgres for tests now, hosted Supabase project later (owner will follow the step-by-step guide). Target: Android first.
+- 2026-11-14 (later): Usage limit hit mid-wave 2. M1-B2 (trainings/RSVP/finalization backend) and M1-A1 (app foundation + onboarding) are PARTIALLY written and committed as work in progress; neither was finished, reviewed, or validated. On resume: run `npm run typecheck`, `npm run lint`, `npm test` first, then complete M1-B2 and M1-A1 against the task descriptions in docs/API_CONTRACT.md and docs/TEAM.md before moving on. Lead rulings to apply in M1-B2: null in p_input clears a field; frozen fields compared by instant; future-checks only on changed timestamps; char_length after trim; validation field = column name.

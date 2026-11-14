@@ -200,3 +200,139 @@ export async function countRows(table: string, where = 'true', params: unknown[]
   );
   return rows[0].n;
 }
+
+// Trainings -----------------------------------------------------------------------------------
+
+export interface Session {
+  id: string;
+  community_id: string;
+  organizer_id: string;
+  title: string;
+  description: string | null;
+  activity_type: string;
+  starts_at: Date;
+  ends_at: Date | null;
+  rsvp_deadline: Date;
+  timezone: string;
+  location_name: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  map_url: string | null;
+  meeting_instructions: string | null;
+  min_participants: number;
+  max_participants: number | null;
+  going_count: number;
+  status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed';
+  cancel_reason: 'insufficient_participation' | 'organizer' | null;
+  decided_at: Date | null;
+  cancelled_at: Date | null;
+  cancelled_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type RsvpResponse = 'going' | 'not_going' | 'no_response';
+export type RsvpResult = { response: RsvpResponse; going_count: number; status: Session['status'] };
+
+const HOUR = 3_600_000;
+
+/** An ISO instant `hours` from now, truncated to whole seconds. */
+export function hoursFromNow(hours: number): string {
+  return new Date(Math.floor((Date.now() + hours * HOUR) / 1000) * 1000).toISOString();
+}
+
+/**
+ * A complete, valid `p_input` for create_training / update_training: starts in 3 days,
+ * RSVP deadline 2 days from now, minimum 2 participants, no maximum.
+ */
+export function trainingInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    title: 'Morning run',
+    description: 'Easy pace, everyone welcome.',
+    activity_type: 'running',
+    starts_at: hoursFromNow(72),
+    ends_at: hoursFromNow(74),
+    rsvp_deadline: hoursFromNow(48),
+    timezone: 'Europe/Bucharest',
+    location_name: 'Herastrau Park',
+    address: 'Main gate',
+    latitude: 44.4702,
+    longitude: 26.0826,
+    map_url: 'https://maps.example.com/?q=44.4702,26.0826',
+    meeting_instructions: 'Meet at the fountain.',
+    min_participants: 2,
+    max_participants: null,
+    ...overrides,
+  };
+}
+
+/** Creates a training through the real RPC as `organizerId`. */
+export function createTraining(
+  organizerId: string,
+  communityId: string,
+  overrides: Record<string, unknown> = {},
+): Promise<Session> {
+  return asUser(organizerId, (db) =>
+    rpcRow<Session>(db, 'create_training', [communityId, JSON.stringify(trainingInput(overrides))]),
+  );
+}
+
+export function updateTraining(
+  userId: string,
+  sessionId: string,
+  input: Record<string, unknown>,
+): Promise<Session> {
+  return asUser(userId, (db) =>
+    rpcRow<Session>(db, 'update_training', [sessionId, JSON.stringify(input)]),
+  );
+}
+
+export function cancelTraining(userId: string, sessionId: string): Promise<Session> {
+  return asUser(userId, (db) => rpcRow<Session>(db, 'cancel_training', [sessionId]));
+}
+
+export function setRsvp(userId: string, sessionId: string, response: RsvpResponse): Promise<RsvpResult> {
+  return asUser(userId, (db) => rpc<RsvpResult>(db, 'set_rsvp', [sessionId, response]));
+}
+
+/** Runs the deadline finalizer as service_role; returns the number of sessions decided. */
+export function finalize(): Promise<number> {
+  return asService((db) => rpc<number>(db, 'finalize_due_sessions'));
+}
+
+/** The session row as stored, read as superuser. */
+export async function getSession(sessionId: string): Promise<Session> {
+  const { rows } = await admin.query<Session>('select * from public.training_sessions where id = $1', [
+    sessionId,
+  ]);
+  return rows[0];
+}
+
+/** Time travel: moves the RSVP deadline of a session one second into the past. */
+export async function makeDue(sessionId: string): Promise<void> {
+  await admin.query(
+    "update public.training_sessions set rsvp_deadline = now() - interval '1 second' where id = $1",
+    [sessionId],
+  );
+}
+
+/** The number of `going` RSVP rows of a session (what going_count must always equal). */
+export function realGoingCount(sessionId: string): Promise<number> {
+  return countRows('training_rsvps', "session_id = $1 and response = 'going'", [sessionId]);
+}
+
+/** A community with an organizer and `memberCount` members, arranged directly. */
+export async function createPack(memberCount = 0): Promise<{
+  communityId: string;
+  organizerId: string;
+  memberIds: string[];
+}> {
+  const { communityId } = await createCommunity();
+  const organizerId = await addMember(communityId, { role: 'organizer', name: 'Olga Organizer' });
+  const memberIds: string[] = [];
+  for (let i = 0; i < memberCount; i += 1) {
+    memberIds.push(await addMember(communityId, { name: `Member ${i + 1}` }));
+  }
+  return { communityId, organizerId, memberIds };
+}
