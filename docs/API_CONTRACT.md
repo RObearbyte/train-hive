@@ -5,7 +5,7 @@ Hand-written TypeScript types mirroring this file live in `src/lib/database.type
 
 ## Conventions
 
-- Every function: `security definer`, `set search_path = ''`, `revoke all ... from public`, granted to `authenticated` unless stated.
+- Every function: `security definer`, `set search_path = ''`. Hosted Supabase grants execute on new public functions to `anon`, `authenticated` and `service_role` by default, so every function must `revoke all ... from public, anon, authenticated, service_role` and then grant exactly one role (`authenticated` unless stated). Internal helpers live in the `private` schema.
 - Caller identity is always `auth.uid()`; no function accepts a user id for "who am I".
 - **Errors**: mutations `raise exception using errcode = 'P0001', message = '<code>'`. The client maps the message code to text. Invitation functions instead **return** `{ "ok": false, "error": "<code>" }` so the rate-limit record survives.
 - Common error codes: `not_authenticated`, `not_a_member`, `forbidden`, `not_found`, `validation_failed:<field>`.
@@ -27,7 +27,7 @@ Hand-written TypeScript types mirroring this file live in `src/lib/database.type
 | `communities` | `id uuid pk`, `name text`, `timezone text`, `created_at` | active members |
 | `profiles` | `id uuid pk → auth.users`, `display_name text (2–40 chars, trimmed)`, `created_at`, `updated_at` | self, and users sharing an active community |
 | `memberships` | `id`, `community_id`, `user_id`, `role`, `status`, `joined_at`; unique `(community_id, user_id)` | active members of that community |
-| `invitation_codes` | `id`, `community_id`, `code text unique`, `role`, `created_by`, `expires_at?`, `max_redemptions?`, `redemption_count`, `revoked_at?`, `created_at` | organizers of that community |
+| `invitation_codes` | `id`, `community_id`, `code text unique`, `role`, `created_by?` (null for bootstrap codes), `expires_at?`, `max_redemptions?`, `redemption_count`, `revoked_at?`, `created_at` | organizers of that community |
 | `invitation_redemptions` | `id`, `invitation_id`, `user_id`, `redeemed_at`; unique `(invitation_id, user_id)` | organizers of that community |
 | `invitation_attempts` | `id`, `user_id`, `attempted_at`, `success` | nobody (no policy) |
 | `activity_types` | `key text pk`, `label text`, `sort_order int` | any authenticated user |

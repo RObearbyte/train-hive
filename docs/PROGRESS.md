@@ -9,7 +9,7 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 - [x] F3 Architecture, API contract, team roles, this checklist (lead)
 
 ## Milestone 1 — Functional Training MVP
-- [ ] M1-B1 (L, backend) Test harness + core schema, RLS, invitations, bootstrap + tests
+- [x] M1-B1 (L, backend) Test harness + core schema, RLS, invitations, bootstrap + tests
 - [ ] M1-B2 (L, backend) Trainings, RSVP, deadline finalization, pg_cron + tests
 - [x] M1-U1 (M, ux) Theme tokens, UI kit, `docs/DESIGN.md`
 - [ ] M1-D1 (M, mobile) Pure domain logic: status derivation, zod schemas, datetime, error mapping + unit tests
