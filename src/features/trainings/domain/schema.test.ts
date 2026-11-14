@@ -415,10 +415,27 @@ describe('trainingFormSchema: edit', () => {
       ).toEqual({ deadlineDate: ['The RSVP deadline must be in the future.'] });
     });
 
-    it('requires a future deadline when the stored one has passed (finalizing)', () => {
+    it('accepts an unchanged deadline that has already passed (finalizing)', () => {
       const afterDeadline = new Date('2026-11-13T17:00:00Z');
-      expect(editErrors(makeSession(), {}, afterDeadline)).toEqual({
+      expect(editErrors(makeSession(), {}, afterDeadline)).toEqual({});
+      expect(editErrors(makeSession(), { title: 'Renamed' }, afterDeadline)).toEqual({});
+      // A changed deadline must still be in the future.
+      expect(editErrors(makeSession(), { deadlineTime: '18:30' }, afterDeadline)).toEqual({
         deadlineDate: ['The RSVP deadline must be in the future.'],
+      });
+      expect(editErrors(makeSession(), { deadlineTime: '20:00' }, afterDeadline)).toEqual({});
+    });
+
+    it('requires the future only for timestamps that were changed', () => {
+      // Started 30 minutes ago and still scheduled (deadline == start in this fixture).
+      const session = makeSession({ rsvp_deadline: '2026-11-14T07:00:00+00:00' });
+      const during = new Date('2026-11-14T07:30:00Z');
+      expect(editErrors(session, { description: 'Bring water' }, during)).toEqual({});
+      expect(editErrors(session, { startTime: '09:15', deadlineTime: '09:15' }, during).date).toEqual([
+        'The start must be in the future.',
+      ]);
+      expect(editErrors(session, { endTime: '09:20' }, during)).toEqual({
+        endTime: ['The end time must be in the future.'],
       });
     });
 

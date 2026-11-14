@@ -31,3 +31,22 @@ export function formatInvitationCode(input: string): string {
   const half = INVITATION_CODE_LENGTH / 2;
   return code.length <= half ? code : `${code.slice(0, half)}-${code.slice(half)}`;
 }
+
+/**
+ * Value for the code text input: whatever was typed or pasted, normalized,
+ * cut to 8 characters and shown as `ABCD-EFGH`.
+ */
+export function toInvitationCodeInput(text: string): string {
+  return formatInvitationCode(normalizeInvitationCode(text).slice(0, INVITATION_CODE_LENGTH));
+}
+
+const CODE_PROBLEMS: ReadonlySet<string> = new Set(['invalid_code', 'expired', 'revoked', 'exhausted']);
+
+/**
+ * True for server answers that are about the code itself (shown on the code
+ * field), as opposed to rate limiting, connection or unexpected failures
+ * (shown as a banner).
+ */
+export function isInvitationCodeProblem(errorCode: string): boolean {
+  return CODE_PROBLEMS.has(errorCode);
+}

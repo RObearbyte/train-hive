@@ -266,12 +266,13 @@ export function trainingFormSchema(context: TrainingFormContext) {
     const endMs = endsAt === null ? null : new Date(endsAt).getTime();
     const deadlineMs = rsvpDeadline === null ? null : new Date(rsvpDeadline).getTime();
 
-    // Start in the future: always on create; on a confirmed session only when moved.
+    // "In the future" applies to every timestamp on create, and on edit only to
+    // timestamps that were changed (the server compares by instant).
+    const isEdit = context.mode === 'edit';
     let startIsPast = false;
     if (startMs !== null) {
       const mustBeFuture =
-        context.mode === 'create' ||
-        (isConfirmedEdit && !sameInstant(startsAt, stored?.starts_at ?? null));
+        !isEdit || !sameInstant(startsAt, stored?.starts_at ?? null);
       if (mustBeFuture && startMs <= nowMs) {
         startIsPast = true;
         issue('date', 'The start must be in the future.');
@@ -281,7 +282,7 @@ export function trainingFormSchema(context: TrainingFormContext) {
     if (startMs !== null && endMs !== null) {
       if (endMs <= startMs) issue('endTime', 'The end time must be after the start time.');
       else if (
-        isConfirmedEdit &&
+        isEdit &&
         !sameInstant(endsAt, stored?.ends_at ?? null) &&
         endMs <= nowMs
       ) {
@@ -299,7 +300,11 @@ export function trainingFormSchema(context: TrainingFormContext) {
     } else if (deadlineMs !== null && startMs !== null) {
       if (deadlineMs > startMs) {
         issue('deadlineDate', 'The RSVP deadline must be at or before the start.');
-      } else if (deadlineMs <= nowMs && !startIsPast) {
+      } else if (
+        deadlineMs <= nowMs &&
+        !startIsPast &&
+        (!isEdit || !sameInstant(rsvpDeadline, stored?.rsvp_deadline ?? null))
+      ) {
         issue(
           'deadlineDate',
           deadlineIsDefault

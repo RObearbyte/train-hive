@@ -4,8 +4,10 @@ import {
   INVITATION_CODE_ALPHABET,
   INVITATION_CODE_LENGTH,
   formatInvitationCode,
+  isInvitationCodeProblem,
   isValidInvitationCodeFormat,
   normalizeInvitationCode,
+  toInvitationCodeInput,
 } from '@/features/onboarding/domain/invitationCode';
 
 describe('normalizeInvitationCode', () => {
@@ -91,4 +93,60 @@ describe('formatInvitationCode', () => {
     expect(normalizeInvitationCode(formatInvitationCode('k7mq9xw2'))).toBe('K7MQ9XW2');
     expect(formatInvitationCode(formatInvitationCode('k7mq9xw2'))).toBe('K7MQ-9XW2');
   });
+});
+
+describe('toInvitationCodeInput', () => {
+  it('formats while typing, one character at a time', () => {
+    let value = '';
+    const shown: string[] = [];
+    for (const char of 'k7mq9xw2') {
+      value = toInvitationCodeInput(value + char);
+      shown.push(value);
+    }
+    expect(shown).toEqual([
+      'K',
+      'K7',
+      'K7M',
+      'K7MQ',
+      'K7MQ-9',
+      'K7MQ-9X',
+      'K7MQ-9XW',
+      'K7MQ-9XW2',
+    ]);
+  });
+
+  it('lets the user delete back across the dash', () => {
+    expect(toInvitationCodeInput('K7MQ-')).toBe('K7MQ');
+    expect(toInvitationCodeInput('K7MQ')).toBe('K7MQ');
+    expect(toInvitationCodeInput('K7M')).toBe('K7M');
+    expect(toInvitationCodeInput('')).toBe('');
+  });
+
+  it('accepts pasted codes in any spelling', () => {
+    expect(toInvitationCodeInput(' k7mq 9xw2\n')).toBe('K7MQ-9XW2');
+    expect(toInvitationCodeInput('k7mq-9xw2')).toBe('K7MQ-9XW2');
+    expect(toInvitationCodeInput('K7MQ9XW2')).toBe('K7MQ-9XW2');
+  });
+
+  it('stops at 8 characters', () => {
+    expect(toInvitationCodeInput('K7MQ-9XW2A')).toBe('K7MQ-9XW2');
+    expect(toInvitationCodeInput('k7mq9xw2 extra text')).toBe('K7MQ-9XW2');
+  });
+
+  it('is idempotent', () => {
+    expect(toInvitationCodeInput(toInvitationCodeInput('k7mq9x'))).toBe('K7MQ-9X');
+  });
+});
+
+describe('isInvitationCodeProblem', () => {
+  it.each(['invalid_code', 'expired', 'revoked', 'exhausted'])('%s is about the code', (code) => {
+    expect(isInvitationCodeProblem(code)).toBe(true);
+  });
+
+  it.each(['rate_limited', 'network_error', 'unknown', 'not_authenticated', 'invalid_display_name'])(
+    '%s is not',
+    (code) => {
+      expect(isInvitationCodeProblem(code)).toBe(false);
+    },
+  );
 });
