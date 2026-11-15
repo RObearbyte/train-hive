@@ -148,9 +148,9 @@ describe('provisional is visibly different from final', () => {
 describe('Home / list sectioning near the edges', () => {
   const base = { id: 'a', starts_at: '2026-11-14T07:00:00Z', ends_at: null as string | null, status: 'scheduled' as SessionStatus };
 
-  it('a session is upcoming up to its start and past from the start on (no end time)', () => {
-    expect(isPast(base, at('2026-11-14T06:59:59.999Z'))).toBe(false);
-    expect(isPast(base, at('2026-11-14T07:00:00Z'))).toBe(true);
+  it('a session is upcoming up to start + 2 hours and past from then on (no end time)', () => {
+    expect(isPast(base, at('2026-11-14T08:59:59.999Z'))).toBe(false);
+    expect(isPast(base, at('2026-11-14T09:00:00Z'))).toBe(true);
   });
 
   it('with an end time it stays upcoming (running) until the end', () => {

@@ -68,24 +68,25 @@ describe('serverFieldError', () => {
 
 describe('frozenFormFields', () => {
   const deadline = '2026-11-20T07:00:00.000Z';
+  const START = '2026-11-21T07:00:00.000Z';
   const before = new Date('2026-11-20T06:59:59.000Z');
   const after = new Date('2026-11-20T07:00:00.000Z');
   const limits = ['deadlineDate', 'deadlineTime', 'minParticipants', 'maxParticipants'];
 
   it('locks nothing on a scheduled session before its deadline', () => {
-    const frozen = frozenFormFields({ status: 'scheduled', rsvp_deadline: deadline }, before);
+    const frozen = frozenFormFields({ status: 'scheduled', rsvp_deadline: deadline, starts_at: START, ends_at: null }, before);
     expect(frozen.fields.size).toBe(0);
     expect(frozen.reason).toBeNull();
   });
 
   it('locks the deadline and limits on a scheduled session at or after its deadline', () => {
-    const frozen = frozenFormFields({ status: 'scheduled', rsvp_deadline: deadline }, after);
+    const frozen = frozenFormFields({ status: 'scheduled', rsvp_deadline: deadline, starts_at: START, ends_at: null }, after);
     expect([...frozen.fields].sort()).toEqual([...limits].sort());
     expect(frozen.reason).toBe('Locked because the RSVP deadline has passed.');
   });
 
   it('locks the deadline and limits on a confirmed session', () => {
-    const frozen = frozenFormFields({ status: 'confirmed', rsvp_deadline: deadline }, before);
+    const frozen = frozenFormFields({ status: 'confirmed', rsvp_deadline: deadline, starts_at: START, ends_at: null }, before);
     expect([...frozen.fields].sort()).toEqual([...limits].sort());
     expect(frozen.fields.has('title')).toBe(false);
     expect(frozen.reason).toBe('Locked because the training is confirmed.');
@@ -93,7 +94,7 @@ describe('frozenFormFields', () => {
 
   it('locks everything on cancelled and completed sessions', () => {
     for (const status of ['cancelled', 'completed'] as const) {
-      const frozen = frozenFormFields({ status, rsvp_deadline: deadline }, before);
+      const frozen = frozenFormFields({ status, rsvp_deadline: deadline, starts_at: START, ends_at: null }, before);
       expect(frozen.fields.size).toBe(TRAINING_FORM_FIELDS.length);
     }
   });

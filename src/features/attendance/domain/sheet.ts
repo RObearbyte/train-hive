@@ -12,6 +12,7 @@ import type {
   TrainingSession,
 } from '@/lib/database.types';
 import type { CommunityMember } from '@/features/community/api/members';
+import { hasPredictedEnded, sessionEndInstant } from '@/features/trainings/domain/status';
 
 const byName = (a: { display_name: string }, b: { display_name: string }) =>
   a.display_name.localeCompare(b.display_name, 'en', { sensitivity: 'base' });
@@ -165,8 +166,7 @@ export function needsAttendance(
   now: Date,
 ): boolean {
   if (session.status !== 'confirmed') return false;
-  const end = new Date(session.ends_at ?? session.starts_at).getTime();
-  return end <= now.getTime();
+  return hasPredictedEnded(session, now);
 }
 
 /** True when the device clock says the training is over (used only to pick wording). */
@@ -174,7 +174,7 @@ export function deviceSaysEnded(
   session: Pick<TrainingSession, 'starts_at' | 'ends_at'>,
   now: Date,
 ): boolean {
-  return new Date(session.ends_at ?? session.starts_at).getTime() <= now.getTime();
+  return hasPredictedEnded(session, now);
 }
 
 export function statusLabel(status: AttendanceStatus): string {
@@ -193,9 +193,9 @@ export function originLabel(entry: Pick<AttendanceSheetEntry, 'is_walk_in'>): st
   return entry.is_walk_in ? 'Walk-in' : 'Said going';
 }
 
-/** Epoch ms of the session's end (start when there is no end). */
+/** Epoch ms of the session's end (start + 2 hours when there is no end). */
 function endMs(session: Pick<TrainingSession, 'starts_at' | 'ends_at'>): number {
-  return new Date(session.ends_at ?? session.starts_at).getTime();
+  return sessionEndInstant(session);
 }
 
 /**

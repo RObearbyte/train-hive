@@ -154,9 +154,12 @@ describe('needsAttendance / deviceSaysEnded', () => {
     expect(needsAttendance({ ...base, status: 'scheduled' }, after)).toBe(false);
   });
 
-  it('uses the start when there is no end', () => {
+  it('uses start + 2 hours when there is no end', () => {
     const noEnd = { starts_at: '2026-11-14T07:00:00Z', ends_at: null };
-    expect(needsAttendance({ ...noEnd, status: 'confirmed' }, new Date('2026-11-14T07:00:00Z'))).toBe(
+    expect(needsAttendance({ ...noEnd, status: 'confirmed' }, new Date('2026-11-14T08:59:59Z'))).toBe(
+      false,
+    );
+    expect(needsAttendance({ ...noEnd, status: 'confirmed' }, new Date('2026-11-14T09:00:00Z'))).toBe(
       true,
     );
     expect(deviceSaysEnded(noEnd, new Date('2026-11-14T06:00:00Z'))).toBe(false);

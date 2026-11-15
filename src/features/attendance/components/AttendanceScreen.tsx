@@ -29,6 +29,8 @@ import {
   sortEntries,
   type SheetMode,
 } from '../domain/sheet';
+import { sessionEndInstant } from '@/features/trainings/domain/status';
+
 import { attendanceKeys } from '../api/keys';
 import { isRowPending } from '../domain/sheetCache';
 import { useFinalizeAttendance, useRecordAttendance } from '../hooks/useAttendanceMutations';
@@ -77,7 +79,7 @@ function unavailableCopy(
         : {
             title: 'This training has not ended yet',
             message: session
-              ? `Attendance opens once it is over (${formatDateTime(session.ends_at ?? session.starts_at, zone)}).`
+              ? `Attendance opens once it is over (${formatDateTime(new Date(sessionEndInstant(session)), zone)}).`
               : 'Attendance opens once the training is over.',
           };
   }

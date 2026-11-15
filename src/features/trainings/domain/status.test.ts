@@ -246,10 +246,10 @@ describe('upcoming / past', () => {
     expect(isUpcoming(session, new Date(end))).toBe(false);
   });
 
-  it('uses the start when there is no end', () => {
+  it('uses start + 2 hours when there is no end', () => {
     const session = makeSession({ starts_at: start, ends_at: null });
-    expect(isPast(session, new Date('2026-11-14T06:59:59Z'))).toBe(false);
-    expect(isPast(session, new Date(start))).toBe(true);
+    expect(isPast(session, new Date('2026-11-14T08:59:59Z'))).toBe(false);
+    expect(isPast(session, new Date('2026-11-14T09:00:00Z'))).toBe(true);
   });
 
   it('treats a completed session as past regardless of time', () => {

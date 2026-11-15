@@ -20,6 +20,7 @@ import {
 import { userMessage, type AppErrorCode } from '@/lib/errors';
 
 import { TRAINING_FORM_FIELDS, editableFields, type TrainingFormField } from './schema';
+import { hasPredictedEnded } from './status';
 
 /** `p_input` column → the form field that edits it. `timezone` has no field. */
 const COLUMN_TO_FIELD: Readonly<Record<string, TrainingFormField>> = {
@@ -41,8 +42,10 @@ const COLUMN_TO_FIELD: Readonly<Record<string, TrainingFormField>> = {
 
 /** Server rules the client cannot fully check, said in the server's terms. */
 const COLUMN_MESSAGES: Readonly<Record<string, string>> = {
-  starts_at: 'The start must be in the future and after the RSVP deadline.',
-  ends_at: 'The end time must be after the start time.',
+  starts_at:
+    'The start must be in the future and after the RSVP deadline. It cannot change once the training has ended or attendance has been recorded.',
+  ends_at:
+    'The end time must be after the start time. It cannot change once the training has ended or attendance has been recorded.',
   rsvp_deadline:
     'The RSVP deadline must be in the future and before the start. It cannot be changed once responses have closed.',
   min_participants:
@@ -78,9 +81,18 @@ export type FrozenFields = {
   fields: ReadonlySet<TrainingFormField>;
   /** One short sentence for the locked fields, or null when nothing is locked. */
   reason: string | null;
+  /** Sentence for the date / start / end fields when they are locked by the ended rule, else null. */
+  timeReason: string | null;
 };
 
-const NOTHING_FROZEN: FrozenFields = { fields: new Set(), reason: null };
+const NOTHING_FROZEN: FrozenFields = {
+  fields: new Set(),
+  reason: null,
+  timeReason: null,
+};
+
+const TIME_FIELDS: readonly TrainingFormField[] = ['date', 'startTime', 'endTime'];
+export const ENDED_TIME_REASON = 'This training has already ended';
 
 function allExcept(editable: ReadonlySet<TrainingFormField>): ReadonlySet<TrainingFormField> {
   return new Set(TRAINING_FORM_FIELDS.filter((field) => !editable.has(field)));
@@ -92,26 +104,35 @@ function allExcept(editable: ReadonlySet<TrainingFormField>): ReadonlySet<Traini
  * decision, and the server freezes its deadline and limits like a confirmed one.
  */
 export function frozenFormFields(
-  session: Pick<TrainingSession, 'status' | 'rsvp_deadline'>,
+  session: Pick<TrainingSession, 'status' | 'rsvp_deadline' | 'starts_at' | 'ends_at'>,
   now: Date,
 ): FrozenFields {
   switch (session.status) {
-    case 'confirmed':
+    case 'confirmed': {
+      const fields = new Set(allExcept(editableFields('confirmed')));
+      // The server freezes the time of a confirmed session once it has ended (or has attendance
+      // records, which the client cannot see). Prediction only; the server stays the authority.
+      const ended = hasPredictedEnded(session, now);
+      if (ended) for (const field of TIME_FIELDS) fields.add(field);
       return {
-        fields: allExcept(editableFields('confirmed')),
+        fields,
         reason: 'Locked because the training is confirmed.',
+        timeReason: ended ? ENDED_TIME_REASON : null,
       };
+    }
     case 'cancelled':
     case 'completed':
       return {
         fields: allExcept(editableFields(session.status)),
         reason: 'This training can no longer be edited.',
+        timeReason: null,
       };
     case 'scheduled':
       if (now.getTime() >= new Date(session.rsvp_deadline).getTime()) {
         return {
           fields: allExcept(editableFields('confirmed')),
           reason: 'Locked because the RSVP deadline has passed.',
+          timeReason: null,
         };
       }
       return NOTHING_FROZEN;
@@ -133,5 +154,8 @@ export function defaultDeadline(
     return null;
   }
   const instant = defaultRsvpDeadline(wallTimeToUtc(date, startTime, timezone));
-  return { wall: utcToWallTime(instant, timezone), text: formatDateTime(instant, timezone) };
+  return {
+    wall: utcToWallTime(instant, timezone),
+    text: formatDateTime(instant, timezone),
+  };
 }

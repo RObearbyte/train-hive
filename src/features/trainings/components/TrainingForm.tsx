@@ -157,8 +157,14 @@ function TrainingFormView({
   const [confirmLeave, setConfirmLeave] = useState(false);
 
   const frozen = session ? frozenFormFields(session, now) : null;
-  const lockedReason = (field: TrainingFormField): string | null =>
-    frozen && frozen.fields.has(field) ? frozen.reason : null;
+  const lockedReason = (field: TrainingFormField): string | null => {
+    if (!frozen || !frozen.fields.has(field)) return null;
+    if (frozen.timeReason !== null && (field === 'date' || field === 'startTime' || field === 'endTime')) {
+      return frozen.timeReason;
+    }
+    return frozen.reason;
+  };
+  const dateLocked = lockedReason('date') !== null;
   const deadlineLocked = lockedReason('deadlineDate') !== null;
 
   const customDeadline = deadlineDate !== '' || deadlineTime !== '';
@@ -274,6 +280,8 @@ function TrainingFormView({
                 onChange={field.onChange}
                 onBlur={field.onBlur}
                 error={fieldState.error?.message}
+                disabled={dateLocked}
+                helper={lockedReason('date') ?? undefined}
               />
             )}
           />
@@ -290,6 +298,7 @@ function TrainingFormView({
                     onChange={field.onChange}
                     onBlur={field.onBlur}
                     error={fieldState.error?.message}
+                    disabled={dateLocked}
                   />
                 )}
               />
@@ -307,7 +316,8 @@ function TrainingFormView({
                     onChange={field.onChange}
                     onBlur={field.onBlur}
                     error={fieldState.error?.message}
-                    helper="Optional"
+                    helper={lockedReason('endTime') ?? 'Optional'}
+                    disabled={lockedReason('endTime') !== null}
                     suggestion={startTime}
                   />
                 )}

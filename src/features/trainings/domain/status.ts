@@ -97,12 +97,34 @@ export function participationSummary(
 
 type TimeFields = Pick<TrainingSession, 'status' | 'starts_at' | 'ends_at'>;
 
+/** Length assumed for a session without `ends_at`; mirrors the server's `private.session_ended`. */
+export const DEFAULT_SESSION_DURATION_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Epoch ms at which the session counts as ended: `ends_at`, or 2 hours after
+ * `starts_at` when there is no end. The same rule as the server's
+ * `coalesce(ends_at, starts_at + 2 hours)`. Prediction only: the server decides.
+ */
+export function sessionEndInstant(session: Pick<TrainingSession, 'starts_at' | 'ends_at'>): number {
+  return session.ends_at !== null
+    ? new Date(session.ends_at).getTime()
+    : new Date(session.starts_at).getTime() + DEFAULT_SESSION_DURATION_MS;
+}
+
+/** True when the predicted end is at or before `now` (device clock: display / hints only). */
+export function hasPredictedEnded(
+  session: Pick<TrainingSession, 'starts_at' | 'ends_at'>,
+  now: Date,
+): boolean {
+  return sessionEndInstant(session) <= now.getTime();
+}
+
 function endTime(session: TimeFields): number {
-  return new Date(session.ends_at ?? session.starts_at).getTime();
+  return sessionEndInstant(session);
 }
 
 /**
- * Past = completed, or its end (start when there is no end) is at or before
+ * Past = completed, or its end (start + 2 hours when there is no end) is at or before
  * `now`. Cancelled sessions stay in "upcoming" until their time passes, so
  * members still see the cancellation. List sectioning only.
  */
