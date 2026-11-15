@@ -33,10 +33,15 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   finalize_attendance: 'authenticated',
   finalize_due_sessions: 'service_role',
   get_attendance_sheet: 'authenticated',
+  get_community_statistics: 'authenticated',
+  get_member_statistics: 'authenticated',
+  get_my_attendance_history: 'authenticated',
+  get_my_statistics: 'authenticated',
   get_notification_preferences: 'authenticated',
   invalidate_push_tokens: 'service_role',
   is_active_member: 'authenticated',
   is_organizer: 'authenticated',
+  list_member_statistics_summary: 'authenticated',
   mark_all_notifications_read: 'authenticated',
   mark_announcement_read: 'authenticated',
   mark_announcements_read: 'authenticated',
@@ -64,6 +69,15 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
 const TARGET_USER_ARGS: Record<string, string[]> = {
   add_walk_in_attendee: ['p_user_id'],
   record_attendance: ['p_user_id'],
+  // M4: an organizer reads one member's statistics (read-only).
+  get_member_statistics: ['p_user_id'],
+};
+
+/** Where each target-member function checks that the caller is an active organizer. */
+const ORGANIZER_CHECK: Record<string, string> = {
+  add_walk_in_attendee: 'private.authorize_attendance(p_session_id)',
+  record_attendance: 'private.authorize_attendance(p_session_id)',
+  get_member_statistics: 'not public.is_organizer(p_community_id)',
 };
 
 interface FunctionRow {
@@ -182,8 +196,9 @@ describe('QA function privileges', () => {
       const fn = all.find((f) => f.name === name);
       expect(fn, name).toBeDefined();
       expect(fn!.source, name).toMatch(/v_uid uuid := auth\.uid\(\);/);
-      // The organizer check lives in private.authorize_attendance (pinned in attendance tests).
-      expect(fn!.source, name).toContain('private.authorize_attendance(p_session_id)');
+      // M2: the organizer check lives in private.authorize_attendance (pinned in attendance
+      // tests); M4: get_member_statistics checks is_organizer itself (stats-security tests).
+      expect(fn!.source, name).toContain(ORGANIZER_CHECK[name]);
       // The target id is never used as the actor of a write.
       expect(fn!.source, name).not.toMatch(/recorded_by\s*=\s*p_user_id|changed_by\s*=\s*p_user_id/);
     }
@@ -206,6 +221,11 @@ describe('QA function privileges', () => {
       ['select public.add_walk_in_attendee($1, $2)', [session.id, organizerId]],
       ['select public.finalize_attendance($1)', [session.id]],
       ['select public.get_attendance_sheet($1)', [session.id]],
+      ['select public.get_my_statistics($1, $2)', [communityId, '30d']],
+      ['select public.get_my_attendance_history($1, $2)', [communityId, '30d']],
+      ['select public.get_member_statistics($1, $2, $3)', [communityId, organizerId, '30d']],
+      ['select public.get_community_statistics($1, $2)', [communityId, '30d']],
+      ['select public.list_member_statistics_summary($1, $2)', [communityId, '30d']],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);

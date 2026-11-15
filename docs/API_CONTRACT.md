@@ -332,3 +332,98 @@ Migrations `20261116000100_m3_qa_fixes.sql` (functions replaced in place, same s
 - The summary gains `batches`, `bisections`, `deferred`. Log events: `expo_chunk` (now with `rejected: <code>` for a rejection), `tokens_rejected` (count and reason only), plus the existing ones.
 - `register_push_token` cannot know which Expo project a token belongs to (the format is the same). The per-user cap of 10 tokens (least recently seen dropped, verified by `qa-comms.test.ts`) bounds how many tokens one account can plant. Unverified against the real service: whether Expo rejects a request holding only another project's tokens. If it does, bisection isolates and invalidates the token once; if it accepts it (a single-project request), bisection only isolates it, so each later chunk that mixes it in costs up to about 15 extra requests (bounded by the cap) until Expo reports the token invalid by ticket.
 - The cron call (`20261116000200`) now waits up to 120 s (`timeout_milliseconds := 120000`).
+
+---
+
+# Milestone 4 — Statistics
+
+Read-only RPCs over the Milestone 1–2 tables, following `docs/STATS_DEFINITIONS.md` exactly (that file defines every metric; this section defines the calls and payloads). Migration `20261117000100_statistics.sql`. All five are `security definer`, `stable`, `set search_path = ''`, granted to `authenticated` only (anon and service_role: no execute). Caller identity is `auth.uid()`. No locks, no writes, nothing cached: every call computes from the current rows, so attendance corrections and moved sessions show up on the next call.
+
+## Shared rules (implemented once, in `private.stats_sessions` and `private.stats_rows`)
+
+- **S** (session set): `status = 'completed'`, `attendance_finalized_at is not null`, `cancel_reason is null`, the session's **current** `starts_at` in the window.
+- **Eligibility** (`private.stats_rows`): one row per (session of S, membership of the community with `joined_at <= starts_at`), any role, any current status; plus one row with `eligible = false` per attendance record of a session of S whose person joined after its start (e.g. joined at the training and added as a walk-in). Missing RSVP = `no_response`; missing record = `unrecorded` (never `absent`). Member, summary and community numbers are all aggregates of these rows.
+- **Window** `p_window`: `'7d' | '30d' | '90d' | 'all'`, i.e. `starts_at` in `[now() − N × 24 h, now()]`, both ends inclusive; `all` has no lower bound (`from: null`). Anything else (null, `'7D'`, `'week'`…) → `validation_failed:window`.
+- **Rates**: `round(100 × n / d, 1)` on `numeric` (half up), `null` when `d = 0`; averages `round(total / count, 1)`, `null` on 0. Counts are always returned next to the rate.
+- **Buckets** (community time zone, `communities.timezone`): months are calendar months (`period` `'YYYY-MM'`); weeks start on **Monday** (`period` = local Monday `'YYYY-MM-DD'`). They run from the bucket holding the window start (for `all`: the earliest session of the set; none → `[]`) to the bucket holding now; **empty buckets are included**. `from` / `to` are the bucket's instants (`to` exclusive), so a DST week is 167 or 169 hours long.
+- **Envelope** of every payload: `window`, `from` (null for `all`), `to` (= the server's now() of the call), `generated_at`.
+
+Order of checks in every function: `not_authenticated` → authorization (`not_a_member` / `forbidden`, also for unknown or null communities) → input (`validation_failed:window`, `validation_failed:limit`). So an outsider learns nothing from a malformed call.
+
+## RPCs
+
+`get_my_statistics(p_community_id uuid, p_window text) → jsonb` — caller must be an **active member** (organizers included), else `not_a_member`.
+
+```
+{ window: '30d', from: '2026-10-16T12:00:00+00:00', to: '2026-11-15T12:00:00+00:00', generated_at,
+  timezone: 'Europe/Bucharest', community_id, user_id, membership_status: 'active', role: 'member', joined_at,
+  eligible: 4, attended: 3, absent: 0, not_recorded: 1, recorded: 3, attendance_rate: 75.0,
+  confirmed_rsvps: 3, missed: 0, rsvp_going_present: 3, rsvp_going_recorded: 3, rsvp_reliability: 100.0,
+  walk_ins: 0,
+  monthly: [ { period: '2026-10', from: '2026-09-30T21:00:00+00:00', to: '2026-10-31T22:00:00+00:00',
+               eligible: 3, attended: 2, attendance_rate: 66.7 },
+             { period: '2026-11', from, to, eligible: 1, attended: 1, attendance_rate: 100.0 } ] }
+```
+- `eligible` = |E|; `attended` = present (walk-ins included); `absent` = marked absent; `not_recorded` = no record or `unrecorded`; `recorded` = attended + absent; `attendance_rate` = attended / eligible; `confirmed_rsvps` = `going` in E; `missed` = going and absent; `rsvp_reliability` = `rsvp_going_present` / `rsvp_going_recorded` (going with present or absent); `walk_ins` = present with `is_walk_in`. `monthly`: every month of the window in the community time zone (for `all`: from the month of the member's first eligible session), with null rate when 0 eligible.
+
+`get_my_attendance_history(p_community_id uuid, p_window text, p_limit int default 50, p_before timestamptz default null) → jsonb` — active member, else `not_a_member`. `p_limit` 1–100, else `validation_failed:limit` (null included).
+
+```
+{ window, from, to, generated_at,
+  items: [ { session_id, title, activity_type, starts_at, ends_at, timezone, location_name,
+             rsvp_response: 'going' | 'not_going' | 'no_response',
+             outcome: 'present' | 'absent' | 'unrecorded', is_walk_in } ],
+  has_more: boolean, next_before: timestamptz | null }
+```
+- The sessions of E, newest first (`starts_at desc, session_id desc`). Keyset on `starts_at`: `p_before` is exclusive; pass `next_before` back **verbatim** (string; do not round-trip it through a JS `Date`). A page never splits sessions that share one `starts_at`: it stops before such a group, or, when the page would consist of that group only, returns the whole group (so a page can exceed `p_limit` by the size of a same-instant group). `next_before` is null exactly when `has_more` is false.
+
+`get_member_statistics(p_community_id uuid, p_user_id uuid, p_window text) → jsonb` — caller must be an **active organizer** of the community (else `forbidden`; members asking about themselves too); the target must have a membership in that community, **active or removed** (else `not_found`: unknown users, null, members of other communities). Same payload as `get_my_statistics`; `membership_status: 'removed'` for removed members, whose E still uses their membership start (their history stays readable).
+
+`get_community_statistics(p_community_id uuid, p_window text) → jsonb` — active organizer, else `forbidden`.
+
+```
+{ window: '30d', from, to, generated_at, timezone, community_id,
+  completed_trainings: 4, total_attendances: 9,
+  average_attendees: 3.0, average_attendees_sessions: 3, incomplete_sessions: 1,
+  rsvp_going_total: 10, average_rsvp_participation: 2.5,
+  rsvp_going_present: 6, rsvp_going_recorded: 8, rsvp_conversion: 75.0,
+  active_members: 6, members_attended: 4,
+  cancelled_insufficient_participation: 1, cancelled_by_organizer: 1,
+  trend_unit: 'week',
+  trend: [ { period: '2026-10-12', from, to, sessions: 1, present: 4, incomplete_sessions: 0, average_attendees: 4.0 },
+           { period: '2026-10-19', from, to, sessions: 0, present: 0, incomplete_sessions: 0, average_attendees: null }, … ],
+  top_sessions: [ { session_id, title, starts_at, timezone, present: 4, min_participants: 3, going_count: 4 }, … ] }
+```
+- `completed_trainings` = |S|. `total_attendances` = present records over S (every real record: walk-ins, removed members' past attendance, people who joined at the training). `average_attendees` = present / `average_attendees_sessions`, where sessions with no `present` and no `absent` record (never marked) are excluded and counted in `incomplete_sessions`. `average_rsvp_participation` = Σ `going_count` / |S| (`rsvp_going_total` is the sum). `rsvp_conversion` = going & present / going with present or absent, across S. `active_members` = active memberships now (not windowed, organizers included). `members_attended` = currently active members with at least one present in their E within the window. `cancelled_*` = cancelled sessions with `starts_at` in the window, by reason (the only numbers that look at cancelled sessions). `trend`: weekly for `7d` / `30d`, monthly for `90d` / `all`; each bucket applies the same incomplete-session rule to its average. `top_sessions`: up to 5 sessions of S by present count, ties newer first (sessions with 0 present can appear when S has fewer than 5 attended sessions; the app may hide them).
+
+`list_member_statistics_summary(p_community_id uuid, p_window text) → jsonb` — active organizer, else `forbidden`.
+
+```
+{ window, from, to, generated_at, community_id, total_members: 6, truncated: false,
+  members: [ { user_id, display_name, role, joined_at,
+               eligible, attended, absent, not_recorded, attendance_rate,
+               confirmed_rsvps, missed, rsvp_going_present, rsvp_going_recorded, rsvp_reliability, walk_ins } ] }
+```
+- One line per **active** membership (any role), ordered by `display_name, user_id`, at most 500 (`truncated` true and `total_members` the full count when there are more). Each line equals that member's `get_my_statistics` numbers for the same window.
+
+Consistency (tested): for one window, Σ over all memberships (summary lines + removed members via `get_member_statistics`) of `attended` + present rows with `eligible = false` = `total_attendances`; Σ `rsvp_going_present` / `rsvp_going_recorded` = the community's; the number of summary lines with `attended > 0` = `members_attended`.
+
+New error codes: `validation_failed:window`, `validation_failed:limit` (others as before: `not_authenticated`, `not_a_member`, `forbidden`, `not_found`).
+
+TypeScript: `src/lib/database.types.ts` — `StatisticsWindow`, `MyStatistics` / `MemberStatistics`, `AttendanceHistoryPage`, `CommunityStatistics`, `MemberStatisticsSummary` (and their item types).
+
+## Decisions where STATS_DEFINITIONS.md leaves room (M4-B1)
+
+1. **No `left_at` in the schema.** Rule 3's "active when the session ended" is approximated as its implementation note says: a member's own E uses only `joined_at <= starts_at` (so a removed member's history stays readable to organizers, with the numbers they had); per-member community figures (`members_attended`, the summary list, `active_members`) count only currently active memberships. Session-level community figures follow the explicit "no per-member eligibility" of the community section and count every real record, so removing a member does not rewrite past session totals.
+2. **People who joined after a session started** (joined at the training, added as a walk-in): the session is not in their E (rule 3), but their attendance counts for the session (`total_attendances`, top sessions, trend). This is why the consistency identity has the `eligible = false` term.
+3. **Window length** is N × 24 hours (not N calendar days in a zone), both edges inclusive.
+4. **Weeks** start on Monday; buckets start at the bucket holding the window start, so the first and last bucket can be partial (they only count sessions inside the window).
+5. **`all` buckets** start at the earliest session of the set (member: first eligible session; community: first session of S), not at the community's creation.
+6. **Trend averages** use the same incomplete-session exclusion as the overall average (the definition does not say; this keeps the two consistent).
+7. **Average RSVP participation** includes incomplete sessions (the exclusion rule is defined only for average attendees); with 1+ sessions and no going RSVPs it is `0.0`, not null.
+8. **History limit** out of range is an error (`validation_failed:limit`), not clamped.
+9. **Top sessions** follow the literal definition (top 5 of S), so a 0-present session can be listed.
+
+## Milestone 4, B1 small fix (append-only)
+
+Migration `20261117000200_announcement_read_lock.sql`: `mark_announcement_read` and `mark_announcements_read` now key-share-lock the caller's profile before inserting `announcement_reads`, like `mark_notification_read` / `mark_all_notifications_read`. During a concurrent account deletion they wait and then raise `not_found` (single) / `not_a_member` (all) instead of a foreign key violation (`23503`, reproduced by a test against the old body). Signatures, grants and normal behaviour unchanged.

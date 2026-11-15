@@ -1036,6 +1036,38 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      // Milestone 4: statistics (read-only, authenticated). Definitions: docs/STATS_DEFINITIONS.md.
+      /** Active member of the community. Returns a `MyStatistics`. */
+      get_my_statistics: {
+        Args: { p_community_id: string; p_window: StatisticsWindow };
+        Returns: Json;
+      };
+      /** Active member of the community. Returns an `AttendanceHistoryPage` (limit 1–100, default 50). */
+      get_my_attendance_history: {
+        Args: {
+          p_community_id: string;
+          p_window: StatisticsWindow;
+          p_limit?: number;
+          /** `next_before` of the previous page, passed back verbatim. */
+          p_before?: string | null;
+        };
+        Returns: Json;
+      };
+      /** Organizer of the community; the member may be removed. Returns a `MemberStatistics`. */
+      get_member_statistics: {
+        Args: { p_community_id: string; p_user_id: string; p_window: StatisticsWindow };
+        Returns: Json;
+      };
+      /** Organizer of the community. Returns a `CommunityStatistics`. */
+      get_community_statistics: {
+        Args: { p_community_id: string; p_window: StatisticsWindow };
+        Returns: Json;
+      };
+      /** Organizer of the community. Returns a `MemberStatisticsSummary` (active members, at most 500). */
+      list_member_statistics_summary: {
+        Args: { p_community_id: string; p_window: StatisticsWindow };
+        Returns: Json;
+      };
     };
     Enums: {
       membership_role: 'organizer' | 'member';
@@ -1214,4 +1246,182 @@ export type TrainingInput = {
   meeting_instructions?: string | null;
   min_participants: number;
   max_participants?: number | null;
+};
+
+// ---------------------------------------------------------------------------
+// Milestone 4: statistics payloads (jsonb). Definitions: docs/STATS_DEFINITIONS.md.
+// Timestamps are ISO strings. Rates are percentages with at most one decimal
+// (rounded half up on the server) and null when their denominator is 0; the
+// integer counts they come from are always returned beside them.
+// ---------------------------------------------------------------------------
+
+/** Time filter, measured back from the server's now() (N x 24 hours; `all` has no start). */
+export type StatisticsWindow = '7d' | '30d' | '90d' | 'all';
+
+/** Common envelope of every statistics payload. */
+export type StatisticsEnvelope = {
+  window: StatisticsWindow;
+  /** Window start (inclusive); null for `all`. */
+  from: string | null;
+  /** Window end (inclusive) = the server's now() of the call. */
+  to: string;
+  generated_at: string;
+};
+
+/** One calendar month (community time zone) of a member's participation. */
+export type MonthlyParticipation = {
+  /** 'YYYY-MM' in the community time zone. */
+  period: string;
+  /** Bucket start / end instants (end exclusive). */
+  from: string;
+  to: string;
+  eligible: number;
+  attended: number;
+  attendance_rate: number | null;
+};
+
+/** The member metrics shared by `get_my_statistics` and `get_member_statistics`. */
+export type MemberStatisticsCounts = {
+  /** |E|: finalized, non-cancelled sessions in the window the member was eligible for. */
+  eligible: number;
+  /** Present (walk-ins included). */
+  attended: number;
+  /** Explicitly marked absent. */
+  absent: number;
+  /** No record, or a record still `unrecorded`. Never counted as absent or missed. */
+  not_recorded: number;
+  /** attended + absent. */
+  recorded: number;
+  /** attended / eligible x 100. */
+  attendance_rate: number | null;
+  /** Sessions of E with a `going` RSVP. */
+  confirmed_rsvps: number;
+  /** Going and absent. */
+  missed: number;
+  /** Going and present (numerator of rsvp_reliability). */
+  rsvp_going_present: number;
+  /** Going with a recorded outcome, present or absent (denominator of rsvp_reliability). */
+  rsvp_going_recorded: number;
+  rsvp_reliability: number | null;
+  /** Present as a walk-in. */
+  walk_ins: number;
+};
+
+/** Result of `get_my_statistics` / `get_member_statistics`. */
+export type MemberStatistics = StatisticsEnvelope &
+  MemberStatisticsCounts & {
+    /** The community's IANA time zone (buckets use it). */
+    timezone: string;
+    community_id: string;
+    user_id: string;
+    /** Current membership; organizers may read removed members. */
+    membership_status: MembershipStatus;
+    role: MembershipRole;
+    joined_at: string;
+    /** Every month of the window (for `all`: from the month of the first eligible session), empty ones included. */
+    monthly: MonthlyParticipation[];
+  };
+
+/** Result of `get_my_statistics`. */
+export type MyStatistics = MemberStatistics;
+
+/** One session of `get_my_attendance_history`. */
+export type AttendanceHistoryItem = {
+  session_id: string;
+  title: string;
+  activity_type: string;
+  starts_at: string;
+  ends_at: string | null;
+  timezone: string;
+  location_name: string;
+  /** `no_response` when the member never answered. */
+  rsvp_response: RsvpResponse;
+  /** `unrecorded` = Not recorded (no record or never marked). */
+  outcome: AttendanceStatus;
+  is_walk_in: boolean;
+};
+
+/** Result of `get_my_attendance_history`: newest first. */
+export type AttendanceHistoryPage = StatisticsEnvelope & {
+  items: AttendanceHistoryItem[];
+  has_more: boolean;
+  /** Pass back verbatim as `p_before` for the next page; null on the last page. */
+  next_before: string | null;
+};
+
+/** One bucket of the organizer attendance trend. */
+export type AttendanceTrendBucket = {
+  /** 'YYYY-MM-DD' (local Monday) for weeks, 'YYYY-MM' for months, community time zone. */
+  period: string;
+  from: string;
+  to: string;
+  sessions: number;
+  present: number;
+  /** Sessions of the bucket with no present / absent mark, excluded from the average. */
+  incomplete_sessions: number;
+  average_attendees: number | null;
+};
+
+/** One of the most attended trainings. */
+export type TopSession = {
+  session_id: string;
+  title: string;
+  starts_at: string;
+  timezone: string;
+  present: number;
+  min_participants: number;
+  going_count: number;
+};
+
+/** Result of `get_community_statistics` (organizers). */
+export type CommunityStatistics = StatisticsEnvelope & {
+  timezone: string;
+  community_id: string;
+  /** |S|: finalized, non-cancelled sessions in the window. */
+  completed_trainings: number;
+  /** Present records over S (every real attendance, walk-ins and removed members included). */
+  total_attendances: number;
+  /** Present / sessions with at least one present or absent mark. */
+  average_attendees: number | null;
+  /** Sessions counted in average_attendees. */
+  average_attendees_sessions: number;
+  /** Sessions of S never marked (excluded from the average). */
+  incomplete_sessions: number;
+  /** Sum of going_count over S. */
+  rsvp_going_total: number;
+  /** rsvp_going_total / completed_trainings. */
+  average_rsvp_participation: number | null;
+  rsvp_going_present: number;
+  rsvp_going_recorded: number;
+  /** rsvp_going_present / rsvp_going_recorded x 100. */
+  rsvp_conversion: number | null;
+  /** Active memberships now (not windowed). */
+  active_members: number;
+  /** Active members with at least one attended eligible session in the window. */
+  members_attended: number;
+  cancelled_insufficient_participation: number;
+  cancelled_by_organizer: number;
+  /** 'week' for 7d / 30d, 'month' for 90d / all. */
+  trend_unit: 'week' | 'month';
+  trend: AttendanceTrendBucket[];
+  /** At most 5, by present desc, newer first on ties. */
+  top_sessions: TopSession[];
+};
+
+/** One line of `list_member_statistics_summary`. */
+export type MemberStatisticsSummaryRow = MemberStatisticsCounts & {
+  user_id: string;
+  display_name: string;
+  role: MembershipRole;
+  joined_at: string;
+};
+
+/** Result of `list_member_statistics_summary` (organizers): active members by display name. */
+export type MemberStatisticsSummary = StatisticsEnvelope & {
+  community_id: string;
+  /** All active members, also when the list is truncated. */
+  total_members: number;
+  /** True when more than 500 active members exist (only the first 500 are listed). */
+  truncated: boolean;
+  members: MemberStatisticsSummaryRow[];
 };
