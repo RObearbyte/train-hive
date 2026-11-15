@@ -109,8 +109,9 @@ export async function fetchExpoPushToken(projectId: string): Promise<string> {
   return token.data;
 }
 
-export function onPushTokenChanged(listener: () => void): () => void {
-  const subscription = Notifications.addPushTokenListener(() => listener());
+/** The listener receives the new native device token (used as an identity, not sent anywhere). */
+export function onPushTokenChanged(listener: (deviceToken: string) => void): () => void {
+  const subscription = Notifications.addPushTokenListener((token) => listener(String(token.data)));
   return () => subscription.remove();
 }
 

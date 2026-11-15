@@ -62,6 +62,20 @@ describe('combinedUnreadCount', () => {
   });
 });
 
+describe('combinedUnreadCount community scope', () => {
+  it('ignores items of other communities', () => {
+    expect(
+      combinedUnreadCount({
+        items: [announcement({ id: 'a1' }), announcement({ id: 'a2', community_id: 'c2' })],
+        readIds: [],
+        notifications: [notification({ id: 'n1' }), notification({ id: 'n2', community_id: 'c2' })],
+        userId: 'me',
+        communityId: 'c1',
+      }),
+    ).toBe(2);
+  });
+});
+
 describe('badgeText', () => {
   it('hides zero, caps at 99+', () => {
     expect(badgeText(0)).toBeNull();

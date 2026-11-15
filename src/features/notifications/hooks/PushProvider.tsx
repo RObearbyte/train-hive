@@ -6,7 +6,6 @@ import {
   useState,
   type Dispatch,
   type ReactNode,
-  type RefObject,
   type SetStateAction,
 } from 'react';
 import { AppState } from 'react-native';
@@ -29,6 +28,7 @@ import {
   requestPermission,
   type PermissionInfo,
 } from '../api/pushNative';
+import { RegistrationQueue } from '../domain/registrationQueue';
 import {
   derivePushState,
   shouldOfferPrompt,
@@ -53,24 +53,27 @@ export type PushContextValue = {
 
 const PushContext = createContext<PushContextValue | null>(null);
 
-/** Fetches this installation's Expo token and registers it. One run at a time. */
+/**
+ * One registration run: fetches this installation's Expo token and registers
+ * it. Never throws; resolves to whether it succeeded. Runs are serialised by
+ * a `RegistrationQueue`, which keeps the latest request that arrived
+ * meanwhile (a token change must not be dropped).
+ */
 async function registerDevice(
-  busy: RefObject<boolean>,
   setRegistration: Dispatch<SetStateAction<PushRegistration>>,
-): Promise<void> {
+): Promise<boolean> {
   const projectId = readProjectId();
-  if (projectId === null || busy.current) return;
-  busy.current = true;
+  if (projectId === null) return true;
   try {
     await ensureAndroidChannel();
     const token = await fetchExpoPushToken(projectId);
     await registerPushToken(token, pushPlatform(), deviceLabel());
     setRegistration('registered');
+    return true;
   } catch (error) {
     reportError('push.register', error);
     setRegistration('failed');
-  } finally {
-    busy.current = false;
+    return false;
   }
 }
 
@@ -106,7 +109,11 @@ export function PushProvider({ children }: { children: ReactNode }) {
   const [registration, setRegistration] = useState<PushRegistration>('idle');
   // null until the stored choice is read: treated as dismissed so the card never flashes.
   const [dismissed, setDismissed] = useState<boolean | null>(null);
-  const busy = useRef(false);
+  const queue = useRef<RegistrationQueue | null>(null);
+  queue.current ??= new RegistrationQueue(() => registerDevice(setRegistration));
+  const register = (key: string) => {
+    void queue.current?.submit(key);
+  };
 
   const kind = derivePushState({
     env,
@@ -148,12 +155,15 @@ export function PushProvider({ children }: { children: ReactNode }) {
   // Register whenever permission is granted: on start, on return to the foreground, on token change.
   useEffect(() => {
     if (!nativeAvailable || !granted) return;
-    void registerDevice(busy, setRegistration);
+    const submit = (key: string) => {
+      void queue.current?.submit(key);
+    };
+    submit('start');
     const appState = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void registerDevice(busy, setRegistration);
+      if (state === 'active') submit('foreground');
     });
-    const stopTokenListener = onPushTokenChanged(() => {
-      void registerDevice(busy, setRegistration);
+    const stopTokenListener = onPushTokenChanged((deviceToken) => {
+      submit(`token:${deviceToken}`);
     });
     return () => {
       appState.remove();
@@ -187,9 +197,7 @@ export function PushProvider({ children }: { children: ReactNode }) {
     showPrompt: shouldOfferPrompt(kind, dismissed !== false),
     enable,
     dismissPrompt,
-    retry: () => {
-      void registerDevice(busy, setRegistration);
-    },
+    retry: () => register('retry'),
     openSettings: () => {
       openSystemSettings().catch((error: unknown) => reportError('push.openSettings', error));
     },

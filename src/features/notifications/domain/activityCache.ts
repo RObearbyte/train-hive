@@ -3,12 +3,13 @@
  * No React and no network here, so it is unit tested against a real
  * QueryClient.
  *
- * A snapshot records only what THIS change flipped (which feeds gained the id,
- * which notifications went from unread to read), and rollback undoes only
- * those, so two overlapping changes or a refetch in between cannot undo each
- * other. After the server answers (either way) the caller invalidates, so the
- * screen always ends on server truth. `readAt` is supplied by the caller: the
- * optimistic value is display only, the server sets the real `read_at`.
+ * A snapshot records only what THIS change flipped (which feeds gained which
+ * announcement id, which notifications went from unread to read), and rollback
+ * undoes only those, so two overlapping changes or a refetch in between cannot
+ * undo each other. After the server answers (either way) the caller
+ * invalidates, so the screen always ends on server truth. `readAt` is supplied
+ * by the caller: the optimistic value is display only, the server sets the
+ * real `read_at`.
  */
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
 
@@ -17,25 +18,28 @@ import type { AppNotification } from '@/lib/database.types';
 import { activityKeys, type AnnouncementFeed } from '../api/keys';
 
 export type ReadSnapshot = {
-  /** Feeds (by query key) where the announcement id was added to `readIds`. */
-  feedKeys: QueryKey[];
-  announcementId: string | null;
+  /** Feeds (by query key) where an announcement id was added to `readIds`. */
+  feedReads: { key: QueryKey; announcementId: string }[];
   /** Notifications flipped from unread to read, with the optimistic value written. */
   flipped: { key: QueryKey; id: string; readAt: string }[];
 };
 
-const EMPTY: ReadSnapshot = { feedKeys: [], announcementId: null, flipped: [] };
+/** Keys are `['activity', <kind>, communityId, userId]`: the community is at index 2. */
+function inCommunity(key: QueryKey, communityId: string | null): boolean {
+  return communityId === null || key[2] === communityId;
+}
 
 function markNotificationsRead(
   queryClient: QueryClient,
   matches: (note: AppNotification) => boolean,
   readAt: string,
+  communityId: string | null = null,
 ): ReadSnapshot['flipped'] {
   const flipped: ReadSnapshot['flipped'] = [];
   for (const [key, list] of queryClient.getQueriesData<AppNotification[]>({
     queryKey: activityKeys.notificationLists(),
   })) {
-    if (!list) continue;
+    if (!list || !inCommunity(key, communityId)) continue;
     const ids = list.filter((note) => note.read_at === null && matches(note)).map((note) => note.id);
     if (ids.length === 0) continue;
     queryClient.setQueryData<AppNotification[]>(
@@ -47,17 +51,21 @@ function markNotificationsRead(
   return flipped;
 }
 
-function addToFeedReads(queryClient: QueryClient, announcementId: string): QueryKey[] {
-  const changed: QueryKey[] = [];
+function addToFeedReads(
+  queryClient: QueryClient,
+  announcementId: string,
+  communityId: string | null = null,
+): ReadSnapshot['feedReads'] {
+  const changed: ReadSnapshot['feedReads'] = [];
   for (const [key, feed] of queryClient.getQueriesData<AnnouncementFeed>({
     queryKey: activityKeys.feeds(),
   })) {
-    if (!feed || feed.readIds.includes(announcementId)) continue;
+    if (!feed || !inCommunity(key, communityId) || feed.readIds.includes(announcementId)) continue;
     queryClient.setQueryData<AnnouncementFeed>(key, {
       ...feed,
       readIds: [...feed.readIds, announcementId],
     });
-    changed.push(key);
+    changed.push({ key, announcementId });
   }
   return changed;
 }
@@ -72,8 +80,7 @@ export function applyOptimisticAnnouncementRead(
   readAt: string,
 ): ReadSnapshot {
   return {
-    announcementId,
-    feedKeys: addToFeedReads(queryClient, announcementId),
+    feedReads: addToFeedReads(queryClient, announcementId),
     flipped: markNotificationsRead(
       queryClient,
       (note) => note.related_announcement_id === announcementId,
@@ -94,29 +101,43 @@ export function applyOptimisticNotificationRead(
   const flipped = markNotificationsRead(queryClient, (note) => note.id === notification.id, readAt);
   const announcementId = notification.related_announcement_id;
   return {
-    announcementId,
-    feedKeys: announcementId === null ? [] : addToFeedReads(queryClient, announcementId),
+    feedReads: announcementId === null ? [] : addToFeedReads(queryClient, announcementId),
     flipped,
   };
 }
 
-/** `mark_all_notifications_read`: every unread notification of the lists in the cache. */
-export function applyOptimisticMarkAllRead(queryClient: QueryClient, readAt: string): ReadSnapshot {
-  return { ...EMPTY, flipped: markNotificationsRead(queryClient, () => true, readAt) };
+/**
+ * `mark_all_notifications_read(p_community_id)`: every unread notification of
+ * that community, plus the announcements those notifications reference (the
+ * server marks exactly those announcements read, and nothing else). Cached
+ * lists of other communities are left alone.
+ */
+export function applyOptimisticMarkAllRead(
+  queryClient: QueryClient,
+  readAt: string,
+  communityId: string,
+): ReadSnapshot {
+  const flipped = markNotificationsRead(queryClient, () => true, readAt, communityId);
+  const announcementIds = new Set<string>();
+  for (const { key, id } of flipped) {
+    const note = queryClient.getQueryData<AppNotification[]>(key)?.find((item) => item.id === id);
+    if (note?.related_announcement_id) announcementIds.add(note.related_announcement_id);
+  }
+  const feedReads = [...announcementIds].flatMap((id) =>
+    addToFeedReads(queryClient, id, communityId),
+  );
+  return { feedReads, flipped };
 }
 
 /** Undoes exactly what `snapshot` changed. */
 export function rollbackRead(queryClient: QueryClient, snapshot: ReadSnapshot): void {
-  const { announcementId } = snapshot;
-  if (announcementId !== null) {
-    for (const key of snapshot.feedKeys) {
-      const feed = queryClient.getQueryData<AnnouncementFeed>(key);
-      if (!feed) continue;
-      queryClient.setQueryData<AnnouncementFeed>(key, {
-        ...feed,
-        readIds: feed.readIds.filter((id) => id !== announcementId),
-      });
-    }
+  for (const { key, announcementId } of snapshot.feedReads) {
+    const feed = queryClient.getQueryData<AnnouncementFeed>(key);
+    if (!feed) continue;
+    queryClient.setQueryData<AnnouncementFeed>(key, {
+      ...feed,
+      readIds: feed.readIds.filter((id) => id !== announcementId),
+    });
   }
   for (const { key, id, readAt } of snapshot.flipped) {
     const list = queryClient.getQueryData<AppNotification[]>(key);

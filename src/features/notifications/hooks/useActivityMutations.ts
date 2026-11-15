@@ -77,7 +77,11 @@ export function useMarkAllNotificationsRead(communityId: string | null) {
     mutationFn: () => markAllNotificationsRead(communityId as string),
     onMutate: async () => {
       await cancelReadQueries(queryClient);
-      return applyOptimisticMarkAllRead(queryClient, readClock().toISOString());
+      return applyOptimisticMarkAllRead(
+        queryClient,
+        readClock().toISOString(),
+        communityId as string,
+      );
     },
     onError: (error, _vars, snapshot) => {
       reportError('notification.markAllRead', error);

@@ -39,13 +39,18 @@ export function combinedUnreadCount(input: {
   readIds: readonly string[];
   notifications: readonly AppNotification[];
   userId: string | null;
+  /** Only items of this community count (display only; the server decides). */
+  communityId?: string | null;
 }): number {
-  const unreadNotes = unreadNotifications(input.notifications);
+  const { communityId } = input;
+  const inCommunity = (item: { community_id: string }) =>
+    communityId === undefined || communityId === null || item.community_id === communityId;
+  const unreadNotes = unreadNotifications(input.notifications.filter(inCommunity));
   const covered = new Set<string>();
   for (const note of unreadNotes) {
     if (note.related_announcement_id !== null) covered.add(note.related_announcement_id);
   }
-  const extra = unreadAnnouncements(input.items, input.readIds, input.userId).filter(
+  const extra = unreadAnnouncements(input.items.filter(inCommunity), input.readIds, input.userId).filter(
     (item) => !covered.has(item.id),
   );
   return unreadNotes.length + extra.length;

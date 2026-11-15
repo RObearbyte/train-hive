@@ -11,6 +11,7 @@ import {
   rollbackRead,
 } from './activityCache';
 import { announcement, notification } from './testFixtures';
+import { combinedUnreadCount } from './unread';
 
 const FEED_KEY = activityKeys.feed('c1', 'me');
 const NOTES_KEY = activityKeys.notifications('c1', 'me');
@@ -96,9 +97,66 @@ describe('mark all read', () => {
       notification({ id: 'n1' }),
       notification({ id: 'n2', dedupe_key: 'k2', read_at: already }),
     ]);
-    const snapshot = applyOptimisticMarkAllRead(qc, T);
+    const snapshot = applyOptimisticMarkAllRead(qc, T, 'c1');
     expect(notesOf(qc).map((n) => n.read_at)).toEqual([T, already]);
     rollbackRead(qc, snapshot);
     expect(notesOf(qc).map((n) => n.read_at)).toEqual([null, already]);
+  });
+
+  it('also marks the announcements its notifications reference, and nothing else', () => {
+    const qc = new QueryClient();
+    qc.setQueryData<AnnouncementFeed>(FEED_KEY, {
+      items: [announcement({ id: 'a1' }), announcement({ id: 'a2' })],
+      readIds: [],
+    });
+    // a2 has no unread notification: it stays unread.
+    qc.setQueryData(NOTES_KEY, [announcementNote('n1', 'a1'), notification({ id: 'n3', dedupe_key: 'k3' })]);
+    applyOptimisticMarkAllRead(qc, T, 'c1');
+    expect(feedOf(qc).readIds).toEqual(['a1']);
+  });
+
+  it('ignores announcements referenced only by already-read notifications', () => {
+    const qc = setup([{ ...announcementNote('n1', 'a1'), read_at: '2026-11-09T08:00:00.000Z' }]);
+    applyOptimisticMarkAllRead(qc, T, 'c1');
+    expect(feedOf(qc).readIds).toEqual([]);
+  });
+
+  it('rolls back the announcement reads too, but keeps one that was already read', () => {
+    const qc = new QueryClient();
+    qc.setQueryData<AnnouncementFeed>(FEED_KEY, {
+      items: [announcement({ id: 'a1' }), announcement({ id: 'a2' })],
+      readIds: ['a2'],
+    });
+    qc.setQueryData(NOTES_KEY, [announcementNote('n1', 'a1'), announcementNote('n2', 'a2')]);
+    const snapshot = applyOptimisticMarkAllRead(qc, T, 'c1');
+    expect(feedOf(qc).readIds).toEqual(['a2', 'a1']);
+    rollbackRead(qc, snapshot);
+    expect(feedOf(qc).readIds).toEqual(['a2']);
+    expect(notesOf(qc).map((n) => n.read_at)).toEqual([null, null]);
+  });
+
+  it('leaves another community cache untouched', () => {
+    const qc = setup([announcementNote('n1', 'a1')]);
+    const otherNotes = activityKeys.notifications('c2', 'me');
+    const otherFeed = activityKeys.feed('c2', 'me');
+    qc.setQueryData(otherNotes, [{ ...announcementNote('x1', 'a9'), community_id: 'c2' }]);
+    qc.setQueryData<AnnouncementFeed>(otherFeed, { items: [announcement({ id: 'a9', community_id: 'c2' })], readIds: [] });
+    applyOptimisticMarkAllRead(qc, T, 'c1');
+    expect(qc.getQueryData<AppNotification[]>(otherNotes)![0].read_at).toBeNull();
+    expect(qc.getQueryData<AnnouncementFeed>(otherFeed)!.readIds).toEqual([]);
+  });
+
+  it('leaves the tab badge at zero afterwards', () => {
+    const qc = setup([announcementNote('n1', 'a1')]);
+    applyOptimisticMarkAllRead(qc, T, 'c1');
+    expect(
+      combinedUnreadCount({
+        items: feedOf(qc).items,
+        readIds: feedOf(qc).readIds,
+        notifications: notesOf(qc),
+        userId: 'me',
+        communityId: 'c1',
+      }),
+    ).toBe(0);
   });
 });

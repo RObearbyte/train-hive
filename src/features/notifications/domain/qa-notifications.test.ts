@@ -155,12 +155,12 @@ describe('QA unread state', () => {
   // applyOptimisticNotificationRead claims "the server does the same" for the announcement read
   // state, but mark_notification_read only changes the notification: the announcement flips back to
   // unread on the next refetch.
-  it.fails('DEFECT Q4-4: after "Mark all read" nothing is left unread', () => {
+  it('Q4-4 (fixed): after "Mark all read" nothing is left unread', () => {
     const qc = new QueryClient();
     const feed: AnnouncementFeed = { items: [announcement({ id: 'a1' })], readIds: [] };
     qc.setQueryData(activityKeys.feed('c1', me), feed);
     qc.setQueryData(activityKeys.notifications('c1', me), [announcementNote('n1', 'a1')]);
-    applyOptimisticMarkAllRead(qc, '2026-11-15T10:00:00Z');
+    applyOptimisticMarkAllRead(qc, '2026-11-15T10:00:00Z', 'c1');
     const items = qc.getQueryData<AnnouncementFeed>(activityKeys.feed('c1', me))!;
     const notes = qc.getQueryData<AppNotification[]>(activityKeys.notifications('c1', me))!;
     expect(combinedUnreadCount({ items: items.items, readIds: items.readIds, notifications: notes, userId: me })).toBe(0);
