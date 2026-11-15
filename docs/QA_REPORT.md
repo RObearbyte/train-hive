@@ -426,3 +426,122 @@ On Windows, embedded Postgres, 2026-11-15:
 |---|---|---|
 | `supabase/tests/qa-attendance.test.ts` | 25 (21 passing, 4 expected fail) | update_training and cancel_training on sessions with marks; deterministic lock queues (record / cancel / finalize / edit in both orders); removed organizer mid-wait; snapshot integrity; append-only audit; leakage through joins and counts; realtime publication and RLS; sessions without an end; placeholders of later-removed members; mixed concurrent storm (4 rounds) |
 | `src/features/attendance/domain/qa-attendance.test.ts` | 31 | sheet JSON keys vs SQL, RPC argument names, FK names and columns vs SQL; "Not recorded" wording and glyphs; tap matrix; mark-all targets and stop rules for every error code; counts and sorting; walk-in search; mode matrix (status, ended, device clock); history grouping across zones; overlapping optimistic rows |
+
+## Milestone 3: communications and notifications (M3-Q1)
+
+Scope: migrations `20261115000300..600`, the Edge Function `supabase/functions/dispatch-notifications/` (`dispatch.ts`, `index.ts`), `src/features/notifications/`, `src/app/(app)/(tabs)/activity.tsx`, `src/app/(app)/announcements/`. Reviewed against the spec, `docs/API_CONTRACT.md` and the Expo push documentation (https://docs.expo.dev/push-notifications/sending-notifications/, read 2026-11-15). Nothing was run against Expo, FCM, a hosted Supabase project or a device.
+
+### Verdict
+
+**The backend core of Milestone 3 passes; the push dispatcher has one medium defect that must be fixed before real users register tokens.** Authorization, community isolation, scheduled publication, fan-out recipients, deduplication and the outbox state machine held under every adversarial and concurrent probe. Six defects are open (one medium, two low-medium, three low). The six `it.fails` tests (Q4-1, Q4-2, Q4-4, Q4-5 twice, Q4-6) turn red when the defects are fixed (remove `.fails` then).
+
+### Defects
+
+| Id | Severity | Where | Summary | Owner |
+|---|---|---|---|---|
+| Q4-1 | medium | `supabase/functions/dispatch-notifications/dispatch.ts:239-241, 328-354` | One foreign-project token makes Expo reject a whole chunk; every job in it (up to 100 users) is marked `dead`. | backend |
+| Q4-2 | low-medium | `dispatch.ts:328-391` | Jobs are completed only after all Expo requests of the run; a run killed between chunks re-sends already accepted pushes. | backend |
+| Q4-3 | low | `src/features/notifications/hooks/PushProvider.tsx:62`; no caller of `unregister_push_token` | A token change that arrives while a registration is running is dropped; the token is never unregistered. Code review only, no test. | mobile |
+| Q4-4 | low-medium | `src/features/notifications/components/ActivityScreen.tsx:222`; `domain/activityCache.ts:87,104`; `20261115000400_notifications_rpcs.sql:729-753` | "Mark all read" leaves announcements unread, so the tab badge keeps a number; the optimistic notification read claims the server marks the announcement too, it does not. | mobile (or backend) |
+| Q4-5 | low | `20261115000400_notifications_rpcs.sql:32-55` | Titles of only zero-width / no-break spaces pass; control characters and bidi overrides are stored and pushed. | backend |
+| Q4-6 | low (defense in depth) | `20261115000300_notifications_schema.sql:105-106` | The `deep_link` check accepts `//evil.example` and `/trainings/../..`. Not reachable today (definer functions build fixed routes, the app allowlists). | backend |
+
+**Q4-1.** Reproduction: `qa-comms-dispatch.test.ts`, "DEFECT Q4-1". Three members, three tokens, one belonging to another Expo project; the fake Expo answers HTTP 400 `PUSH_TOO_MANY_EXPERIENCE_IDS` for a request that contains it. Expected: the other two users are delivered (the Expo docs say to remove the tokens of other experiences and resend). Actual: all three jobs are `dead` (`permanent:HTTP_400`). `register_push_token` accepts any well-formed token and anonymous sign-in is free, so any visitor can plant one. Fix: on a 400 with more than one message, bisect the chunk (or read `details` of `PUSH_TOO_MANY_EXPERIENCE_IDS`), invalidate only the offending token, resend the rest.
+
+**Q4-2.** Reproduction: "DEFECT Q4-2". 130 jobs; while the second Expo request is in flight, 0 jobs are `sent` (expected 100). With up to 10 tokens per user and sequential 15 s timeouts a run can exceed the Edge limit, leaving accepted jobs in `sending`; after 5 minutes they are pushed again. Fix: complete each chunk's jobs right after its answer. Related: one run claims at most 100 jobs, so an announcement to 1,000 members takes 10+ minutes at one run per minute; loop until the claim is empty or a time budget is used.
+
+**Q4-3.** `registerDevice` returns when `busy.current` is set, so `onPushTokenChanged` firing during a run is lost until the next foreground. `unregister_push_token` exists but nothing calls it (the app has no sign-out; "push off" keeps the token and the server honours the preference). Harmless today; revisit if sign-out is added.
+
+**Q4-4.** Reproduction: `src/features/notifications/domain/qa-notifications.test.ts`, "DEFECT Q4-4"; the backend side is pinned (passing) by `qa-comms.test.ts` "read-state asymmetry". After `mark_all_notifications_read`, `unread_announcement_count` is still 1, and `combinedUnreadCount` counts the announcement again because its notification is read and no longer "covers" it. Fix: have the same action also call `mark_announcements_read`, or make `mark_all_notifications_read` insert the matching `announcement_reads`; correct the comment at `activityCache.ts:87`.
+
+**Q4-5.** Reproduction: "DEFECT Q4-5" (two tests in `qa-comms.test.ts`). Expected `validation_failed:title` for `​​`, NBSP-only, `⠀`; actual: stored. `\u0007` and `‮` are stored and sent in the push title. Fix: reject or strip control, zero-width and bidi characters and treat Unicode whitespace as blank in `clean_required_text`.
+
+**Q4-6.** Reproduction: "DEFECT Q4-6". A direct insert of `//evil.example/x`, `/trainings/../../admin` or `/x?next=//evil.example` succeeds. Fix: `deep_link ~ '^/(trainings|announcements)/[0-9a-f-]{36}$'`.
+
+### Observations (no defect filed)
+
+- **O-1** Nothing limits announcement volume (25 announcements to 3 members created 75 notifications and 75 jobs, `qa-comms.test.ts`). The organizer is a trusted role; a per-community rate limit would bound spam and fan-out cost.
+- **O-2** The purge never deletes notifications (tested), so the table grows by members x events without bound. Add a retention to `purge_old_notification_data`.
+- **O-3** The push badge (`unread_count`) counts every unread notification of the user, including hidden ones of a community the user left (tested).
+- **O-4** Token ownership. `register_push_token` re-assigns a token to whoever registers it (pinned in `qa-comms.test.ts`). Whoever knows a device's Expo token can cut that device off from its owner's pushes; they never receive the owner's content, the device receives theirs. Expo tokens are not public but not strong secrets either. Accepted risk; mitigation if wanted: rate-limit reassignments.
+- **O-5** A scheduled time in a DST gap (Bucharest 2027-03-28 03:30) is silently moved to 04:30 and an ambiguous time takes the first occurrence; the form shows no warning (`qa-notifications.test.ts`). Notification text carries no UTC offset, so the repeated hour of a fall-back reads identically twice (tested).
+- **O-6** The client counts a title with runs of spaces by raw characters, the server after collapsing them; the client is stricter in that rare case. A joining member sees the community's old announcements as unread.
+- **O-7** `verify_jwt = false` is acceptable: the function rejects everything without the exact secret (constant time; an unset or empty secret rejects all; tested), reads the service key only from its own environment, and calls only the fixed Expo URL (no SSRF); logs and `last_error` hold counts and codes only (tested). There is no rate limit on the 401 path (platform level).
+- **O-8** Receipts are not read (documented); `DeviceNotRegistered` is noticed one send late.
+
+Reviewed and found sound: every new function has a single grantee and an empty `search_path` (the M1 matrix covers the new names); `notification_delivery_jobs` has no grant; recipients are always active members and the actor is excluded; RSVP changes never notify (storm test); a repeated identical edit fires nothing and a revert fires once; the 24h window is exactly (23h, 24h] (edges tested) and a rescheduled session gets fresh reminders; DST text follows the session zone; scheduled announcements publish once, cancelled ones never; a demoted organizer loses all powers and the scheduled announcement still publishes; the outbox claim is exclusive, stale `sending` jobs are reclaimed, preferences and membership are applied at claim time; the triggers take no lock on profiles (no deadlock with deletion); the deep-link allowlist rejected 40+ hostile shapes and a 1 MB string in under 500 ms; the dispatcher payload round-trips through the app parser; the `default` Android channel is the same in the plugin config, the native module and the dispatcher; RPC argument names in the app equal the SQL declarations.
+
+### Evidence map: Milestone 3 requirements
+
+Key: **dev** developers' suites; **qa** QA files (`qa-comms*.test.ts`, `qa-notifications.test.ts`); **code** read in source; **device** needs the manual script; **hosted** needs hosted Supabase / Expo / FCM.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Organizers publish now or scheduled; only organizers | dev (`announcements.test.ts`); qa (other community, demoted, member) | holds |
+| Scheduled messages run server-side, independent of the phone | dev + qa (`publish_due_announcements` once, concurrent runs, cancel race); migration `500` (pg_cron, guarded) | holds in tests; hosted for the real schedule |
+| Feed with unread indicators; no chat | dev; qa (read state, isolation); code (no messaging UI) | holds; Q4-4 |
+| Push for new / updated / confirmed / cancelled trainings, reminders, announcements | dev; qa (recipient exactness for edge membership states, reminder windows, rescheduling) | holds |
+| No community-wide push per RSVP change | dev; qa (RSVP storm creates no notification) | holds |
+| Backend-managed dispatch, idempotent outbox, retry transient, dedupe | dev (`dispatch.test.ts`, outbox); qa (Q4-1, Q4-2, partial failure, logs) | holds except Q4-1, Q4-2 |
+| Permission requested appropriately | code (`PushProvider` reads at start, `enable` only from a user action); qa (state machine over all combinations) | holds; device |
+| Tokens stored / refreshed, multiple per user | dev; qa (format fuzz, swap and storm concurrency, cap 10) | holds; Q4-3 |
+| In-app records persisted; meaningful with push denied | dev (always stored, `skipped no_tokens`); code (settings and prompt copy) | holds |
+| Invalid push tokens | dev (`DeviceNotRegistered`); qa (format fuzz, O-4, Q4-1) | holds except Q4-1 |
+| Deep links, foreground / background | qa (allowlist fuzz, round trip, queue); code (`useNotificationLinks`, foreground handler) | holds on paper; device |
+| Required tests: scheduled publication, notification idempotency, duplicate dispatch prevention, invalid tokens | dev + qa | present |
+
+### Not verifiable without hosted Supabase, an Expo account, FCM and a device
+
+1. Real delivery through Expo and FCM; ticket and receipt behaviour; the HTTP status Expo uses for `PUSH_TOO_MANY_EXPERIENCE_IDS` and how it treats a malformed or foreign token (the docs page does not state it; Q4-1 relies on its statement that a 4xx means the whole request failed).
+2. `index.ts` under Deno: `npm:@supabase/supabase-js@2.119.0` resolution, `Deno.serve`, `--no-verify-jwt`, secrets; the platform's wall-clock limit (Q4-2). Only `dispatch.ts` runs, under Node.
+3. pg_cron, pg_net, Vault: the three cron jobs and the dispatch job, `vault.decrypted_secrets` privileges, the guarded migrations on a real project, `net._http_response` growth.
+4. Realtime: per-subscriber RLS for `announcements` and `notifications`, DELETE events (primary key only, not RLS-filtered), the filters.
+5. PostgREST embeds and composite return types of the RPCs.
+6. Android: development build, the permission dialog on Android 13+, channel `default`, killed / background / foreground taps, Expo Go on Android (the static import of `expo-notifications` may log a warning or error at load; the code avoids native calls there). `extra.eas.projectId` is not in `app.json` yet (push shows "not configured" until `eas init`) and there is no `google-services.json`.
+7. TalkBack, large fonts and dark theme on the new screens; the React Compiler at runtime for the new components.
+
+### Manual test script additions (continue the numbering of the Milestone 2 script)
+
+Setup: organizer A, members B, C, D on separate phones or accounts; B has the development build with push allowed; C has push denied; D has the app closed. The owner needs SQL access for the cron checks.
+
+46. **(M3)** A: Activity tab, Announcements. Tap New announcement, enter a title and message, leave "Publish now", Publish. A confirmation dialog warns that the whole community is notified; confirm. Expect it in the feed without a refresh; A gets no notification and no unread dot for it.
+47. B (app open): within seconds a banner appears; Activity shows the tab badge, an unread dot on the announcement and an unread notification. Open it: the dot and badge clear. C and D: the announcement is in their feed (C has no push, D sees it on next open).
+48. A: New announcement, "Schedule for...", date and time 3 minutes ahead (the helper line names the community's time zone). Save. Expect it under "Scheduled and cancelled" with the time in the community's zone. B and C see nothing.
+49. A: close the app completely and lock the phone. After the time passes (allow up to 2 minutes) B receives the push without A's phone being involved, and the announcement is in everyone's feed. Record the delay.
+50. A: schedule another for 10 minutes ahead, open it, Edit, change text and time, save; then Cancel announcement ("Nobody has been notified"). Wait past the time: nothing is published, nothing is pushed.
+51. A: schedule for a time in the community's DST gap if one is near; a past time shows "must be in the future"; 366 days ahead shows the limit. Paste 101 emoji into Title: the counter and error show the 100 limit.
+52. B: Notifications section: rows for training and announcement events with the time in the community's zone. Tap "Mark all read": record whether the tab badge and the Announcements count clear (Q4-4).
+53. A creates a training: B and C get "New training" (push for B). Change only the description: no notification. Change the location: "Training updated" for everyone except A and members who said not going. B switches RSVP going / not going repeatedly: nobody receives anything.
+54. Let a training reach its deadline with enough RSVPs: going members and A get "Training confirmed"; with too few: everyone not "not going" gets "Training cancelled ... not enough participants". A cancels another by hand: B gets "cancelled", A does not.
+55. Reminders: a confirmed training starting in about 24 hours and one in about 2 hours: going members get "Tomorrow:" and "Starting soon:" once each; reschedule by 30 minutes: fresh reminders only if the new start is inside a window; a member who said not going gets none.
+56. Push in a development build (follow `docs/PUSH_SETUP.md`): fresh install, sign in; Activity shows the "Get notified" card and nothing was asked at launch. Tap Enable: the system dialog appears; allow. Profile, Notifications: "This device receives push notifications".
+57. C (permission denied): Profile, Notifications shows the denied state with a button; when the system blocks asking again the button opens system settings. C still sees everything in Activity.
+58. Preferences: B turns off Announcements, A publishes: B gets no push but has the in-app row. Turn off "Push notifications": no pushes of any kind, in-app rows stay. Turn them back on.
+59. Deep links: send each kind of push to B in three states. (a) app killed: tap the push; expect the app to open on the right training or announcement after the gate, not a blank screen, and Back leads to the tabs. (b) app in background: tap; same. (c) app in foreground: the banner shows; tapping opens the screen and the notification is marked read. Tap the same notification twice: it opens once.
+60. Hostile payload (test sender or Expo's push tool): data `{"deepLink":"//evil.example"}`, `{"deepLink":"/trainings/<id>/edit"}`, `{"deepLink":"/announcements/not-a-uuid"}`: the app opens nothing and does not crash. A link to a training the member cannot see shows the not found state.
+61. Remove B from the community (SQL): B's phone shows onboarding and receives no further pushes (job `skipped`, `not_a_member`); old notifications are not shown.
+62. Uninstall the app on B, publish an announcement, wait a minute: the job is `skipped` with `no_valid_tokens` and the token has `invalidated_at` (SQL). Reinstall and allow push: a new token is registered and pushes arrive again.
+63. Two phones signed in as B: both receive the push (multiple tokens). Sign B in on a phone that was A's: the token moves and A's phone stops receiving (O-4).
+64. Cron: `select jobname, schedule, active from cron.job` lists the four `trainhive_*` jobs; `cron.job_run_details` shows a run each minute; `net._http_response` shows 200 from the function; `curl` without the secret header returns 401.
+65. TalkBack on Activity: rows read "Unread. <title>. <preview and time>", the segmented control reads the unread counts, the settings switches are labelled; largest font: nothing clipped; dark theme: unread dots, badges and banners readable.
+66. Expo Go on Android: the app starts without a red error from `expo-notifications`; Profile, Notifications says push needs a development build; Activity still works.
+
+### What was run (M3-Q1)
+
+On Windows, embedded Postgres, 2026-11-15:
+
+- `npm test` -> `Test Files  65 passed (65)`, `Tests  1486 passed | 6 expected fail (1492)` (166 s). The 6 expected failures are the new `DEFECT Q4-n` tests (Q4-1, Q4-2, Q4-4, Q4-5 twice, Q4-6); the earlier milestones have no expected failures left.
+- Q4-1 and Q4-2 were re-run once with `.fails` removed and failed for the stated reasons (`expected 'dead' to be 'sent'`; `expected +0 to be 100`).
+- `npm run typecheck` -> exit 0, no output.
+- `npm run lint` -> exit 0, no output.
+- `npx expo export --platform web` -> `Exported: dist`.
+- `npx expo-doctor` -> `20/20 checks passed. No issues detected!`
+- Not run: Android bundle, Deno, any device, Expo, FCM, hosted Supabase.
+
+### Test inventory (M3-Q1)
+
+| File | Tests | Covers |
+|---|---|---|
+| `supabase/tests/qa-comms.test.ts` | 30 (27 passing, 3 expected fail) | isolation matrix for every new table and RPC; removed, demoted and reinstated members; fan-out recipient exactness; edit repeat and revert; reminder window edges, rescheduling, cancelled; DST text; text and token fuzzing; token ownership and concurrency; growth and abuse observations; realtime publication |
+| `supabase/tests/qa-comms-dispatch.test.ts` | 8 (6 passing, 2 expected fail) | shared-secret edge cases; Q4-1; Q4-2; partial chunk failure; log and `last_error` leak check |
+| `src/features/notifications/domain/qa-notifications.test.ts` | 26 (25 passing, 1 expected fail) | deep-link and push-data fuzz; payload round trip; Android channel consistency; navigation queue; unread and badge; Q4-4; form vs server rules, DST, limits; push state machine over all combinations; RPC argument names and columns vs SQL |
