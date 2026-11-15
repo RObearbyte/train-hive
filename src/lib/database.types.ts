@@ -884,6 +884,46 @@ export type Database = {
         Args: { p_display_name: string };
         Returns: Database['public']['Tables']['profiles']['Row'];
       };
+      // C1: creator codes and community management.
+      /** service_role only (or `postgres` in the SQL editor). Returns an `AdminCreateCreatorCodeResult`. */
+      admin_create_creator_code: {
+        Args: { p_note?: string | null; p_expires_in_days?: number; p_max_uses?: number };
+        Returns: Json;
+      };
+      /** service_role only (or `postgres` in the SQL editor); idempotent. Returns an `AdminRevokeCreatorCodeResult`. */
+      admin_revoke_creator_code: {
+        Args: { p_code: string };
+        Returns: Json;
+      };
+      /** Returns a `PreviewCreatorCodeResult`. Counts toward the shared code-attempt limit. */
+      preview_creator_code: {
+        Args: { p_code: string };
+        Returns: Json;
+      };
+      /**
+       * Returns a `CreateCommunityWithCodeResult`. `p_request_id` is a client-generated idempotency
+       * key: generate one per form submission and reuse it for retries of that submission.
+       */
+      create_community_with_code: {
+        Args: {
+          p_code: string;
+          p_name: string;
+          p_timezone: string;
+          p_display_name: string;
+          p_request_id: string;
+        };
+        Returns: Json;
+      };
+      /** Organizer of the community only. */
+      update_community: {
+        Args: { p_community_id: string; p_name: string; p_timezone: string };
+        Returns: Database['public']['Tables']['communities']['Row'];
+      };
+      /** Returns `MyCommunity[]`: the caller's active memberships, oldest first. */
+      list_my_communities: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
       create_training: {
         Args: { p_community_id: string; p_input: Json };
         Returns: Database['public']['Tables']['training_sessions']['Row'];
@@ -1203,6 +1243,54 @@ export type RedeemInvitationResult =
 
 /** Result of `admin_create_community` (service_role only). */
 export type AdminCreateCommunityResult = { community_id: string; organizer_code: string };
+
+/** Error codes of `preview_creator_code`. */
+export type CreatorCodeError =
+  | 'invalid_code'
+  | 'expired'
+  | 'revoked'
+  | 'exhausted'
+  | 'rate_limited'
+  | 'not_authenticated';
+
+/** Error codes of `create_community_with_code`. */
+export type CreateCommunityWithCodeError =
+  | CreatorCodeError
+  | 'community_limit_reached'
+  | 'validation_failed:name'
+  | 'validation_failed:timezone'
+  | 'validation_failed:display_name'
+  | 'validation_failed:request_id';
+
+/** Result of `preview_creator_code`. */
+export type PreviewCreatorCodeResult = { ok: true } | { ok: false; error: CreatorCodeError };
+
+/** Result of `create_community_with_code`. `already_created` is true for a replayed request id. */
+export type CreateCommunityWithCodeResult =
+  | { ok: true; community_id: string; membership_id: string; already_created: boolean }
+  | { ok: false; error: CreateCommunityWithCodeError };
+
+/** Result of `admin_create_creator_code` (service_role only). */
+export type AdminCreateCreatorCodeResult = { code: string; expires_at: string; max_uses: number };
+
+/** Result of `admin_revoke_creator_code` (service_role only). `changed` is false when already revoked. */
+export type AdminRevokeCreatorCodeResult = {
+  code: string;
+  revoked_at: string;
+  use_count: number;
+  max_uses: number;
+  changed: boolean;
+};
+
+/** One element of `list_my_communities`. */
+export type MyCommunity = {
+  community_id: string;
+  membership_id: string;
+  name: string;
+  timezone: string;
+  role: MembershipRole;
+  joined_at: string;
+};
 
 /** Result of `set_rsvp`. */
 export type SetRsvpResult = {

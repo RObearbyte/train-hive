@@ -435,3 +435,63 @@ Migration `20261118000100_member_history.sql` (fixes QA defect Q5-4).
 `get_member_attendance_history(p_community_id uuid, p_user_id uuid, p_window text, p_limit int default 50, p_before timestamptz default null) → jsonb` — `security definer`, `stable`, `set search_path = ''`, `authenticated` only. Caller must be an **active organizer** of the community (else `forbidden`, members asking about themselves included); the target must have a membership in that community, **active or removed** (else `not_found`: unknown, null, members of other communities). Order of checks: `not_authenticated` → `forbidden` → `not_found` → `validation_failed:window` / `validation_failed:limit`. Payload, limit rules (1–100) and keyset pagination (`next_before` passed back verbatim, same-instant sessions never split) are exactly those of `get_my_attendance_history`: both call `private.stats_history_payload`. TypeScript: `AttendanceHistoryPage`.
 
 Type fix (Q5-5): `MemberStatisticsSummaryRow` no longer declares `recorded`; `list_member_statistics_summary` lines never carried it (SQL unchanged). Use `attended + absent` if needed.
+
+---
+
+# Creator codes and community management (C1, append-only)
+
+Migration `20261119000100_creator_codes.sql`. Product rule: nobody creates a community without a **creator code**, and only the platform owner issues them (SQL editor as `postgres`, or the `service_role` key). The holder names the community and its time zone in the app and becomes its organizer. An invitation code never creates a community, and a creator code is never accepted as an invitation code (each kind is looked up in its own table; the wrong kind is `invalid_code`). `admin_create_community` stays as the first-organizer bootstrap (unchanged).
+
+## Tables (no client access)
+
+| Table | Columns | Who can select |
+|---|---|---|
+| `community_creator_codes` | `id`, `code text unique` (8 chars, same alphabet and generator as invitation codes), `note text?` (1–100), `created_at`, `expires_at not null`, `max_uses int ≥ 1` (default 1), `use_count int` (0…`max_uses`), `revoked_at?`, `created_by? → auth.users` (null from the SQL editor / service key) | nobody (RLS on, no policy, no grant to `anon`, `authenticated` **or `service_role`**) |
+| `community_creator_redemptions` | `id`, `code_id → codes (on delete restrict)`, `user_id → profiles`, `community_id → communities`, `membership_id → memberships`, `request_id uuid`, `redeemed_at`; unique `(code_id, community_id)`, unique `(user_id, request_id)` | nobody (same) |
+
+A code that has been used cannot be deleted (restrict): revoke it instead, so the per-user community limit keeps counting.
+
+## Service functions (`service_role` only; also runnable as `postgres` in the SQL editor)
+
+`admin_create_creator_code(p_note text default null, p_expires_in_days int default 14, p_max_uses int default 1) → jsonb`
+- Returns `{ code, expires_at, max_uses }`. Raises `validation_failed:expires_in_days` (not 1–365), `validation_failed:max_uses` (not 1–50), `validation_failed:note` (over 100 characters, or only invisible characters; a blank note is stored as null; control characters are stripped as in announcement titles).
+- Example: `select public.admin_create_creator_code('for Alex', 14, 1);` → `{"code": "K7MZ3QXA", "expires_at": "2026-11-30T10:00:00+00:00", "max_uses": 1}`
+
+`admin_revoke_creator_code(p_code text) → jsonb`
+- Idempotent. Returns `{ code, revoked_at, use_count, max_uses, changed }` (`changed` false when it was already revoked; `revoked_at` is the first revocation). Raises `not_found` for an unknown code. The code is normalized like in the app (case, spaces, dashes).
+- Communities already created with the code are not affected.
+
+## User functions (`authenticated`)
+
+Both code functions **return** `{ ok: false, error }` instead of raising (the attempt record must survive) and share the invitation limiter: **at most 5 failed attempts per user per 15 minutes counted over `preview_invitation`, `redeem_invitation`, `preview_creator_code` and `create_community_with_code` together**, then `rate_limited` from all four. Failures are code failures only (`invalid_code`, `expired`, `revoked`, `exhausted`); validation errors, `community_limit_reached` and `rate_limited` are not counted. Codes are matched case-insensitively, ignoring whitespace and dashes (ASCII and U+2010–U+2015).
+
+`preview_creator_code(p_code text) → jsonb`
+- `{ ok: true }` or `{ ok: false, error }` with `invalid_code`, `expired`, `revoked`, `exhausted`, `rate_limited`, `not_authenticated`. Does not consume a use. (It does not check the caller's community limit; `create_community_with_code` does.)
+
+`create_community_with_code(p_code text, p_name text, p_timezone text, p_display_name text, p_request_id uuid) → jsonb`
+- **`p_request_id` (required)** is the client's idempotency key: generate a UUID when the user submits the form and send the same value on every retry of that submission (network error, app restart). A request id already used successfully by the caller returns the first result, `already_created: true`, without creating anything, even if the code has since been used up or revoked. A new submission must use a new id. Ids are per user.
+- Success: `{ ok: true, community_id, membership_id, already_created }`.
+- Errors (`error` value): `not_authenticated`, `validation_failed:request_id`, `rate_limited`, `validation_failed:name`, `validation_failed:timezone`, `validation_failed:display_name`, `community_limit_reached`, `invalid_code`, `expired`, `revoked`, `exhausted` — checked in this order. Input and the limit are checked before the code is looked up, so they reveal nothing about the code.
+- Validation: name as announcement titles (control and bidi characters stripped, whitespace collapsed, 1–80 characters, not only invisible characters); time zone strictly `UTC` or an IANA `Area/Location` known to the server (no abbreviations, `Factory`, `posix/…`); display name as `redeem_invitation` (whitespace collapsed, 2–40).
+- One transaction: the code row is locked `FOR UPDATE` and re-checked with the real clock; then the community, the profile (display name upserted — profiles are global, so this renames the user in every community), an **active organizer** membership, the redemption, and `use_count + 1`. N parallel uses of a `max_uses = 1` code create exactly one community; the others get `exhausted`.
+- Limit: a user can have created at most **5** communities with creator codes (`community_limit_reached`). Organizer roles obtained through invitations do not count.
+- Example: `create_community_with_code('k7mz-3qxa', 'Făget Trail Pack', 'Europe/Bucharest', 'Alex', '6f1c…')` → `{ "ok": true, "community_id": "…", "membership_id": "…", "already_created": false }`; with a used-up code → `{ "ok": false, "error": "exhausted" }`; with an empty name → `{ "ok": false, "error": "validation_failed:name" }`.
+
+`update_community(p_community_id uuid, p_name text, p_timezone text) → communities`
+- Active organizer of that community only (`forbidden` otherwise, also for unknown ids; re-checked after locking the community row and the caller's membership, so a concurrent removal or demotion wins). Raises `not_authenticated`, `forbidden`, `validation_failed:name`, `validation_failed:timezone` (same rules as above). Sends both fields; unchanged values return the row as is.
+- **Time zone change:** existing sessions keep their own `timezone` and instants (nothing is rewritten); new trainings default to the new zone. **Statistics** week / month buckets and the payload's `timezone` always use the community's **current** zone, so a change re-buckets all history in the statistics screens.
+
+`list_my_communities() → jsonb`
+- Array (oldest first, `[]` when none) of `{ community_id, membership_id, name, timezone, role, joined_at }`, one per **active** membership of the caller. Removed memberships are not listed. Nothing about other members. Raises `not_authenticated`.
+- The plain read in "Reads" above (`memberships` filtered by `user_id = auth.uid()` joined to `communities`) returns the same rows under RLS; this RPC is the one-call version.
+
+TypeScript: `PreviewCreatorCodeResult`, `CreateCommunityWithCodeResult`, `CreatorCodeError`, `CreateCommunityWithCodeError`, `AdminCreateCreatorCodeResult`, `AdminRevokeCreatorCodeResult`, `MyCommunity`.
+
+## Multi-community review (C1)
+
+Every RPC and policy was reviewed for a user who is organizer of A, member of B and removed from C (`supabase/tests/creator-codes-multi-community.test.ts`). All server rules are scoped by the community they act on (`is_active_member(community_id)` / `is_organizer(community_id)` or a membership lookup on `(community_id, user_id)`); no function picks "the" membership of the caller. Behaviour the client must know:
+- **Display name is global** (`profiles`): `redeem_invitation` and `create_community_with_code` overwrite it for every community.
+- **Notification preferences and push tokens are per user**, not per community.
+- **Push badge** (`claim_notification_jobs.unread_count`) counts unread notifications of **all** communities where the user is active; `mark_all_notifications_read` and the in-app list are per community. A per-community Activity screen will show a smaller number than the badge.
+- `announcement_reads` rows stay readable to their owner after removal (own read receipts only, no announcement content).
+- The client currently selects a single membership (`src/features/community/api/membership.ts`: earliest active, `limit(1)`); it needs a community switcher based on `list_my_communities`.

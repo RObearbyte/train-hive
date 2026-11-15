@@ -22,6 +22,13 @@ const denied = { code: INSUFFICIENT_PRIVILEGE };
 const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   add_walk_in_attendee: 'authenticated',
   admin_create_community: 'service_role',
+  // C1: creator codes and community management.
+  admin_create_creator_code: 'service_role',
+  admin_revoke_creator_code: 'service_role',
+  create_community_with_code: 'authenticated',
+  list_my_communities: 'authenticated',
+  preview_creator_code: 'authenticated',
+  update_community: 'authenticated',
   cancel_announcement: 'authenticated',
   cancel_training: 'authenticated',
   claim_notification_jobs: 'service_role',
@@ -230,6 +237,13 @@ describe('QA function privileges', () => {
       ['select public.get_member_attendance_history($1, $2, $3)', [communityId, organizerId, '30d']],
       ['select public.get_community_statistics($1, $2)', [communityId, '30d']],
       ['select public.list_member_statistics_summary($1, $2)', [communityId, '30d']],
+      ['select public.preview_creator_code($1)', ['AAAAAAAA']],
+      [
+        'select public.create_community_with_code($1, $2, $3, $4, $5)',
+        ['AAAAAAAA', 'Pack', 'UTC', 'Ana', '00000000-0000-0000-0000-000000000001'],
+      ],
+      ['select public.update_community($1, $2, $3)', [communityId, 'Pack', 'UTC']],
+      ['select public.list_my_communities()', []],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
@@ -243,6 +257,12 @@ describe('QA function privileges', () => {
     ).rejects.toMatchObject(denied);
     await expect(
       asUser(organizerId, (db) => db.query('select public.finalize_due_sessions()')),
+    ).rejects.toMatchObject(denied);
+    await expect(
+      asUser(organizerId, (db) => db.query("select public.admin_create_creator_code('mine', 14, 1)")),
+    ).rejects.toMatchObject(denied);
+    await expect(
+      asUser(organizerId, (db) => db.query("select public.admin_revoke_creator_code('AAAAAAAA')")),
     ).rejects.toMatchObject(denied);
   });
 });
@@ -260,8 +280,22 @@ describe('QA table privileges', () => {
               or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
                   and has_any_column_privilege(r.role, c.oid, p.privilege)))
          and not (r.role = 'authenticated' and p.privilege = 'SELECT'
-                  and c.relname not in ('invitation_attempts', 'notification_delivery_jobs'))
+                  and c.relname not in ('invitation_attempts', 'notification_delivery_jobs',
+                                        'community_creator_codes', 'community_creator_redemptions'))
        order by 1, 2, 3`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('the creator code tables grant nothing to any API role, service_role included (C1)', async () => {
+    const { rows } = await admin.query<{ role: string; table: string; privilege: string }>(
+      `select r.role, t.name as table, p.privilege
+       from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
+       cross join unnest(array['community_creator_codes', 'community_creator_redemptions']) as t(name)
+       cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
+       where has_table_privilege(r.role, 'public.' || t.name, p.privilege)
+          or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+              and has_any_column_privilege(r.role, 'public.' || t.name, p.privilege))`,
     );
     expect(rows).toEqual([]);
   });

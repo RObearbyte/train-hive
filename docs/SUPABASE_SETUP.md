@@ -53,15 +53,43 @@ Option B — no CLI: open **SQL Editor**, and for each file in `supabase/migrati
 
 Never put the `service_role` / secret key in `.env.local` or anywhere in the app. `.env.local` is gitignored.
 
-## 6. Create your community and your organizer code
+## 6. Issue a creator code
 
-In **SQL Editor** run (change the name and timezone):
+Nobody can create a community in the app without a **creator code**, and only you (the project owner) can make one. Whoever gets the code types it in the app, chooses the community's name and time zone, and becomes its organizer. Members who only have an invitation code can never create a community.
+
+In **SQL Editor** run (the text in quotes is a note for yourself, e.g. who the code is for):
+
+```sql
+select public.admin_create_creator_code('for Alex', 14, 1);
+```
+
+- `'for Alex'` — your note (optional, up to 100 characters; use `null` for none).
+- `14` — the code expires after this many days (1 to 365).
+- `1` — how many communities can be created with it (1 to 50). Keep 1 unless you hand one code to several organizers.
+
+The result looks like `{"code": "K7MZ3QXA", "expires_at": "...", "max_uses": 1}`. Send the `code` to the person. Each person can create at most 5 communities in total.
+
+**See all codes** (newest first; `use_count` = communities created with it so far):
+
+```sql
+select code, note, use_count, max_uses, expires_at, revoked_at from public.community_creator_codes order by created_at desc;
+```
+
+**Revoke a code** (it stops working at once; communities already created with it are not affected; running it twice is harmless):
+
+```sql
+select public.admin_revoke_creator_code('K7MZ3QXA');
+```
+
+Don't delete rows from `community_creator_codes`; revoke instead.
+
+**Alternative: create the community yourself** (the original bootstrap). This makes the community from the SQL editor and gives you a one-time organizer invitation code:
 
 ```sql
 select public.admin_create_community('Făget Trail Pack', 'Europe/Bucharest');
 ```
 
-The result contains `organizer_code`. It works once and expires after 7 days. This is the only way to become an organizer; the app has no public path to that role.
+The result contains `organizer_code`. It works once and expires after 7 days. Enter it in the app as an invitation code to become the organizer. The app has no public path to the organizer role other than these two.
 
 ## 7. Run the app on your Android phone
 
@@ -73,7 +101,7 @@ npm start
 ```
 
 3. Scan the QR code with Expo Go (phone and PC on the same Wi-Fi).
-4. On the welcome screen enter the organizer code, then your display name.
+4. On the welcome screen enter the organizer code, then your display name. (Entering a creator code in the app needs the "create a community" screen, which is built after the backend task C1; until then use the alternative in step 6.)
 5. In **Profile → Invitations** create a member code and share it with your athletes.
 
 ## 8. Check that the server-side pieces work
