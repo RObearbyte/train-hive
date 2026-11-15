@@ -545,3 +545,237 @@ On Windows, embedded Postgres, 2026-11-15:
 | `supabase/tests/qa-comms.test.ts` | 30 (27 passing, 3 expected fail) | isolation matrix for every new table and RPC; removed, demoted and reinstated members; fan-out recipient exactness; edit repeat and revert; reminder window edges, rescheduling, cancelled; DST text; text and token fuzzing; token ownership and concurrency; growth and abuse observations; realtime publication |
 | `supabase/tests/qa-comms-dispatch.test.ts` | 8 (6 passing, 2 expected fail) | shared-secret edge cases; Q4-1; Q4-2; partial chunk failure; log and `last_error` leak check |
 | `src/features/notifications/domain/qa-notifications.test.ts` | 26 (25 passing, 1 expected fail) | deep-link and push-data fuzz; payload round trip; Android channel consistency; navigation queue; unread and badge; Q4-4; form vs server rules, DST, limits; push state machine over all combinations; RPC argument names and columns vs SQL |
+---
+
+## Milestone 4: statistics (M4-Q1)
+
+Scope: `supabase/migrations/20261117000100_statistics.sql` and `20261117000200_announcement_read_lock.sql`, `src/features/statistics/`, the tab and route wiring, reviewed against `docs/STATS_DEFINITIONS.md`, the Milestone 4 section of `docs/API_CONTRACT.md` and the product spec, not the developers' summaries. The reference implementation was written from the definitions before the SQL was read.
+
+### Verdict
+
+**The statistics SQL passes; the app passes with small defects; there is one product-level decision the owner has to take before release (Q5-1).**
+
+- Independent recomputation: a TypeScript reference (`supabase/tests/qa-stats-reference.ts`) agrees field by field with all five RPCs on 36 seeded random seasons, every window, before and after corrections, deleted records, moved sessions, a removal and a changed community time zone. No SQL defect was found. The harness is proven sensitive (an unmodelled correction is reported).
+- Authorization held under every attack (member, other community, removed member and organizer, demoted organizer, anon, service_role, private helpers, malformed ids). No member-visible payload contains another member's id or name.
+- Five defects are filed, none critical or high: two medium (a copy/behaviour contradiction about "Not recorded", and the organizer cannot see a member's history although the definitions say so) and three low. They are documented by `it.fails` tests, so `main` stays green and each turns red when fixed (remove `.fails` then).
+- Nine definition choices deviate from, or go beyond, the spec's literal wording. They are listed as decisions for the owner below; three of them change numbers visibly (D1, D2, D3).
+
+### Defects
+
+| Id | Sev | Where | Summary | Owner |
+|---|---|---|---|---|
+| Q5-1 | medium | `src/features/statistics/domain/copy.ts:8, :25`; `components/MemberStatsView.tsx:63`; SQL `20261117000100_statistics.sql:284` | The screens say Not recorded "is not counted as an absence", but the attendance rate keeps it in the denominator, so for the rate it is exactly an absence. | lead decides (D2), then mobile (copy) or backend (definition) |
+| Q5-2 | low | `components/CommunityOverview.tsx:33, :68` | The small-sample label of "RSVP to attendance" reads "based on 2 trainings", but the denominator is a number of going RSVPs (people). | mobile |
+| Q5-3 | low | `domain/chart.ts:53`; `components/CommunityOverview.tsx:103` | The middle tick of a count chart is `max / 2` printed with one decimal: 0.75 is labelled "0.8" (1.25 as "1.3"). | mobile |
+| Q5-4 | medium | no RPC; `components/MemberDetailScreen.tsx:25`; `docs/STATS_DEFINITIONS.md:21` | "Historical attendance" is part of the member statistics "visible to that member and to organizers"; only `get_my_attendance_history` exists, so an organizer cannot see the sessions behind a member's numbers. | backend (new RPC), mobile |
+| Q5-5 | low | `src/lib/database.types.ts:1412` | `MemberStatisticsSummaryRow` inherits `recorded` from `MemberStatisticsCounts`, but summary lines do not carry it (the contract lists none). | backend (types) |
+
+**Q5-1 reproduction** (`qa-stats-app.test.ts`, "DEFECT Q5-1"): one session present, one going-and-unrecorded, none marked absent: `absent: 0`, `not_recorded: 1`, `attendance_rate: 50`. Expected by the copy: 100 (not counted as an absence). Actual: 50, identical to a member marked absent. `RATE_NOTE` does state the denominator, so the number is explainable, but "Not an absence" next to a rate that treats it as one misleads. Options: (a) change the copy ("Not recorded does not count as attended; it stays in the denominator"), (b) change the definition so the rate is over recorded sessions (then the spec's formula "attended eligible / eligible" no longer holds literally). Numbers for both are in D2.
+
+**Q5-2** (`qa-stats-app.test.ts`, "DEFECT Q5-2"): one training, two going and present: `rsvp_going_recorded: 2`, label "based on 2 trainings". Expected: a label that names recorded RSVPs, or none.
+
+**Q5-3** (`qa-statistics.test.ts`, "DEFECT Q5-3"): cosmetic; bars are positioned correctly, only the axis text is rounded.
+
+**Q5-4** (`qa-stats-app.test.ts`, "DEFECT Q5-4": checks that a second history function exists). Fix: `get_member_attendance_history(p_community_id, p_user_id, p_window, p_limit, p_before)` for active organizers, same payload as the member's own, and a History section on the member screen. Until then an organizer sees counts but not which trainings were Not recorded.
+
+**Q5-5** (`qa-stats-app.test.ts`, "DEFECT Q5-5"): harmless today (the app never reads `row.recorded`); make the type omit it or return it from the SQL.
+
+### Observations (no defect filed)
+
+- **O1** `MemberDetailScreen.tsx:32, :54`: the member's name comes from the route parameter (capped at 60 characters), not from the payload, and the banner for a removed member says "has left the community" although an organizer may have removed them. A hand-written link can show any name. Low; use the payload's membership status, a neutral sentence ("is no longer a member") and look the name up from the summary.
+- **O2** `HistorySection.tsx:105`: a failed refetch of the first page while older pages are cached shows the stale list with no banner (only a failed "Load more" has one).
+- **O3** `StatisticsScreen.tsx:123`: if the membership query fails after loading (no community), the member view shows the skeleton forever (disabled queries stay pending). Unreachable behind the route gate.
+- **O4** `list_member_statistics_summary` stops at 500 members, ordered by name; an organizer of a larger community cannot reach the members after the cut (the screen says so, `truncatedNote`).
+- **O5** A history page can exceed the limit by the size of a same-instant group (documented in the contract; tested with 60 sessions at one instant: nothing is skipped or repeated).
+- **O6** A stored community time zone the database cannot resolve makes the member and community functions fail with a raw `22023` (history and summary keep working). Unreachable through the API (no RPC writes the zone, the table is select-only; the creation RPC validates it).
+- **O7** In zones whose DST rule moves local midnight (America/Havana, America/Asuncion, Asia/Tehran, Antarctica/Vostok) a month or week bucket starts at 01:00 or 23:00 local instead of 00:00. Buckets stay contiguous (verified for every zone in `pg_timezone_names`, 2020 to 2030); only a session in the skipped hour could be affected.
+- **O8** The summary and member views include organizers: an organizer who never attends shows 0% with every session Not recorded (scenario below, Olga). Consistent with the definitions (any role), possibly surprising.
+- **O9** The client's `isOrganizer` comes from the cached membership; a demoted organizer gets `forbidden` from the server (the overview handles it with "Organizers only"; the member list shows a generic error instead).
+- **O10** The second migration (`announcement_read_lock`) was reviewed together with the existing `announcement-read-lock.test.ts`; nothing further found.
+
+### Decisions needing the owner's confirmation
+
+These are not bugs against `STATS_DEFINITIONS.md` (it states each of them) but they deviate from, or go beyond, the product spec's literal wording. Numbers are from the scenario at the end of this section (4 trainings in 30 days).
+
+| # | Decision shipped | Spec's literal wording | Effect on the scenario |
+|---|---|---|---|
+| D1 | RSVP reliability = going and present / going **with a recorded outcome** | "attended with RSVP Going / finalized trainings with RSVP Going" | Cora: 100% (2 of 2) vs literal 66.7% (2 of 3; one going session was never marked). Ana and Bogdan are the same either way. |
+| D2 | Attendance rate keeps **Not recorded in the denominator** (the spec's formula) while the screen calls it "not an absence" (Q5-1). Alternative: rate over recorded sessions. | "attended eligible trainings / eligible trainings" and "never count unrecorded as absences" (the two conflict as soon as a sheet is not fully marked) | Bogdan: 50% (2 of 4) vs 66.7% (2 of 3 recorded). Cora: 75% vs 100%. |
+| D3 | Sessions where the member said "not going" or never answered stay in their eligible set; organizers mark only going members and walk-ins, so those sessions are Not recorded. | "eligible = finalized, completed, not cancelled, scheduled after joining" (no RSVP condition) | Bogdan's Run 3 ("not going") lowers his rate. Someone who attends half of the trainings they signed up for and skips the rest looks like someone who attends half of all. |
+| D4 | A removed member's own numbers (organizer view) use sessions after the removal as eligible, so the rate is diluted by trainings they could not attend. | Rule 3: not counted for sessions after removal (the schema has no `left_at`) | A member removed after Run 1 shows 1 of 4 (25%). The fix needs a removal timestamp. |
+| D5 | A reinstated member (status back to active, `joined_at` unchanged) is eligible for sessions held while they were removed. | not specified | same dilution as D4; there is no reinstate RPC today, only SQL. |
+| D6 | Community session totals count every real record (removed members, walk-ins who joined at the training); per-member figures count active members only. | "no per-member eligibility" for community | `total_attendances` can exceed the sum over the member list by exactly the records of removed members. |
+| D7 | Windows are N x 24 h back from now (both ends inclusive); weeks start on Monday; "all" buckets start at the first session. | "7, 30, 90 days, all time" | A 7-day window opened Monday 10:00 starts the previous Monday 10:00. |
+| D8 | Average RSVP participation includes sessions never marked; "most attended" can list a 0-present session (the app hides those). | "average RSVP participation" | A never-marked session leaves the attendee average alone (excluded) but counts in the RSVP average. |
+| D9 | Organizers are members for every statistic (summary list, active members, rates). | "active members" | Olga: 0%, 4 not recorded. |
+
+### Evidence map (spec -> tests)
+
+| Requirement | Evidence |
+|---|---|
+| Attendance rate, eligible set, one decimal half up | `qa-stats-reference.test.ts` (30 pinned seasons x 4 windows x every member); `qa-stats-attack.test.ts` rounding grid (n <= d <= 160, averages to 500 over 60); `qa-stats-scenario.test.ts`; developer `stats.test.ts` |
+| RSVP reliability and its deviation | reference test; attack "SPEC LITERAL vs DEFINITIONS"; scenario (Cora) |
+| Missing data, never fabricate, Not recorded vs absent | reference (never-marked sheets, missing records, deleted records); attack D2/D3 tests; `qa-stats-app.test.ts` labels |
+| Cancelled sessions | reference (cancelled kinds with RSVPs and records); scenario (Run 5); developer `stats-mutation.test.ts` |
+| Historical membership eligibility, late joins, removals | reference (members join 0 to 350 days before the base, walk-ins before and after joining, removal in the mutation phase); attack D4/D5; `stats-buckets.test.ts` (join at the start instant) |
+| Corrections and changed dates apply at once | reference second pass (corrections, deletions, moved sessions, zone change); scenario step test; attack "reads while attendance is being rewritten" |
+| Zero denominators give null, never 0% or an error | reference (windows with no sessions, members with no eligible sessions); `qa-statistics.test.ts` formatters; developer `stats.test.ts` |
+| Time zones, DST, month and week buckets | attack: every zone in `pg_timezone_names` 2020 to 2030, reference vs database for 9 zones 2025 to 2027; reference test (9 zones, sessions exactly on the 7/30/90-day boundaries) |
+| Visibility: members see only themselves; organizers only their community | attack: private helpers, hostile input, leakage check, demotion; developer `stats-security.test.ts` |
+| Pagination | attack: random tie structures, limits 1 to 7, pages vs the full list; 60 same-instant sessions; the reference test pages through every history |
+| Lightweight charts, descriptions, accessibility text | `qa-stats-app.test.ts` (spoken summaries and axis labels from real payloads, no NaN/null text), `qa-statistics.test.ts` (scale, bars, caps at 24 buckets); device checks below |
+| Performance | attack: 400 members x 500 sessions (200k pairs): community all 453 ms, summary all 371 ms, member 71 ms, history 79 ms (embedded Postgres on Windows) |
+
+### What was run (M4-Q1)
+
+Windows, embedded Postgres, 2026-11-16, one suite at a time:
+
+- `npm test` -> `Test Files  84 passed (84)`, `Tests  1694 passed | 5 expected fail (1699)` (245 s). The 5 expected failures are Q5-1 to Q5-5; the earlier milestones have none left.
+- `npm run typecheck` -> exit 0, no output.
+- `npm run lint` -> exit 0, no output.
+- `npx expo export --platform web` -> `Exported: dist`, exit 0.
+- `npx expo-doctor` -> `20/20 checks passed. No issues detected!`
+- Not run: Android bundle, a device, hosted Supabase, Deno.
+
+### Test inventory (M4-Q1)
+
+| File | Tests | Covers |
+|---|---|---|
+| `supabase/tests/qa-stats-reference.ts` | helper | independent reference: windows, eligibility, member / community / summary / history, calendar buckets in any zone, half-up rounding, seeded PRNG |
+| `supabase/tests/qa-stats-world.ts` | helper | seeded random season builder and mutations (corrections, deletions, moves, removal, zone change) |
+| `supabase/tests/qa-stats-reference.test.ts` | 4 | 30 pinned seasons and 6 live seasons through the public RPCs, harness sensitivity, coverage of the generator |
+| `supabase/tests/qa-stats-attack.test.ts` | 26 | rounding grid; private helper privileges; hostile windows, limits, cursors, ids; demotion; leakage; cross-community keys; pagination fuzz; same-instant pile; zone-wide bucket contiguity; odd zones; consistent snapshot under a concurrent writer; non-blocking reads; spec-literal and decision tests D1 to D5; 200k-pair scale |
+| `supabase/tests/qa-stats-app.test.ts` | 10 (4 expected fail) | payload types vs SQL keys; every screen string from real payloads; history flattening; Q5-1, Q5-2, Q5-4, Q5-5 (expected failures) |
+| `supabase/tests/qa-stats-scenario.test.ts` | 6 | the manual script's SQL and every hand-computed number below |
+| `src/features/statistics/domain/qa-statistics.test.ts` | 15 (1 expected fail) | chart scale and bars, periods across the year boundary, spoken summaries, formatting, filter store; Q5-3 (expected failure) |
+
+### Not verifiable here
+
+1. Anything on a device: Expo Go and a development build on Android, TalkBack reading of the chart images and cards, largest font scale, dark-theme contrast of the single-colour bars (non-text contrast of `colors.primary` on the card), touch-target sizes, the pull-to-refresh gesture, the sideways scroll of a long chart inside the vertical scroll view.
+2. The React components themselves (the Node test environment cannot render React Native): layout, skeleton, empty and error states, the `useFocusEffect` refetch, Banner and Button behaviour were read, not run.
+3. Hosted Supabase: PostgREST handling of the five `stable` functions, real clock skew between phone and database, the real invitation and finalization flow feeding the statistics (covered once by the developer's "real lifecycle" test, not on a phone).
+4. Realtime-driven invalidation (`invalidateAttendanceUnlessPending` to statistics) is covered by the developer's unit test with a fake client, not against a live channel.
+5. The notification clean-up of the scenario script on a hosted project (triggers, push outbox): verified on the embedded database only (no notification or delivery job remains); on a real project check Activity after running it.
+
+### Manual test script additions (continue the numbering of the Milestone 3 script)
+
+Setup: the hosted project from `docs/SUPABASE_SETUP.md`. A community named `Test Pack` with the organizer **Olga** and three members **Ana**, **Bogdan**, **Cora** (display names exactly like that; invite them the normal way, on phones or one after another on one phone). No trainings yet. Open the Supabase SQL editor.
+
+67. Paste the script below into the SQL editor and run it (edit nothing if the names match). It creates four finalized trainings (Run 1 to Run 4, 20, 15, 10 and 6 days ago) and one cancelled for too few signed up (Run 5, 3 days ago), with RSVPs and attendance, then removes the "New training" notifications the inserts would create. Expected: no error; Activity shows no new notification; nobody gets a push. The same script is run by `qa-stats-scenario.test.ts`.
+
+```sql
+do $$
+declare
+  v_community uuid := (select id from public.communities where name = 'Test Pack');
+  v_tz text;
+  v_ana uuid; v_bogdan uuid; v_cora uuid;
+  v_ids uuid[] := '{}';
+  v_id uuid;
+  r record;
+begin
+  select timezone into v_tz from public.communities where id = v_community;
+  select p.id into v_ana from public.profiles p join public.memberships m on m.user_id = p.id
+    where m.community_id = v_community and p.display_name = 'Ana';
+  select p.id into v_bogdan from public.profiles p join public.memberships m on m.user_id = p.id
+    where m.community_id = v_community and p.display_name = 'Bogdan';
+  select p.id into v_cora from public.profiles p join public.memberships m on m.user_id = p.id
+    where m.community_id = v_community and p.display_name = 'Cora';
+  if v_community is null or v_ana is null or v_bogdan is null or v_cora is null then
+    raise exception 'community or member names not found';
+  end if;
+
+  -- Five sessions: Run 1..4 finalized, Run 5 cancelled for too few signed up.
+  for r in select * from (values
+      (1, 'Run 1', 20, 'completed'), (2, 'Run 2', 15, 'completed'), (3, 'Run 3', 10, 'completed'),
+      (4, 'Run 4', 6, 'completed'), (5, 'Run 5', 3, 'cancelled')
+    ) as t(n, title, days_ago, kind)
+  loop
+    insert into public.training_sessions (
+      community_id, title, starts_at, ends_at, rsvp_deadline, timezone, location_name,
+      min_participants, status, cancel_reason, decided_at, cancelled_at, attendance_finalized_at)
+    values (
+      v_community, r.title,
+      now() - r.days_ago * interval '1 day',
+      now() - r.days_ago * interval '1 day' + interval '1 hour',
+      now() - r.days_ago * interval '1 day' - interval '2 hours',
+      v_tz, 'Park',
+      case when r.kind = 'cancelled' then 3 else 2 end,
+      r.kind::public.session_status,
+      case when r.kind = 'cancelled' then 'insufficient_participation'::public.cancel_reason end,
+      now() - r.days_ago * interval '1 day' - interval '2 hours',
+      case when r.kind = 'cancelled' then now() - r.days_ago * interval '1 day' - interval '1 hour' end,
+      case when r.kind = 'completed' then now() - r.days_ago * interval '1 day' + interval '2 hours' end)
+    returning id into v_id;
+    v_ids[r.n] := v_id;
+  end loop;
+
+  -- (session, member, RSVP, attendance). A null RSVP with 'present' is a walk-in.
+  for r in select * from (values
+      (1, 'A', 'going', 'present'),     (1, 'B', 'going', 'present'),   (1, 'C', 'going', 'present'),
+      (2, 'A', 'going', 'present'),     (2, 'B', 'going', 'absent'),    (2, 'C', 'going', 'unrecorded'),
+      (3, 'A', 'going', 'present'),     (3, 'B', 'not_going', null),    (3, 'C', 'going', 'present'),
+      (4, 'A', 'going', 'absent'),      (4, 'B', 'going', 'present'),   (4, 'C', null, 'present'),
+      (5, 'A', 'going', null)
+    ) as t(n, who, rsvp, att)
+  loop
+    if r.rsvp is not null then
+      insert into public.training_rsvps (session_id, community_id, user_id, response)
+      values (v_ids[r.n], v_community,
+              case r.who when 'A' then v_ana when 'B' then v_bogdan else v_cora end,
+              r.rsvp::public.rsvp_response);
+    end if;
+    if r.att is not null then
+      insert into public.attendance_records (session_id, community_id, user_id, status, had_rsvp_going, is_walk_in)
+      values (v_ids[r.n], v_community,
+              case r.who when 'A' then v_ana when 'B' then v_bogdan else v_cora end,
+              r.att::public.attendance_status, coalesce(r.rsvp = 'going', false), r.rsvp is null);
+    end if;
+  end loop;
+
+  update public.training_sessions s
+  set going_count = (select count(*) from public.training_rsvps x where x.session_id = s.id and x.response = 'going')
+  where s.id = any(v_ids);
+
+  -- The insert trigger announced the sessions as new trainings: remove those rows.
+  delete from public.notifications where related_session_id = any(v_ids);
+end $$;
+```
+
+What the script sets up (Run 1 to 4 finalized; "not recorded" = no mark):
+
+| | Run 1 | Run 2 | Run 3 | Run 4 |
+|---|---|---|---|---|
+| Ana | going, present | going, present | going, present | going, **absent** |
+| Bogdan | going, present | going, **absent** | said not going, no mark | going, present |
+| Cora | going, present | going, **not recorded** | going, present | no RSVP, **walk-in present** |
+
+Run 5 (3 days ago): cancelled, too few signed up (Ana was going).
+
+68. **Ana**, Statistics tab, 30 days. Expect: Attendance rate **75%** ("3 of 4 trainings"); Not recorded **0**; Attended **3**; Confirmed RSVPs **4**; Missed **1**; RSVP reliability **75%** ("3 of 4 recorded going RSVPs"). No Walk-ins card. The monthly chart's captions add up to 3/4. History, newest first: Run 4 Absent, Run 3 Present, Run 2 Present, Run 1 Present; Run 5 is not listed.
+69. **Bogdan**, 30 days. Expect: rate **50%** ("2 of 4 trainings"); Not recorded **1** ("Not an absence", see Q5-1); Attended **2**; Confirmed RSVPs **3**; Missed **1**; RSVP reliability **66.7%** ("2 of 3"). History: Run 4 Present, Run 3 "Said not going" with the neutral Not recorded chip, Run 2 Absent, Run 1 Present.
+70. **Cora**, 30 days. Expect: rate **75%** ("3 of 4"); Not recorded **1**; Attended **3**; Confirmed RSVPs **3**; Missed **0**; Walk-ins **1**; RSVP reliability **100%** ("2 of 2"). History: Run 4 Present with "Walk-in", Run 3 Present, Run 2 Not recorded (neutral chip, not styled as a miss), Run 1 Present.
+71. **Olga** (organizer), Statistics tab: the Me / Community switch appears for her only (Ana, Bogdan and Cora have none). Me: rate **0%** ("0 of 4"), Not recorded **4**, RSVP reliability "—" with "No recorded going RSVPs yet".
+72. Olga, Community, 30 days. Expect: Completed trainings **4**; Total attendances **8**; Average attendees per training **2** ("across 4 sessions"); Average RSVP participation **2.5**; RSVP to attendance **77.8%** ("7 of 9 recorded going RSVPs"); Active members **4** ("3 attended in this period"); Cancelled, too few signed up **1** ("0 cancelled by an organizer"). Attendance trend: weekly bars whose values add up to 8 attendees over 4 sessions (each caption shows its sessions). Most attended: Run 1 (3 present), Run 4 (2), Run 3 (2), Run 2 (1), in that order.
+73. Olga, Members list (30 days): Ana 75%, Bogdan 50%, Cora 75%, Olga 0% ("4 not recorded"), ordered by name. Tap Bogdan: his screen shows the numbers of step 69 and a Back button; the time filter is kept. With TalkBack the row reads "Bogdan, 2 of 4 trainings, 50 percent, 1 not recorded".
+74. Olga, 7 days: Community shows Completed trainings **1**, Total attendances **2**, Average attendees **2**, Average RSVP participation **2**, RSVP to attendance **50%** ("1 of 2"), Cancelled, too few signed up **1**. Ana on 7 days: rate **0%** ("0 of 1 training", "based on 1 training"), Missed 1. Cora on 7 days: rate 100% "based on 1 training", RSVP reliability "—". 90 days and All time show the same totals as 30 days; the monthly chart lists every month between Run 1 and now.
+75. **Live correction**: in the SQL editor run
+    ```sql
+    update public.attendance_records set status = 'present'
+    where session_id = (select id from public.training_sessions where title = 'Run 2' and community_id = (select id from public.communities where name = 'Test Pack'))
+      and user_id = (select id from public.profiles where display_name = 'Bogdan');
+    ```
+    Pull to refresh (or reopen the tab) on Bogdan's phone: rate **75%** ("3 of 4"), Missed **0**, RSVP reliability **100%**. Olga, Community: Total attendances **9**, Average attendees **2.3** (9 / 4 = 2.25 rounds half up), RSVP to attendance **88.9%** ("8 of 9"). Undo it with the same statement and `'absent'`, refresh: back to steps 69 and 72.
+76. **Moved session**: run
+    ```sql
+    update public.training_sessions
+    set starts_at = starts_at - interval '30 days', ends_at = ends_at - interval '30 days', rsvp_deadline = rsvp_deadline - interval '30 days'
+    where title = 'Run 4' and community_id = (select id from public.communities where name = 'Test Pack');
+    ```
+    Refresh. 30 days: Ana **100%** ("3 of 3"), Missed 0; Olga, Community: Completed trainings **3**, Total attendances **6**, Average attendees **2**, Average RSVP participation **2.7**. 90 days: Completed trainings **4** again and the trend is monthly. Move it back by running the statement with `+ interval`.
+77. Empty and small-sample states: a member who joined after Run 4 (invite a fifth person) opens Statistics: the "No finalized trainings" card with its explanation, dashes, no "0%", no error; History says "No finalized trainings in this period yet."
+78. Time zone: set the phone to a zone far from the community's (for example UTC+13) and reopen: month and week labels and training times do not shift (they follow the community's zone).
+79. Airplane mode: pull to refresh on Statistics: the last numbers stay with a "Try again" banner; with nothing cached an error state with Retry appears; back online, Retry loads the numbers. Switching the filter while offline shows the error for that filter only.
+80. TalkBack on Statistics: each stat card is read as one sentence (label, value, detail, help); each chart is one image whose description lists the buckets ("Monthly attendance rate. October 2026: 66.7 percent, 2 of 3 trainings. ..."); history rows read "<title>, <date and RSVP>, <outcome>". Largest font: nothing clipped, cards stack, the chart scrolls sideways. Dark theme: bars, outcome chips and the neutral Not recorded chip stay readable; the outcome is never only a colour (the word is always there).
+81. Expo Go on Android: the Statistics tab and a member's screen open without a red error; the filter and charts work.
+82. Pagination (optional, needs more rows): add 25 more finalized sessions for Ana following the script's pattern and open History: 20 rows, "Load more", then the rest; no row twice, newest first.
+83. Cleanup: `delete from public.training_sessions where community_id = (select id from public.communities where name = 'Test Pack') and title like 'Run %';` (RSVPs and attendance cascade) before using the community for real trainings.
