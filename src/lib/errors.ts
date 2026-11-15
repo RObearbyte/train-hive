@@ -30,6 +30,8 @@ export const BACKEND_ERROR_CODES = [
   'attendee_not_a_member',
   'no_going_rsvp',
   'attendee_has_going_rsvp',
+  'announcement_not_editable',
+  'announcement_not_cancellable',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -192,6 +194,10 @@ const MESSAGES: Record<AppErrorCode, string> = {
   no_going_rsvp: 'That member did not say they were going. Add them as a walk-in instead.',
   attendee_has_going_rsvp:
     'That member said they were going, so they are already on the list. Mark them Present there.',
+  announcement_not_editable:
+    'This announcement was already published or cancelled, so it can no longer be changed.',
+  announcement_not_cancellable:
+    'This announcement was already published, so it can no longer be cancelled.',
   network_error: 'No connection. Check your internet and try again.',
   unknown: 'Something went wrong. Please try again.',
 };
@@ -220,6 +226,11 @@ const FIELD_LABELS: Record<string, string> = {
   reason: 'reason (200 characters at most)',
   user_id: 'member',
   status: 'attendance status',
+  body: 'message',
+  scheduled_for: 'publish time (it must be in the future, within a year)',
+  token: 'push token',
+  platform: 'platform',
+  device_label: 'device name',
 };
 
 /**

@@ -34,6 +34,13 @@
           "imageWidth": 76
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "color": "#168F88",
+          "defaultChannel": "default"
+        }
+      ],
       "expo-secure-store",
       "expo-localization",
       "@react-native-community/datetimepicker"

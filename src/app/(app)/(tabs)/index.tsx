@@ -4,6 +4,8 @@ import { View } from 'react-native';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { NeedsAttendanceCue } from '@/features/attendance/components/AttendanceEntryPoint';
 import { needsAttendance } from '@/features/attendance/domain/sheet';
+import { PushPromptCard } from '@/features/notifications/components/PushPromptCard';
+import { RecentAnnouncements } from '@/features/notifications/components/RecentAnnouncements';
 import { TrainingCard } from '@/features/trainings/components/TrainingCard';
 import { statusBadgeLabel } from '@/features/trainings/domain/presentation';
 import { deriveDisplayStatus, participationSummary } from '@/features/trainings/domain/status';
@@ -70,6 +72,11 @@ export default function HomeScreen() {
         ) : null}
       </View>
     ) : null;
+
+  // Ask for push permission only after the member has answered at least one RSVP.
+  const hasAnswered = [...trainings.upcoming, ...trainings.past].some(
+    (session) => trainings.myResponse(session.id) !== 'no_response',
+  );
 
   let body;
   if (trainings.error && !hasUpcoming) {
@@ -168,6 +175,8 @@ export default function HomeScreen() {
       </View>
       {attendanceSection}
       {body}
+      <RecentAnnouncements />
+      {hasAnswered ? <PushPromptCard /> : null}
     </Screen>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { NotificationSettings } from '@/features/notifications/components/NotificationSettings';
 import { DisplayNameForm } from '@/features/profile/components/DisplayNameForm';
 import { formatLongDate, isValidTimeZone, zoneCityName } from '@/lib/datetime';
 import { userMessage } from '@/lib/errors';
@@ -138,6 +139,8 @@ export default function ProfileScreen() {
           ) : null}
         </Card>
       </View>
+
+      <NotificationSettings />
 
       <View style={{ gap: spacing.sm }}>
         <Text variant="heading">Your account</Text>

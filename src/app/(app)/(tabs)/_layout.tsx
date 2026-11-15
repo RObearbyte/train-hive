@@ -1,5 +1,7 @@
 import { Tabs } from 'expo-router/js-tabs';
 
+import { badgeText } from '@/features/notifications/domain/unread';
+import { useActivity } from '@/features/notifications/hooks/useActivity';
 import { Icon, useTheme, type IconName } from '@/ui';
 
 function tabIcon(name: IconName) {
@@ -10,9 +12,11 @@ function tabIcon(name: IconName) {
   return TabIcon;
 }
 
-// Activity and Statistics tabs are added when Milestones 3 and 4 are functional.
+// The Statistics tab is added when Milestone 4 is functional.
 export default function TabsLayout() {
   const { colors, typography } = useTheme();
+  // Display only: announcements and notifications the server says are unread.
+  const unread = badgeText(useActivity().unreadCount);
   return (
     <Tabs
       screenOptions={{
@@ -21,11 +25,21 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarLabelStyle: { fontSize: typography.caption.fontSize, fontWeight: '600' },
+        tabBarBadgeStyle: { backgroundColor: colors.accent, color: colors.onAccent },
         sceneStyle: { backgroundColor: colors.background },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tabIcon('home') }} />
       <Tabs.Screen name="trainings" options={{ title: 'Trainings', tabBarIcon: tabIcon('calendar') }} />
+      <Tabs.Screen
+        name="activity"
+        options={{
+          title: 'Activity',
+          tabBarIcon: tabIcon('bell'),
+          tabBarBadge: unread ?? undefined,
+          tabBarAccessibilityLabel: unread ? `Activity, ${unread} unread` : 'Activity',
+        }}
+      />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('person') }} />
     </Tabs>
   );

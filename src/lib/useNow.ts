@@ -9,6 +9,15 @@ import { AppState } from 'react-native';
  * For display only. The device clock never allows or denies anything: the
  * server enforces deadlines with its own clock.
  */
+/**
+ * The device clock read once, for ADVISORY form checks only ("is this
+ * publish time in the future?"). The server re-checks with its own clock and
+ * is the only authority; kept in this file so clock reads stay in one place.
+ */
+export function readClock(): Date {
+  return new Date();
+}
+
 export function useNow(intervalMs: number = 30_000): Date {
   const [now, setNow] = useState(() => new Date());
 

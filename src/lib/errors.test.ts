@@ -22,6 +22,8 @@ describe('contract coverage', () => {
   it('lists every code in docs/API_CONTRACT.md', () => {
     expect([...BACKEND_ERROR_CODES].sort()).toEqual(
       [
+        'announcement_not_cancellable',
+        'announcement_not_editable',
         'attendee_has_going_rsvp',
         'attendee_not_a_member',
         'exhausted',

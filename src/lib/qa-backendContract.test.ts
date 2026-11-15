@@ -182,6 +182,14 @@ describe('QA contract: RPCs called by the app', () => {
         'record_attendance',
         'add_walk_in_attendee',
         'finalize_attendance',
+        'create_announcement',
+        'update_announcement',
+        'cancel_announcement',
+        'mark_announcement_read',
+        'mark_notification_read',
+        'mark_all_notifications_read',
+        'register_push_token',
+        'set_notification_preferences',
       ]),
     );
   });

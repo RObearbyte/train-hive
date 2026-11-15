@@ -1,0 +1,58 @@
+/**
+ * Unread state for the Activity tab. Pure; the server stays the authority
+ * (`announcement_reads`, `notifications.read_at`), this only counts what the
+ * client has loaded.
+ */
+import type { Announcement, AppNotification } from '@/lib/database.types';
+
+/** Published announcements I have not read and did not write myself. */
+export function unreadAnnouncements(
+  items: readonly Announcement[],
+  readIds: readonly string[],
+  userId: string | null,
+): Announcement[] {
+  const read = new Set(readIds);
+  return items.filter(
+    (item) => item.status === 'published' && !read.has(item.id) && item.author_id !== userId,
+  );
+}
+
+export function isAnnouncementUnread(
+  item: Announcement,
+  readIds: readonly string[],
+  userId: string | null,
+): boolean {
+  return unreadAnnouncements([item], readIds, userId).length === 1;
+}
+
+export function unreadNotifications(list: readonly AppNotification[]): AppNotification[] {
+  return list.filter((item) => item.read_at === null);
+}
+
+/**
+ * The number on the tab icon. A new announcement creates BOTH an unread
+ * announcement and an unread `announcement_published` notification (and
+ * reading either one marks the other read), so it must count once.
+ */
+export function combinedUnreadCount(input: {
+  items: readonly Announcement[];
+  readIds: readonly string[];
+  notifications: readonly AppNotification[];
+  userId: string | null;
+}): number {
+  const unreadNotes = unreadNotifications(input.notifications);
+  const covered = new Set<string>();
+  for (const note of unreadNotes) {
+    if (note.related_announcement_id !== null) covered.add(note.related_announcement_id);
+  }
+  const extra = unreadAnnouncements(input.items, input.readIds, input.userId).filter(
+    (item) => !covered.has(item.id),
+  );
+  return unreadNotes.length + extra.length;
+}
+
+/** "9", "99+" for the tab badge; null hides it. */
+export function badgeText(count: number): string | null {
+  if (!Number.isFinite(count) || count <= 0) return null;
+  return count > 99 ? '99+' : String(Math.floor(count));
+}
