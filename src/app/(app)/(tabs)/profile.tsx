@@ -1,9 +1,11 @@
+import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { DisplayNameForm } from '@/features/profile/components/DisplayNameForm';
-import { formatLongDate, isValidTimeZone } from '@/lib/datetime';
+import { formatLongDate, isValidTimeZone, zoneCityName } from '@/lib/datetime';
 import { userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 import {
@@ -13,6 +15,7 @@ import {
   Card,
   Divider,
   ErrorState,
+  Icon,
   ListItem,
   LoadingState,
   Screen,
@@ -21,10 +24,12 @@ import {
 } from '@/ui';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { spacing } = useTheme();
   const current = useCurrentMembership();
-  const { community, membership, profile } = current;
+  const { community, membership, profile, isOrganizer } = current;
   const [editing, setEditing] = useState(false);
+  const appVersion = Constants.expoConfig?.version;
 
   const refresh = () => {
     current.refetch().catch((error: unknown) => reportError('profile.refresh', error));
@@ -92,19 +97,58 @@ export default function ProfileScreen() {
         )}
       </Card>
 
-      <Card>
-        <ListItem title="Community" subtitle={community.name} />
-        <Divider />
-        <ListItem
-          title="Role"
-          subtitle={membership.role === 'organizer' ? 'Organizer' : 'Member'}
-        />
-        <Divider />
-        <ListItem title="Member since" subtitle={formatLongDate(membership.joined_at, zone)} />
-      </Card>
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="heading">Community</Text>
+        <Card>
+          <ListItem title="Name" subtitle={community.name} />
+          <Divider />
+          <ListItem
+            title="Time zone"
+            subtitle={`${zoneCityName(community.timezone)} (${community.timezone}). Training times are shown in this zone.`}
+          />
+        </Card>
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="heading">Membership</Text>
+        <Card>
+          <ListItem
+            title="Role"
+            subtitle={membership.role === 'organizer' ? 'Organizer' : 'Member'}
+          />
+          <Divider />
+          <ListItem title="Member since" subtitle={formatLongDate(membership.joined_at, zone)} />
+          {isOrganizer ? (
+            <>
+              <Divider />
+              <ListItem
+                title="Invitations"
+                subtitle="Create and manage invitation codes"
+                leading={<Icon name="people" size={22} color="primary" />}
+                onPress={() => router.push('/invitations')}
+              />
+            </>
+          ) : null}
+        </Card>
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="heading">Your account</Text>
+        <Card style={{ gap: spacing.sm }}>
+          <Text>
+            Your account lives on this device only. There is no password or email to sign in
+            with somewhere else.
+          </Text>
+          <Text color="textMuted">
+            If you uninstall TrainHive or clear its data, the account is lost. To come back you
+            would need a new invitation code from your organizer, and you would join as a new
+            member.
+          </Text>
+        </Card>
+      </View>
 
       <Text variant="caption" color="textMuted" align="center">
-        Your account lives on this device. Deleting the app or its data removes it.
+        TrainHive {appVersion ? `version ${appVersion}` : 'version not available'}
       </Text>
     </Screen>
   );

@@ -15,8 +15,8 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 - [x] M1-D1 (M, mobile) Pure domain logic: status derivation, zod schemas, datetime, error mapping + unit tests
 - [x] M1-A1 (M, mobile) Supabase client, secure session storage, providers, session gate, onboarding flow
 - [x] M1-A2 (L, mobile) Trainings list / details / RSVP with optimistic update + Realtime, Home tab
-- [ ] M1-A3 (M, mobile) Create / edit / cancel training, invitations management, Profile tab
-- [ ] M1-Q1 (M, qa) Independent review, extra security / concurrency / timezone tests, validation run, `docs/QA_REPORT.md`
+- [x] M1-A3 (M, mobile) Create / edit / cancel training, invitations management, Profile tab
+- [x] M1-Q1 (backend half; mobile half pending) (M, qa) Independent review, extra security / concurrency / timezone tests, validation run, `docs/QA_REPORT.md`
 - [ ] M1-L1 (S, lead) Fix QA defects, README + `docs/SUPABASE_SETUP.md` step-by-step guide
 
 ## Milestone 2 — Attendance Management

@@ -1,4 +1,9 @@
-import type { ActivityType, RsvpResponse, TrainingSession } from '@/lib/database.types';
+import type {
+  ActivityType,
+  RsvpResponse,
+  TrainingInput,
+  TrainingSession,
+} from '@/lib/database.types';
 import { toAppError } from '@/lib/errors';
 import { getSupabase } from '@/lib/supabase';
 
@@ -87,6 +92,49 @@ export async function fetchOrganizerName(sessionId: string): Promise<string | nu
     .maybeSingle();
   if (error) throw toAppError(error);
   return data?.organizer?.display_name ?? null;
+}
+
+/**
+ * Creates a training (organizer only). Throws AppError: `forbidden`,
+ * `validation_failed` with the column in `field`, `network_error`, ...
+ */
+export async function createTraining(
+  communityId: string,
+  input: TrainingInput,
+): Promise<TrainingSession> {
+  const { data, error } = await getSupabase().rpc('create_training', {
+    p_community_id: communityId,
+    p_input: input,
+  });
+  if (error) throw toAppError(error);
+  return data;
+}
+
+/**
+ * Replaces the editable fields of a training (organizer only). Throws
+ * AppError: `session_not_editable`, `validation_failed` (also for a frozen
+ * field that was changed), `forbidden`, `not_found`, ...
+ */
+export async function updateTraining(
+  sessionId: string,
+  input: TrainingInput,
+): Promise<TrainingSession> {
+  const { data, error } = await getSupabase().rpc('update_training', {
+    p_session_id: sessionId,
+    p_input: input,
+  });
+  if (error) throw toAppError(error);
+  return data;
+}
+
+/**
+ * Cancels a training (organizer only). Already cancelled returns the row
+ * unchanged. Throws AppError: `session_not_cancellable`, `forbidden`, `not_found`, ...
+ */
+export async function cancelTraining(sessionId: string): Promise<TrainingSession> {
+  const { data, error } = await getSupabase().rpc('cancel_training', { p_session_id: sessionId });
+  if (error) throw toAppError(error);
+  return data;
 }
 
 /** The activity type lookup table, in display order. */

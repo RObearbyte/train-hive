@@ -234,13 +234,16 @@ describe('trainingFormSchema: create', () => {
   });
 
   describe('RSVP deadline', () => {
-    it('may equal the start but not be after it', () => {
-      expect(createErrors({ deadlineDate: '2026-11-14', deadlineTime: '09:00' })).toEqual({});
+    it('must be strictly before the start', () => {
+      expect(createErrors({ deadlineDate: '2026-11-14', deadlineTime: '08:59' })).toEqual({});
+      expect(createErrors({ deadlineDate: '2026-11-14', deadlineTime: '09:00' })).toEqual({
+        deadlineDate: ['The RSVP deadline must be before the start.'],
+      });
       expect(createErrors({ deadlineDate: '2026-11-14', deadlineTime: '09:01' })).toEqual({
-        deadlineDate: ['The RSVP deadline must be at or before the start.'],
+        deadlineDate: ['The RSVP deadline must be before the start.'],
       });
       expect(createErrors({ deadlineDate: '2026-11-15', deadlineTime: '08:00' })).toEqual({
-        deadlineDate: ['The RSVP deadline must be at or before the start.'],
+        deadlineDate: ['The RSVP deadline must be before the start.'],
       });
     });
 
@@ -443,11 +446,11 @@ describe('trainingFormSchema: edit', () => {
     });
 
     it('requires the future only for timestamps that were changed', () => {
-      // Started 30 minutes ago and still scheduled (deadline == start in this fixture).
-      const session = makeSession({ rsvp_deadline: '2026-11-14T07:00:00+00:00' });
+      // Started 30 minutes ago and still scheduled (deadline one minute before the start).
+      const session = makeSession({ rsvp_deadline: '2026-11-14T06:59:00+00:00' });
       const during = new Date('2026-11-14T07:30:00Z');
       expect(editErrors(session, { description: 'Bring water' }, during)).toEqual({});
-      expect(editErrors(session, { startTime: '09:15', deadlineTime: '09:15' }, during).date).toEqual([
+      expect(editErrors(session, { startTime: '09:15', deadlineTime: '09:14' }, during).date).toEqual([
         'The start must be in the future.',
       ]);
       expect(editErrors(session, { endTime: '09:20' }, during)).toEqual({
@@ -455,10 +458,13 @@ describe('trainingFormSchema: edit', () => {
       });
     });
 
-    it('still checks deadline ≤ start and end > start', () => {
+    it('still checks deadline < start and end > start', () => {
       expect(
         editErrors(makeSession(), { deadlineDate: '2026-11-14', deadlineTime: '09:30' }).deadlineDate,
-      ).toEqual(['The RSVP deadline must be at or before the start.']);
+      ).toEqual(['The RSVP deadline must be before the start.']);
+      expect(
+        editErrors(makeSession(), { deadlineDate: '2026-11-14', deadlineTime: '09:00' }).deadlineDate,
+      ).toEqual(['The RSVP deadline must be before the start.']);
       expect(editErrors(makeSession(), { endTime: '08:59' }).endTime).toBeDefined();
     });
   });

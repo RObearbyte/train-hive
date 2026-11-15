@@ -4,7 +4,6 @@ import { FlatList, RefreshControl, View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { TrainingCard } from '@/features/trainings/components/TrainingCard';
-import { TRAINING_FORM_ENABLED } from '@/features/trainings/constants';
 import { useCommunityTrainings } from '@/features/trainings/hooks/useTrainings';
 import { userMessage } from '@/lib/errors';
 import { useNow } from '@/lib/useNow';
@@ -44,7 +43,7 @@ export default function TrainingsScreen() {
         <Text variant="title" style={{ flex: 1 }}>
           Trainings
         </Text>
-        {isOrganizer && TRAINING_FORM_ENABLED ? (
+        {isOrganizer ? (
           <Button
             label="New training"
             icon="plus"
@@ -89,6 +88,11 @@ export default function TrainingsScreen() {
           isOrganizer
             ? 'Trainings you plan will show up here for the whole community.'
             : 'When your organizer plans a training, it will show up here.'
+        }
+        action={
+          isOrganizer
+            ? { label: 'Create a training', onPress: () => router.push('/trainings/new') }
+            : undefined
         }
         style={{ flex: 1 }}
       />

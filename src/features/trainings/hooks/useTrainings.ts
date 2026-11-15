@@ -16,7 +16,7 @@ import {
   fetchSession,
   type Participant,
 } from '../api/trainings';
-import { activityLabel } from '../domain/activity';
+import { activityLabel, activityOptions } from '../domain/activity';
 import { nextSession, splitSessions } from '../domain/status';
 
 const NO_SESSIONS: TrainingSession[] = [];
@@ -128,6 +128,28 @@ export function useOrganizerName(sessionId: string, organizerId: string | undefi
     // Names change rarely; do not refetch on every visit.
     staleTime: 5 * 60_000,
   });
+}
+
+export type ActivityOption = { key: string; label: string };
+
+/**
+ * Choices for the activity picker: the `activity_types` table once loaded,
+ * the built-in seeded list until then. `selected` is always among them, so
+ * editing a session with a type this list lacks does not silently change it.
+ */
+export function useActivityOptions(selected: string): ActivityOption[] {
+  const types = useQuery({
+    queryKey: trainingKeys.activityTypes,
+    queryFn: fetchActivityTypes,
+    staleTime: 60 * 60_000,
+  });
+  const options: ActivityOption[] = types.data
+    ? types.data.map((type) => ({ key: type.key, label: type.label }))
+    : activityOptions();
+  if (selected !== '' && !options.some((option) => option.key === selected)) {
+    options.push({ key: selected, label: activityLabel(selected) });
+  }
+  return options;
 }
 
 /**

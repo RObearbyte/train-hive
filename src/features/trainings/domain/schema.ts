@@ -318,8 +318,9 @@ export function trainingFormSchema(context: TrainingFormContext) {
         );
       }
     } else if (deadlineMs !== null && startMs !== null) {
-      if (deadlineMs > startMs) {
-        issue('deadlineDate', 'The RSVP deadline must be at or before the start.');
+      // Strictly before: the server rejects a deadline equal to the start.
+      if (deadlineMs >= startMs) {
+        issue('deadlineDate', 'The RSVP deadline must be before the start.');
       } else if (
         deadlineMs <= nowMs &&
         !startIsPast &&

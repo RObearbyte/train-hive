@@ -56,6 +56,11 @@ export default function HomeScreen() {
             ? 'Trainings you plan will show up here for the whole community.'
             : 'When your organizer plans a training, it will show up here.'
         }
+        action={
+          isOrganizer
+            ? { label: 'Create a training', onPress: () => router.push('/trainings/new') }
+            : undefined
+        }
         style={{ flex: 1 }}
       />
     );

@@ -4,6 +4,7 @@ import { Linking, Platform, View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { RsvpControl } from '@/features/rsvp/components/RsvpControl';
+import { OrganizerActions } from '@/features/trainings/components/OrganizerActions';
 import { buildMapsLink, type MapsPlatform } from '@/features/trainings/domain/maps';
 import {
   groupParticipants,
@@ -138,8 +139,9 @@ function Participants({ sessionId }: { sessionId: string }) {
 }
 
 function TrainingDetails({ session, now }: { session: TrainingSession; now: Date }) {
+  const router = useRouter();
   const { spacing } = useTheme();
-  const { community } = useCurrentMembership();
+  const { community, isOrganizer } = useCurrentMembership();
   const myResponse = useMyResponse(session.id, community?.id ?? null);
   const organizer = useOrganizerName(session.id, session.organizer_id);
   const activity = useActivityLabel();
@@ -270,7 +272,13 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
 
       <Participants sessionId={session.id} />
 
-      {/* Organizer actions (Edit, Cancel training) are added here in M1-A3. */}
+      {/* Hidden from members; the server authorizes both actions again. */}
+      {isOrganizer ? (
+        <OrganizerActions
+          session={session}
+          onEdit={() => router.push(`/trainings/${session.id}/edit`)}
+        />
+      ) : null}
     </>
   );
 }
