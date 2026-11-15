@@ -178,3 +178,106 @@ These rules supersede the matching sentences above. Implemented in `202611150002
 - **Role re-check after the lock (Q3-2).** `record_attendance`, `add_walk_in_attendee`, `finalize_attendance`, `update_training` and `cancel_training` check the caller's organizer role before and again after taking the session `FOR UPDATE` lock. An organizer removed or demoted while the call waited gets `forbidden` and nothing is written. (`get_attendance_sheet` takes no lock and checks once.)
 
 New error code: `session_has_attendance`.
+
+---
+
+# Milestone 3 — Communications and notifications
+
+Announcements (organizer to members, no chat), in-app notifications, push tokens, push preferences and the push outbox that the Edge Function (M3-B2) drains. Migrations `20261115000300_notifications_schema.sql`, `20261115000400_notifications_rpcs.sql`, `20261115000500_schedule_notifications.sql`. Same conventions as above. Push delivery itself is not part of M3-B1.
+
+## Enums
+
+- `announcement_status`: `scheduled`, `published`, `cancelled`
+- `notification_kind`: `training_created`, `training_updated`, `training_confirmed`, `training_cancelled`, `training_reminder`, `announcement_published`
+
+## Tables
+
+| Table | Columns | Who can select |
+|---|---|---|
+| `announcements` | `id`, `community_id`, `author_id? → profiles` (set null), `title` (1–100, single line, trimmed), `body` (1–2000, trimmed), `status`, `scheduled_for?`, `published_at?`, `cancelled_at?`, `created_at`, `updated_at`. Checks: `scheduled` ⇒ `scheduled_for` set and `published_at` null; `published` ⇔ `published_at` set; `cancelled` ⇔ `cancelled_at` set. "In the future" is checked by the RPCs. | active members: `published` ones; active organizers: all of their community |
+| `announcement_reads` | `announcement_id` (cascade), `user_id → profiles` (cascade), `read_at`; pk both | own rows only |
+| `notifications` | `id`, `user_id` (**no FK**, see below), `community_id`, `kind`, `title` (≤ 200), `body` (≤ 500), `deep_link` (relative route), `related_session_id?` (cascade), `related_announcement_id?` (cascade), `dedupe_key`, `created_at`, `read_at?`; **unique `(user_id, dedupe_key)`**; check: announcement kinds have only `related_announcement_id`, training kinds only `related_session_id` | own rows, while an active member of that community |
+| `notification_delivery_jobs` | `id`, `notification_id` (unique, cascade), `user_id`, `status` in `pending/sending/sent/failed/dead/skipped`, `attempts`, `max_attempts` (5), `next_attempt_at`, `expires_at`, `last_error?`, `locked_at?`, `locked_by?`, `created_at`, `sent_at?` | **nobody** (no grant, no policy) |
+| `device_push_tokens` | `id`, `user_id → profiles` (cascade), `token` (unique; `ExponentPushToken[…]` or `ExpoPushToken[…]`, ≤ 200), `platform` in `ios/android/web`, `device_label?` (≤ 80), `created_at`, `last_seen_at`, `invalidated_at?`, `last_error?` | own rows only |
+| `notification_preferences` | `user_id pk → profiles` (cascade), `push_enabled`, `training_reminders`, `announcements`, `training_updates` (all default true), `updated_at`. No row = all true. | own row only |
+
+Deep links: `/trainings/<session_id>` and `/announcements/<announcement_id>` (the mobile app maps both; an announcement route may simply open the Activity tab focused on it).
+
+Why `notifications.user_id` has no foreign key: training notifications are written by triggers while the session row is locked. A foreign key would key-share-lock each recipient's profile at that moment, the reverse of an account deletion's lock order (profile → memberships → RSVPs → session), and deadlock with it (pinned by a mutation test). Instead a deferred constraint trigger on `profiles` deletes a deleted user's notifications at the deletion's commit (jobs cascade), RLS never shows a row without an active membership, and `purge_old_notification_data()` removes any row that raced with the deletion.
+
+Realtime publication `supabase_realtime` adds `announcements` and `notifications` (RLS filters events per subscriber; subscribe with `user_id=eq.<uid>` / `community_id=eq.<id>` anyway). DELETE events carry only the primary key and are not RLS-filtered; rows are only deleted by cascades, account deletion and the purge. Reads, tokens, preferences and jobs are not published.
+
+## Notification kinds
+
+All recipients are **active** members of the community at the time of the event. The actor (`auth.uid()` of the editing / cancelling organizer, the announcement author) is never notified of their own action. **RSVP changes never notify anyone.** In-app notifications are always stored; push preferences only affect push.
+
+| Kind | Fired when | Recipients | Dedupe key | Deep link |
+|---|---|---|---|---|
+| `training_created` | `create_training` (trigger AFTER INSERT) | all except the creator | `training_created:<session>` | `/trainings/<id>` |
+| `training_updated` | a **material** change of a `scheduled` / `confirmed` session: `starts_at`, `ends_at` (compared at ms precision), `title`, `location_name`, `address`, `latitude`, `longitude`. Description, instructions, map link, activity type, limits: silent. | all except the editor and members whose RSVP is `not_going` | `training_updated:<session>:<transaction start, epoch µs>` (each edit notifies once; an identical resend changes nothing and fires nothing) | `/trainings/<id>` |
+| `training_confirmed` | finalizer `scheduled → confirmed` | members with a `going` RSVP, plus the session's organizer | `training_confirmed:<session>` | `/trainings/<id>` |
+| `training_cancelled` | `cancel_training` or finalizer (insufficient participation) | all except members with `not_going` and except the canceller (the organizer is included for a finalizer cancel) | `training_cancelled:<session>` | `/trainings/<id>` |
+| `training_reminder` | `enqueue_due_training_reminders()`: **24h** — starts in (23h, 24h] and is `scheduled` or `confirmed`; **2h** — starts in (1h, 2h] and is `confirmed`, skipped for a member who got this session's confirmation within the last hour | members with a `going` RSVP | `training_reminder_24h:<session>:<starts_at epoch s>` / `training_reminder_2h:…` (a rescheduled session gets fresh reminders) | `/trainings/<id>` |
+| `announcement_published` | published now, published by `update_announcement(…, null)`, or by `publish_due_announcements()` | all except the author | `announcement:<announcement>` | `/announcements/<id>` |
+
+Training notifications come from triggers on `training_sessions`, so they fire once per real transition whichever path makes it, and a finalizer re-run that changes nothing fires nothing. Every notification goes through `private.enqueue_notification` (insert `on conflict (user_id, dedupe_key) do nothing`; a push job only for rows really inserted), so re-runs and races never produce a second notification or job.
+
+## RPCs (authenticated)
+
+Common errors: `not_authenticated`, `forbidden`, `not_found`, `not_a_member`, `validation_failed:<field>`.
+
+`create_announcement(p_community_id uuid, p_title text, p_body text, p_scheduled_for timestamptz default null) → announcements`
+- Active organizer of the community (else `forbidden`, also for unknown communities). Null time = publish now (notifies). Otherwise `scheduled_for` must be in the future and at most 365 days ahead (`validation_failed:scheduled_for`). `validation_failed:title` / `:body`. Share-locks the organizer's membership: a concurrent removal or demotion waits; one that commits first gives `forbidden`.
+
+`update_announcement(p_id uuid, p_title text, p_body text, p_scheduled_for timestamptz) → announcements`
+- Organizer of its community, only while `scheduled` (`announcement_not_editable`). Full replace; null time publishes now (`scheduled_for` keeps the last planned time).
+
+`cancel_announcement(p_id uuid) → announcements`
+- Organizer, while `scheduled`. Already cancelled: returned unchanged. Published: `announcement_not_cancellable`. Update and cancel re-check the organizer role after the row lock.
+
+`mark_announcement_read(p_id uuid) → announcement_reads` — published announcement of a community the caller is active in (`not_found` otherwise); idempotent (first `read_at` stands); also marks its `announcement_published` notification read.
+`mark_announcements_read(p_community_id uuid) → integer` — all published ones; returns how many were newly marked; also marks their notifications. `not_a_member`.
+`unread_announcement_count(p_community_id uuid) → integer` — published, not authored by the caller, no read row. Client equivalent: published announcements of the community without an own `announcement_reads` row, excluding `author_id = me`.
+`mark_notification_read(p_id uuid) → notifications` — own notification of an active community (`not_found` otherwise); idempotent.
+`mark_all_notifications_read(p_community_id uuid) → integer` — returns how many changed. `not_a_member`.
+Unread notifications: `select count(*) from notifications where community_id = … and read_at is null` (RLS limits it to the caller).
+
+`register_push_token(p_token text, p_platform text, p_device_label text default null) → device_push_tokens`
+- Upsert by token: refreshes `last_seen_at`, platform and label, clears `invalidated_at` / `last_error`. **A token registered by another user is re-assigned to the caller**: an Expo token identifies one app installation, and the account now signed in there is the one that must receive its pushes (the previous one signed out, or its anonymous session was replaced); the previous user simply stops receiving on that device. At most 10 tokens per user (least recently seen dropped), serialized on the caller's profile row. Errors: `validation_failed:token` (format, ≤ 200), `validation_failed:platform`, `validation_failed:device_label` (≤ 80), `not_a_member` (no profile yet). Call it on every app start when permission is granted.
+`unregister_push_token(p_token text) → boolean` — removes the caller's own token (sign-out, push turned off); someone else's token is never touched; idempotent.
+`get_notification_preferences() → notification_preferences` — defaults (all true, `updated_at` null) when never set.
+`set_notification_preferences(p_push_enabled, p_training_reminders, p_announcements, p_training_updates boolean default null) → notification_preferences` — null keeps a value. `not_a_member` without a profile.
+
+When push permission is denied on the device the app registers no token; every notification still exists in-app and the dispatcher completes its job as `skipped` (`no_tokens`).
+
+## Scheduled (service_role only; pg_cron when available, same guarded pattern as the finalizer)
+
+| Job | Schedule | Function |
+|---|---|---|
+| `trainhive_publish_due_announcements` | every minute | `publish_due_announcements() → integer` — `scheduled` with `scheduled_for <= now`, `FOR UPDATE SKIP LOCKED`, `published_at = clock_timestamp()`; idempotent; an organizer cancel holding the row wins (skipped), a cancel arriving after the publish gets `announcement_not_cancellable`. |
+| `trainhive_training_reminders` | every minute | `enqueue_due_training_reminders() → integer` (notifications inserted). Hour-wide windows so a missed tick still fires once; `FOR NO KEY UPDATE SKIP LOCKED` on sessions. |
+| `trainhive_purge_notification_data` | daily 03:17 | `purge_old_notification_data() → integer` — deletes `sent/skipped/dead` jobs older than 30 days, `pending/failed` jobs expired more than 3 days ago, and notifications whose user has no profile. In-app notifications are kept. |
+
+Without pg_cron (local tests) these are no-ops; tests call the functions directly.
+
+## Dispatcher contract (Edge Function, M3-B2; all service_role)
+
+Job lifecycle: `pending → sending → sent | skipped | dead`; `sending → failed → (retry due) sending …`. `expires_at`: training notifications at the training's end (`ends_at`, or start + 2h; reminders: the start), announcements after 3 days; always between 15 minutes and 3 days after creation.
+
+`claim_notification_jobs(p_limit int default 100, p_worker text) → setof jsonb`
+- First turns into `dead` every expired `pending/failed` job and every `sending` job abandoned for over 5 minutes that has used all attempts (`last_error` `expired` / `abandoned while sending`).
+- Then claims up to `p_limit` (1–1000) jobs that are `pending`, `failed` with `next_attempt_at` due, or `sending` for over 5 minutes (a crashed worker), with `FOR UPDATE SKIP LOCKED` (concurrent workers never get the same job): `status = sending`, `locked_at`, `locked_by = p_worker` (required, ≤ 100 chars), `attempts + 1`.
+- Each row: `{ job_id, notification_id, user_id, kind, title, body, deep_link, community_id, related_session_id, related_announcement_id, attempts, max_attempts, unread_count, push_allowed, skip_reason, tokens }`. `tokens` = the user's tokens with `invalidated_at` null, most recently seen first. Preferences are applied **here, at send time** (the latest choice wins): `tokens` is empty and `push_allowed` false when the user is no longer an active member (`skip_reason: not_a_member`), has `push_enabled = false` (`push_disabled`), or turned off the kind's category (`category_disabled`: `training_reminders` for `training_reminder`, `announcements` for `announcement_published`, `training_updates` for the other training kinds). Allowed but no devices: `skip_reason: no_tokens`.
+
+`complete_notification_job(p_job_id uuid, p_status text, p_error text default null, p_retry_in_seconds int default null) → jsonb`
+- `p_status`: `sent` (Expo accepted it for at least one device), `skipped` (nothing to send), `failed` (transient: retried after `p_retry_in_seconds` (0–86400) or `30 s · 2^(attempts−1)` capped at 1 h; becomes `dead` once `attempts = max_attempts`), `dead` (permanent).
+- Only a `sending` job changes; anything else is returned unchanged with `changed: false` (repeated or late completions are harmless; a late completion from a worker whose job was reclaimed is accepted once). Returns `{ job_id, status, attempts, max_attempts, next_attempt_at, sent_at, changed }`. Errors: `validation_failed:status`, `validation_failed:retry_in_seconds`, `not_found`.
+
+`invalidate_push_tokens(p_tokens text[], p_error text default 'DeviceNotRegistered') → integer` — sets `invalidated_at`; those tokens are never returned again until the device registers them again.
+
+Expo push API behaviour assumed (to be re-checked against the Expo docs in M3-B2):
+- `POST https://exp.host/--/api/v2/push/send` with an array of messages `{ to, title, body, data: { url: deep_link, notification_id, kind }, sound: 'default', badge: unread_count }`. At most **100 messages per request**; Expo also limits a project to about **600 notifications per second** (the task's "600 per request" is read as this per-second limit). One message per token; chunk at 100.
+- The response holds one **push ticket** per message: `status: ok` with a ticket `id`, or `status: error` with `details.error`. `DeviceNotRegistered` → `invalidate_push_tokens` for that token. `MessageTooBig` / `InvalidCredentials` / malformed → `dead`. HTTP 429 / 5xx / network errors → `failed` (pass `Retry-After` as `p_retry_in_seconds`).
+- A job counts as `sent` when at least one of the user's tokens got an `ok` ticket (no duplicate pushes to devices that already received it); if every token failed transiently → `failed`.
+- **Push receipts** (`POST /--/api/v2/push/getReceipts` with ticket ids, ready ~15 minutes later, kept ~24 h) can also report `DeviceNotRegistered`. M3-B1 stores no ticket ids; M3-B2 either checks receipts within its own run or adds a ticket column in its own migration.
+- Delivery is at-least-once: a worker that crashes after sending but before completing is reclaimed after 5 minutes and may push twice. The in-app notification is never duplicated.

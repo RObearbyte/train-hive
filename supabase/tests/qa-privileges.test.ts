@@ -22,19 +22,37 @@ const denied = { code: INSUFFICIENT_PRIVILEGE };
 const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   add_walk_in_attendee: 'authenticated',
   admin_create_community: 'service_role',
+  cancel_announcement: 'authenticated',
   cancel_training: 'authenticated',
+  claim_notification_jobs: 'service_role',
+  complete_notification_job: 'service_role',
+  create_announcement: 'authenticated',
   create_invitation: 'authenticated',
   create_training: 'authenticated',
+  enqueue_due_training_reminders: 'service_role',
   finalize_attendance: 'authenticated',
   finalize_due_sessions: 'service_role',
   get_attendance_sheet: 'authenticated',
+  get_notification_preferences: 'authenticated',
+  invalidate_push_tokens: 'service_role',
   is_active_member: 'authenticated',
   is_organizer: 'authenticated',
+  mark_all_notifications_read: 'authenticated',
+  mark_announcement_read: 'authenticated',
+  mark_announcements_read: 'authenticated',
+  mark_notification_read: 'authenticated',
   preview_invitation: 'authenticated',
+  publish_due_announcements: 'service_role',
+  purge_old_notification_data: 'service_role',
   record_attendance: 'authenticated',
   redeem_invitation: 'authenticated',
+  register_push_token: 'authenticated',
   revoke_invitation: 'authenticated',
+  set_notification_preferences: 'authenticated',
   set_rsvp: 'authenticated',
+  unread_announcement_count: 'authenticated',
+  unregister_push_token: 'authenticated',
+  update_announcement: 'authenticated',
   update_display_name: 'authenticated',
   update_training: 'authenticated',
 };
@@ -218,7 +236,7 @@ describe('QA table privileges', () => {
               or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
                   and has_any_column_privilege(r.role, c.oid, p.privilege)))
          and not (r.role = 'authenticated' and p.privilege = 'SELECT'
-                  and c.relname <> 'invitation_attempts')
+                  and c.relname not in ('invitation_attempts', 'notification_delivery_jobs'))
        order by 1, 2, 3`,
     );
     expect(rows).toEqual([]);

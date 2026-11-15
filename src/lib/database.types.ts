@@ -14,6 +14,15 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 /** `attendance_audit_log.action` (a text column with a check constraint, not an enum). */
 export type AttendanceAuditAction = 'record' | 'correct' | 'walk_in_add';
 
+/** `device_push_tokens.platform` (text with a check constraint). */
+export type PushPlatform = 'ios' | 'android' | 'web';
+
+/** `notification_delivery_jobs.status` (text with a check constraint). */
+export type NotificationJobStatus = 'pending' | 'sending' | 'sent' | 'failed' | 'dead' | 'skipped';
+
+/** `p_status` of `complete_notification_job`. */
+export type NotificationJobOutcome = 'sent' | 'skipped' | 'failed' | 'dead';
+
 export type Database = {
   public: {
     Tables: {
@@ -549,6 +558,290 @@ export type Database = {
           },
         ];
       };
+      announcements: {
+        Row: {
+          id: string;
+          community_id: string;
+          /** null once the author's account is deleted. */
+          author_id: string | null;
+          title: string;
+          body: string;
+          status: Database['public']['Enums']['announcement_status'];
+          scheduled_for: string | null;
+          published_at: string | null;
+          cancelled_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          community_id: string;
+          author_id?: string | null;
+          title: string;
+          body: string;
+          status: Database['public']['Enums']['announcement_status'];
+          scheduled_for?: string | null;
+          published_at?: string | null;
+          cancelled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          community_id?: string;
+          author_id?: string | null;
+          title?: string;
+          body?: string;
+          status?: Database['public']['Enums']['announcement_status'];
+          scheduled_for?: string | null;
+          published_at?: string | null;
+          cancelled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'announcements_community_id_fkey';
+            columns: ['community_id'];
+            isOneToOne: false;
+            referencedRelation: 'communities';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'announcements_author_id_fkey';
+            columns: ['author_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      announcement_reads: {
+        Row: { announcement_id: string; user_id: string; read_at: string };
+        Insert: { announcement_id: string; user_id: string; read_at?: string };
+        Update: { announcement_id?: string; user_id?: string; read_at?: string };
+        Relationships: [
+          {
+            foreignKeyName: 'announcement_reads_announcement_id_fkey';
+            columns: ['announcement_id'];
+            isOneToOne: false;
+            referencedRelation: 'announcements';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'announcement_reads_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      notifications: {
+        Row: {
+          id: string;
+          /** No foreign key (see the contract); always the recipient. */
+          user_id: string;
+          community_id: string;
+          kind: Database['public']['Enums']['notification_kind'];
+          title: string;
+          body: string;
+          /** Relative app route: `/trainings/<id>` or `/announcements/<id>`. */
+          deep_link: string;
+          related_session_id: string | null;
+          related_announcement_id: string | null;
+          dedupe_key: string;
+          created_at: string;
+          read_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          community_id: string;
+          kind: Database['public']['Enums']['notification_kind'];
+          title: string;
+          body: string;
+          deep_link: string;
+          related_session_id?: string | null;
+          related_announcement_id?: string | null;
+          dedupe_key: string;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          community_id?: string;
+          kind?: Database['public']['Enums']['notification_kind'];
+          title?: string;
+          body?: string;
+          deep_link?: string;
+          related_session_id?: string | null;
+          related_announcement_id?: string | null;
+          dedupe_key?: string;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_community_id_fkey';
+            columns: ['community_id'];
+            isOneToOne: false;
+            referencedRelation: 'communities';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'notifications_related_session_id_fkey';
+            columns: ['related_session_id'];
+            isOneToOne: false;
+            referencedRelation: 'training_sessions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'notifications_related_announcement_id_fkey';
+            columns: ['related_announcement_id'];
+            isOneToOne: false;
+            referencedRelation: 'announcements';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      /** No client access at all (no grant, no policy). Listed for the service-role dispatcher. */
+      notification_delivery_jobs: {
+        Row: {
+          id: string;
+          notification_id: string;
+          user_id: string;
+          status: NotificationJobStatus;
+          attempts: number;
+          max_attempts: number;
+          next_attempt_at: string;
+          expires_at: string;
+          last_error: string | null;
+          locked_at: string | null;
+          locked_by: string | null;
+          created_at: string;
+          sent_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          notification_id: string;
+          user_id: string;
+          status?: NotificationJobStatus;
+          attempts?: number;
+          max_attempts?: number;
+          next_attempt_at?: string;
+          expires_at: string;
+          last_error?: string | null;
+          locked_at?: string | null;
+          locked_by?: string | null;
+          created_at?: string;
+          sent_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          notification_id?: string;
+          user_id?: string;
+          status?: NotificationJobStatus;
+          attempts?: number;
+          max_attempts?: number;
+          next_attempt_at?: string;
+          expires_at?: string;
+          last_error?: string | null;
+          locked_at?: string | null;
+          locked_by?: string | null;
+          created_at?: string;
+          sent_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notification_delivery_jobs_notification_id_fkey';
+            columns: ['notification_id'];
+            isOneToOne: true;
+            referencedRelation: 'notifications';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      device_push_tokens: {
+        Row: {
+          id: string;
+          user_id: string;
+          token: string;
+          platform: PushPlatform;
+          device_label: string | null;
+          created_at: string;
+          last_seen_at: string;
+          invalidated_at: string | null;
+          last_error: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          token: string;
+          platform: PushPlatform;
+          device_label?: string | null;
+          created_at?: string;
+          last_seen_at?: string;
+          invalidated_at?: string | null;
+          last_error?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          token?: string;
+          platform?: PushPlatform;
+          device_label?: string | null;
+          created_at?: string;
+          last_seen_at?: string;
+          invalidated_at?: string | null;
+          last_error?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'device_push_tokens_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      notification_preferences: {
+        Row: {
+          user_id: string;
+          push_enabled: boolean;
+          training_reminders: boolean;
+          announcements: boolean;
+          training_updates: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          push_enabled?: boolean;
+          training_reminders?: boolean;
+          announcements?: boolean;
+          training_updates?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          push_enabled?: boolean;
+          training_reminders?: boolean;
+          announcements?: boolean;
+          training_updates?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notification_preferences_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: true;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -640,6 +933,109 @@ export type Database = {
         Args: { p_session_id: string };
         Returns: Json;
       };
+      /** Organizer only. `p_scheduled_for` null = publish now. */
+      create_announcement: {
+        Args: {
+          p_community_id: string;
+          p_title: string;
+          p_body: string;
+          p_scheduled_for?: string | null;
+        };
+        Returns: Database['public']['Tables']['announcements']['Row'];
+      };
+      /** Organizer only, while `scheduled`. `p_scheduled_for` null = publish now. */
+      update_announcement: {
+        Args: { p_id: string; p_title: string; p_body: string; p_scheduled_for: string | null };
+        Returns: Database['public']['Tables']['announcements']['Row'];
+      };
+      /** Organizer only, while `scheduled`; idempotent. */
+      cancel_announcement: {
+        Args: { p_id: string };
+        Returns: Database['public']['Tables']['announcements']['Row'];
+      };
+      /** service_role only; scheduled by pg_cron. */
+      publish_due_announcements: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      mark_announcement_read: {
+        Args: { p_id: string };
+        Returns: Database['public']['Tables']['announcement_reads']['Row'];
+      };
+      /** Returns the number of announcements newly marked read. */
+      mark_announcements_read: {
+        Args: { p_community_id: string };
+        Returns: number;
+      };
+      unread_announcement_count: {
+        Args: { p_community_id: string };
+        Returns: number;
+      };
+      mark_notification_read: {
+        Args: { p_id: string };
+        Returns: Database['public']['Tables']['notifications']['Row'];
+      };
+      /** Returns the number of notifications newly marked read. */
+      mark_all_notifications_read: {
+        Args: { p_community_id: string };
+        Returns: number;
+      };
+      /** service_role only; scheduled by pg_cron. */
+      enqueue_due_training_reminders: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      register_push_token: {
+        Args: { p_token: string; p_platform: PushPlatform; p_device_label?: string | null };
+        Returns: Database['public']['Tables']['device_push_tokens']['Row'];
+      };
+      /** Returns whether a row was removed. */
+      unregister_push_token: {
+        Args: { p_token: string };
+        Returns: boolean;
+      };
+      /** `updated_at` is null when the user never saved preferences (all defaults). */
+      get_notification_preferences: {
+        Args: Record<PropertyKey, never>;
+        Returns: Omit<Database['public']['Tables']['notification_preferences']['Row'], 'updated_at'> & {
+          updated_at: string | null;
+        };
+      };
+      /** A null / omitted argument keeps the current value. */
+      set_notification_preferences: {
+        Args: {
+          p_push_enabled?: boolean | null;
+          p_training_reminders?: boolean | null;
+          p_announcements?: boolean | null;
+          p_training_updates?: boolean | null;
+        };
+        Returns: Database['public']['Tables']['notification_preferences']['Row'];
+      };
+      /** service_role only (push dispatcher). Returns one `ClaimedNotificationJob` per row. */
+      claim_notification_jobs: {
+        Args: { p_limit?: number; p_worker: string };
+        Returns: Json[];
+      };
+      /** service_role only (push dispatcher). Returns a `CompleteNotificationJobResult`. */
+      complete_notification_job: {
+        Args: {
+          p_job_id: string;
+          p_status: NotificationJobOutcome;
+          p_error?: string | null;
+          p_retry_in_seconds?: number | null;
+        };
+        Returns: Json;
+      };
+      /** service_role only (push dispatcher). Returns the number of tokens newly invalidated. */
+      invalidate_push_tokens: {
+        Args: { p_tokens: string[]; p_error?: string | null };
+        Returns: number;
+      };
+      /** service_role only; scheduled daily. Returns the number of rows deleted. */
+      purge_old_notification_data: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
     };
     Enums: {
       membership_role: 'organizer' | 'member';
@@ -648,6 +1044,14 @@ export type Database = {
       cancel_reason: 'insufficient_participation' | 'organizer';
       rsvp_response: 'going' | 'not_going' | 'no_response';
       attendance_status: 'present' | 'absent' | 'unrecorded';
+      announcement_status: 'scheduled' | 'published' | 'cancelled';
+      notification_kind:
+        | 'training_created'
+        | 'training_updated'
+        | 'training_confirmed'
+        | 'training_cancelled'
+        | 'training_reminder'
+        | 'announcement_published';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -685,6 +1089,52 @@ export type SessionStatus = Enums<'session_status'>;
 export type CancelReason = Enums<'cancel_reason'>;
 export type RsvpResponse = Enums<'rsvp_response'>;
 export type AttendanceStatus = Enums<'attendance_status'>;
+
+export type Announcement = Tables<'announcements'>;
+export type AnnouncementRead = Tables<'announcement_reads'>;
+export type AppNotification = Tables<'notifications'>;
+export type DevicePushToken = Tables<'device_push_tokens'>;
+export type NotificationPreferences = Tables<'notification_preferences'>;
+export type NotificationDeliveryJob = Tables<'notification_delivery_jobs'>;
+export type AnnouncementStatus = Enums<'announcement_status'>;
+export type NotificationKind = Enums<'notification_kind'>;
+
+/** Why a claimed job has no tokens (`claim_notification_jobs`). */
+export type NotificationSkipReason = 'not_a_member' | 'push_disabled' | 'category_disabled' | 'no_tokens';
+
+/** One row of `claim_notification_jobs` (service_role dispatcher). */
+export type ClaimedNotificationJob = {
+  job_id: string;
+  notification_id: string;
+  user_id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  deep_link: string;
+  community_id: string;
+  related_session_id: string | null;
+  related_announcement_id: string | null;
+  /** Including this claim. */
+  attempts: number;
+  max_attempts: number;
+  /** The recipient's unread in-app notifications (all communities), for the badge. */
+  unread_count: number;
+  push_allowed: boolean;
+  skip_reason: NotificationSkipReason | null;
+  /** Valid tokens, most recently seen first; empty when push is not allowed. */
+  tokens: string[];
+};
+
+/** Result of `complete_notification_job`. `changed` is false for a repeated completion. */
+export type CompleteNotificationJobResult = {
+  job_id: string;
+  status: NotificationJobStatus;
+  attempts: number;
+  max_attempts: number;
+  next_attempt_at: string;
+  sent_at: string | null;
+  changed: boolean;
+};
 
 /** `{ ok: false, error }` branch shared by the invitation RPCs. `error` is a contract code. */
 export type RpcFailure = { ok: false; error: string };

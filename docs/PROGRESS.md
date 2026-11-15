@@ -26,7 +26,7 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 - [x] M2-Q1 (+ fixes M2-B2, M2-F1) (S, qa) Review + tests
 
 ## Milestone 3 — Communications and Notifications
-- [ ] M3-B1 (L, backend) announcements, notifications, push tokens, outbox, scheduled publish, triggers + tests
+- [x] M3-B1 (L, backend) announcements, notifications, push tokens, outbox, scheduled publish, triggers + tests
 - [ ] M3-B2 (M, backend) Edge Function: Expo push delivery with retry and invalid-token handling
 - [ ] M3-A1 (L, mobile) Activity tab, unread state, push registration, deep links, preferences
 - [ ] M3-Q1 (S, qa) Review + tests

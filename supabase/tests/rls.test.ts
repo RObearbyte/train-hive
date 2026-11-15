@@ -542,7 +542,14 @@ describe('trainings and RSVPs under RLS', () => {
     const { rows } = await admin.query<{ tablename: string }>(
       "select tablename from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' order by tablename",
     );
-    expect(rows.map((row) => row.tablename)).toEqual(['attendance_records', 'memberships', 'training_rsvps', 'training_sessions']);
+    expect(rows.map((row) => row.tablename)).toEqual([
+      'announcements',
+      'attendance_records',
+      'memberships',
+      'notifications',
+      'training_rsvps',
+      'training_sessions',
+    ]);
   });
 
   it('grants finalize_due_sessions to service_role only, and schedules nothing without pg_cron', async () => {
