@@ -6,7 +6,7 @@ export const EMPTY_STATS =
   'No finalized trainings yet. Statistics appear after attendance is finalized.';
 
 export const NOT_RECORDED_NOTE =
-  'Not recorded means nobody marked the attendance for that training. It is not counted as an absence.';
+  'Not recorded means nobody marked the attendance for that training. It is not counted as an absence, but it is included when the rate is calculated, so the rate can be lower than the real turnout.';
 
 export const RATE_NOTE = 'Attended divided by all finalized trainings eligible in this period.';
 
@@ -23,7 +23,7 @@ export const CONVERSION_HELP =
 export const HISTORY_EMPTY = 'No finalized trainings in this period yet.';
 
 export const MEMBER_LIST_NOTE =
-  'Rates use each member’s finalized trainings in the selected period. Not recorded trainings are not counted as absences.';
+  'A rate is attended divided by all of the member’s finalized trainings in the selected period. Trainings with no attendance recorded are not counted as absences, but they are included in that total, so a rate can be lower than the real turnout.';
 
 /** "n sessions had no attendance marked and are excluded." */
 export function incompleteNote(count: number): string | null {

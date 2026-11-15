@@ -15,7 +15,8 @@ import {
   formatPercent,
   ofCount,
   sessionsText,
-  smallSampleLabel,
+  formatTickValue,
+  smallRsvpSampleLabel,
 } from '../domain/format';
 import { axisLabels } from '../domain/periods';
 import { presentText, trendSummary, visibleTopSessions } from '../domain/summaries';
@@ -30,7 +31,7 @@ function Overview({ stats }: { stats: CommunityStatistics }) {
   const { spacing, minTouchTarget } = useTheme();
   const top = visibleTopSessions(stats.top_sessions);
   const excluded = incompleteNote(stats.incomplete_sessions);
-  const conversionSample = smallSampleLabel(stats.rsvp_going_recorded);
+  const conversionSample = smallRsvpSampleLabel(stats.rsvp_going_recorded);
   const unit = stats.trend_unit === 'month' ? 'month' : 'week';
   const averages = stats.trend.map((bucket) => bucket.average_attendees);
   const hasSessions = stats.completed_trainings > 0;
@@ -100,7 +101,7 @@ function Overview({ stats }: { stats: CommunityStatistics }) {
                 bucket.sessions > 0 ? sessionsText(bucket.sessions) : null,
               )}
               scale={countScale(averages)}
-              formatTick={(tick) => formatDecimal(tick)}
+              formatTick={formatTickValue}
               accessibilitySummary={trendSummary(stats.trend, unit)}
             />
           )}

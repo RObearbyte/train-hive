@@ -34,6 +34,7 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   finalize_due_sessions: 'service_role',
   get_attendance_sheet: 'authenticated',
   get_community_statistics: 'authenticated',
+  get_member_attendance_history: 'authenticated',
   get_member_statistics: 'authenticated',
   get_my_attendance_history: 'authenticated',
   get_my_statistics: 'authenticated',
@@ -70,6 +71,7 @@ const TARGET_USER_ARGS: Record<string, string[]> = {
   add_walk_in_attendee: ['p_user_id'],
   record_attendance: ['p_user_id'],
   // M4: an organizer reads one member's statistics (read-only).
+  get_member_attendance_history: ['p_user_id'],
   get_member_statistics: ['p_user_id'],
 };
 
@@ -77,6 +79,7 @@ const TARGET_USER_ARGS: Record<string, string[]> = {
 const ORGANIZER_CHECK: Record<string, string> = {
   add_walk_in_attendee: 'private.authorize_attendance(p_session_id)',
   record_attendance: 'private.authorize_attendance(p_session_id)',
+  get_member_attendance_history: 'not public.is_organizer(p_community_id)',
   get_member_statistics: 'not public.is_organizer(p_community_id)',
 };
 
@@ -224,6 +227,7 @@ describe('QA function privileges', () => {
       ['select public.get_my_statistics($1, $2)', [communityId, '30d']],
       ['select public.get_my_attendance_history($1, $2)', [communityId, '30d']],
       ['select public.get_member_statistics($1, $2, $3)', [communityId, organizerId, '30d']],
+      ['select public.get_member_attendance_history($1, $2, $3)', [communityId, organizerId, '30d']],
       ['select public.get_community_statistics($1, $2)', [communityId, '30d']],
       ['select public.list_member_statistics_summary($1, $2)', [communityId, '30d']],
     ];

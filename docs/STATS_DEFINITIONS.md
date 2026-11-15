@@ -16,7 +16,7 @@ The single source of truth for every number shown in the Statistics tab. The SQL
 6. **Changed training dates:** statistics use the session's *current* `starts_at`. A session moved between windows moves with it.
 7. **Zero denominators** produce `null` (shown as "—" with a short explanation such as "No finalized trainings yet"), never `0%` and never an error.
 8. **Rates are percentages with one decimal at most**, rounded half up, computed in SQL from integer counts; the app also shows the underlying counts ("7 of 9").
-9. **Small samples:** when the denominator is below 3, the app shows the count but labels the percentage "based on N trainings".
+9. **Small samples:** when the denominator is below 3, the app shows the count but labels the percentage "based on N trainings" (or "based on N RSVPs" for the RSVP-based rates).
 
 ## Member statistics (for one member, visible to that member and to organizers)
 

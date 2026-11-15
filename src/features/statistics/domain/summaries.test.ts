@@ -168,7 +168,6 @@ const row = (over: Partial<MemberStatisticsSummaryRow>): MemberStatisticsSummary
   attended: 3,
   absent: 0,
   not_recorded: 1,
-  recorded: 3,
   attendance_rate: 75,
   confirmed_rsvps: 3,
   missed: 0,

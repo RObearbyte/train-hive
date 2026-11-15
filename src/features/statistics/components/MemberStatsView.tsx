@@ -60,7 +60,7 @@ export function MemberStatsView({
             label="Not recorded"
             value={formatCount(stats.not_recorded)}
             detail={stats.not_recorded === 1 ? 'training' : 'trainings'}
-            note="Not an absence"
+            note="Not an absence, but included in the rate"
           />
         </StatGrid>
         <Text variant="caption" color="textMuted">

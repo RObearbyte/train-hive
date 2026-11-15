@@ -62,6 +62,21 @@ export function smallSampleLabel(denominator: number): string | null {
   return `based on ${n} ${trainingNoun(n)}`;
 }
 
+/** Same as `smallSampleLabel` for a count of RSVPs (people): "based on 1 RSVP" / "based on 2 RSVPs". */
+export function smallRsvpSampleLabel(denominator: number): string | null {
+  if (!isFiniteNumber(denominator)) return null;
+  const n = Math.trunc(denominator);
+  if (n < 1 || n >= SMALL_SAMPLE_THRESHOLD) return null;
+  return `based on ${n} ${n === 1 ? 'RSVP' : 'RSVPs'}`;
+}
+
+/** An axis tick: up to two decimals, trailing zeros dropped (0.75 -> "0.75", 12.5 -> "12.5"). */
+export function formatTickValue(value: number): string {
+  if (!isFiniteNumber(value)) return DASH;
+  const text = String(Number((Math.round(value * 100) / 100).toFixed(2)));
+  return text === '-0' ? '0' : text;
+}
+
 /** "1 session" / "3 sessions". */
 export function sessionsText(count: number): string {
   const n = isFiniteNumber(count) ? Math.max(0, Math.trunc(count)) : 0;

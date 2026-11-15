@@ -427,3 +427,11 @@ TypeScript: `src/lib/database.types.ts` — `StatisticsWindow`, `MyStatistics` /
 ## Milestone 4, B1 small fix (append-only)
 
 Migration `20261117000200_announcement_read_lock.sql`: `mark_announcement_read` and `mark_announcements_read` now key-share-lock the caller's profile before inserting `announcement_reads`, like `mark_notification_read` / `mark_all_notifications_read`. During a concurrent account deletion they wait and then raise `not_found` (single) / `not_a_member` (all) instead of a foreign key violation (`23503`, reproduced by a test against the old body). Signatures, grants and normal behaviour unchanged.
+
+## Milestone 4, B2: organizer reads a member's history (append-only)
+
+Migration `20261118000100_member_history.sql` (fixes QA defect Q5-4).
+
+`get_member_attendance_history(p_community_id uuid, p_user_id uuid, p_window text, p_limit int default 50, p_before timestamptz default null) → jsonb` — `security definer`, `stable`, `set search_path = ''`, `authenticated` only. Caller must be an **active organizer** of the community (else `forbidden`, members asking about themselves included); the target must have a membership in that community, **active or removed** (else `not_found`: unknown, null, members of other communities). Order of checks: `not_authenticated` → `forbidden` → `not_found` → `validation_failed:window` / `validation_failed:limit`. Payload, limit rules (1–100) and keyset pagination (`next_before` passed back verbatim, same-instant sessions never split) are exactly those of `get_my_attendance_history`: both call `private.stats_history_payload`. TypeScript: `AttendanceHistoryPage`.
+
+Type fix (Q5-5): `MemberStatisticsSummaryRow` no longer declares `recorded`; `list_member_statistics_summary` lines never carried it (SQL unchanged). Use `attended + absent` if needed.

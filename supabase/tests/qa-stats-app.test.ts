@@ -5,7 +5,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { barsFor, countScale, rateScale } from '@/features/statistics/domain/chart';
 import { MEMBER_LIST_NOTE, NOT_RECORDED_NOTE, RATE_NOTE } from '@/features/statistics/domain/copy';
-import { formatCount, formatDecimal, formatPercent, ofCount, smallSampleLabel } from '@/features/statistics/domain/format';
+import { formatCount, formatDecimal, formatPercent, ofCount, smallRsvpSampleLabel, smallSampleLabel } from '@/features/statistics/domain/format';
 import { axisLabels, parsePeriod } from '@/features/statistics/domain/periods';
 import {
   flattenHistory,
@@ -114,7 +114,7 @@ describe('what the screens print, from real data', () => {
 
         const list = await summary(world.organizer.id, c, w);
         for (const row of list.members) {
-          check(`${label} row`, memberRowLabel({ ...row, recorded: row.attended + row.absent }));
+          check(`${label} row`, memberRowLabel(row));
           check(`${label} line`, memberLine(row));
           const sample = smallSampleLabel(row.eligible);
           if (row.eligible >= 1 && row.eligible < 3 && !sample) bad.push(`${label}: no small-sample label for ${row.eligible}`);
@@ -173,13 +173,13 @@ describe('copy against the definitions', () => {
     expect(RATE_NOTE).toMatch(/all finalized trainings/i);
   });
 
-  // DEFECT Q5-1: the screens say that Not recorded "is not counted as an absence" (NOT_RECORDED_NOTE,
-  // MEMBER_LIST_NOTE, the card "Not an absence"), but the attendance rate keeps those trainings in
-  // the denominator, so for the rate a Not recorded training is exactly an absence (decision D2).
-  // Either the copy or the definition has to change. This test states what the copy promises.
-  it.fails('DEFECT Q5-1: a Not recorded training must not lower the rate, as the copy promises', async () => {
+  // Q5-1 (resolved by owner decision D2): the attendance rate keeps Not recorded trainings in the
+  // denominator (spec formula: attended / eligible), so the copy must say exactly that instead of
+  // promising the rate ignores them.
+  it('Q5-1 resolved: the copy says Not recorded is not an absence but is included in the rate', async () => {
     expect(NOT_RECORDED_NOTE).toMatch(/not counted as an absence/);
-    expect(MEMBER_LIST_NOTE).toMatch(/not counted as absences/);
+    expect(NOT_RECORDED_NOTE).toMatch(/included when the rate is calculated/);
+    expect(MEMBER_LIST_NOTE).toMatch(/included in that total/);
     const season = await SeasonBuilder.create('UTC');
     const marked = await season.person({ joinedAt: '2020-01-01T00:00:00Z' });
     const s1 = await season.session({ hoursAgo: 10 });
@@ -187,15 +187,13 @@ describe('copy against the definitions', () => {
     await season.going(s1, marked, 'present');
     await season.going(s2, marked, 'unrecorded');
     const stats = await myStats(marked, season.communityId, '7d');
-    // Present once, never marked absent: if "not counted as an absence" held for the rate, it would be 100.
     expect(stats.absent).toBe(0);
-    expect(stats.attendance_rate).toBe(100);
+    expect(stats.not_recorded).toBe(1);
+    expect(stats.attendance_rate).toBe(50);
   });
 
-  // DEFECT Q5-2: the community card "RSVP to attendance" labels small samples with smallSampleLabel(rsvp_going_recorded),
-  // which says "based on N trainings". The denominator is a number of going RSVPs (people), not trainings:
-  // two recorded RSVPs of one training read "based on 2 trainings" (CommunityOverview.tsx:33, :68).
-  it.fails('DEFECT Q5-2: the small-sample label of the community conversion does not name trainings it is not based on', async () => {
+  // Q5-2 (fixed): the community card "RSVP to attendance" counts going RSVPs (people), so its small-sample label says RSVPs.
+  it('Q5-2 fixed: the small-sample label of the community conversion names RSVPs, not trainings', async () => {
     const season = await SeasonBuilder.create('UTC');
     const org = await season.person({ role: 'organizer' });
     const other = await season.person({ name: 'Other Runner' });
@@ -204,27 +202,29 @@ describe('copy against the definitions', () => {
     await season.going(s, other, 'present');
     const stats = await communityStats(org, season.communityId, '7d');
     expect(stats).toMatchObject({ completed_trainings: 1, rsvp_going_recorded: 2 });
-    expect(smallSampleLabel(stats.rsvp_going_recorded)).not.toBe('based on 2 trainings');
+    expect(smallRsvpSampleLabel(stats.rsvp_going_recorded)).toBe('based on 2 RSVPs');
   });
 
-  // DEFECT Q5-4: STATS_DEFINITIONS (member statistics, "Historical attendance") makes the history of a member
+  // Q5-4 (fixed by get_member_attendance_history, stats-member-history.test.ts): STATS_DEFINITIONS (member statistics, "Historical attendance") makes the history of a member
   // visible to that member AND to organizers, but the only history function is get_my_attendance_history
   // (own identity). The organizer's member screen has no history (MemberDetailScreen.tsx header comment).
-  it.fails('DEFECT Q5-4: an organizer can read the attendance history of a member', async () => {
+  it('Q5-4 fixed: an organizer can read the attendance history of a member', async () => {
     const { rows } = await admin.query<{ name: string }>(
-      "select proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname like '%attendance_history%' and proname <> 'get_my_attendance_history'",
+      "select proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname like '%attendance_history%' and proname = 'get_member_attendance_history'",
     );
     expect(rows.length).toBeGreaterThan(0);
   });
 
-  // DEFECT Q5-5: MemberStatisticsSummaryRow (database.types.ts) inherits `recorded` from MemberStatisticsCounts,
+  // Q5-5 (fixed: the type omits `recorded`): MemberStatisticsSummaryRow (database.types.ts) inherits `recorded` from MemberStatisticsCounts,
   // but list_member_statistics_summary lines do not carry it (the contract lists none). A reader of the type gets undefined
   // typed as number. The app does not read it today.
-  it.fails('DEFECT Q5-5: the summary row type declares only keys the SQL returns', async () => {
+  it('Q5-5 fixed: the summary row type declares only keys the SQL returns', async () => {
     const season = await SeasonBuilder.create('UTC');
     const org = await season.person({ role: 'organizer' });
     const list = await summary(org, season.communityId, '30d');
-    const declared = [...new Set([...typeKeys('MemberStatisticsCounts'), 'user_id', 'display_name', 'role', 'joined_at'])].sort();
+    const declared = [...new Set([...typeKeys('MemberStatisticsCounts'), ...typeKeys('MemberStatisticsSummaryRow')])].filter((k) => k !== 'recorded').sort();
+    const source = readFileSync(path.resolve(__dirname, '../../src/lib/database.types.ts'), 'utf8');
+    expect(source).toMatch(/export type MemberStatisticsSummaryRow = Omit<MemberStatisticsCounts, 'recorded'>/);
     expect(keysOf(list.members[0])).toEqual(declared);
   });
 

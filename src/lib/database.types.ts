@@ -1058,6 +1058,20 @@ export type Database = {
         Args: { p_community_id: string; p_user_id: string; p_window: StatisticsWindow };
         Returns: Json;
       };
+      /**
+       * Organizer of the community; the member may be removed (else `not_found`). Returns an
+       * `AttendanceHistoryPage`, same behaviour as `get_my_attendance_history`.
+       */
+      get_member_attendance_history: {
+        Args: {
+          p_community_id: string;
+          p_user_id: string;
+          p_window: StatisticsWindow;
+          p_limit?: number;
+          p_before?: string | null;
+        };
+        Returns: Json;
+      };
       /** Organizer of the community. Returns a `CommunityStatistics`. */
       get_community_statistics: {
         Args: { p_community_id: string; p_window: StatisticsWindow };
@@ -1325,7 +1339,7 @@ export type MemberStatistics = StatisticsEnvelope &
 /** Result of `get_my_statistics`. */
 export type MyStatistics = MemberStatistics;
 
-/** One session of `get_my_attendance_history`. */
+/** One session of `get_my_attendance_history` / `get_member_attendance_history`. */
 export type AttendanceHistoryItem = {
   session_id: string;
   title: string;
@@ -1341,7 +1355,7 @@ export type AttendanceHistoryItem = {
   is_walk_in: boolean;
 };
 
-/** Result of `get_my_attendance_history`: newest first. */
+/** Result of `get_my_attendance_history` / `get_member_attendance_history`: newest first. */
 export type AttendanceHistoryPage = StatisticsEnvelope & {
   items: AttendanceHistoryItem[];
   has_more: boolean;
@@ -1408,8 +1422,8 @@ export type CommunityStatistics = StatisticsEnvelope & {
   top_sessions: TopSession[];
 };
 
-/** One line of `list_member_statistics_summary`. */
-export type MemberStatisticsSummaryRow = MemberStatisticsCounts & {
+/** One line of `list_member_statistics_summary`. It carries no `recorded` (attended + absent). */
+export type MemberStatisticsSummaryRow = Omit<MemberStatisticsCounts, 'recorded'> & {
   user_id: string;
   display_name: string;
   role: MembershipRole;

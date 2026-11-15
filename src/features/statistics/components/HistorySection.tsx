@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, View } from 'react-native';
 
-import type { AttendanceHistoryItem, AttendanceStatus, StatisticsWindow } from '@/lib/database.types';
+import type { AttendanceHistoryItem, AttendanceHistoryPage, AttendanceStatus } from '@/lib/database.types';
 import { formatDateTime, isValidTimeZone } from '@/lib/datetime';
 import { toAppError, userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -21,7 +21,9 @@ import {
 
 import { HISTORY_EMPTY } from '../domain/copy';
 import { outcomeLabel, rsvpLabel } from '../domain/summaries';
-import { useMyAttendanceHistory } from '../hooks/useStatistics';
+import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query';
+
+import type { AppError } from '@/lib/errors';
 
 const OUTCOME_STYLE: Record<AttendanceStatus, { icon: IconName; fg: ColorToken; bg: ColorToken }> = {
   present: { icon: 'check-circle', fg: 'success', bg: 'successSoft' },
@@ -88,16 +90,22 @@ function HistoryRow({ item }: { item: AttendanceHistoryItem }) {
   );
 }
 
-/** "History": my finalized trainings in the window, newest first, loaded page by page. */
+/**
+ * "History": finalized trainings in the window, newest first, loaded page by page.
+ * The caller supplies the query (mine, or an organizer's view of one member).
+ */
 export function HistorySection({
-  communityId,
-  window,
+  history,
+  errorTitle = 'Could not load your history',
 }: {
-  communityId: string | null;
-  window: StatisticsWindow;
+  history: {
+    query: UseInfiniteQueryResult<InfiniteData<AttendanceHistoryPage, string | null>, AppError>;
+    items: AttendanceHistoryItem[];
+  };
+  errorTitle?: string;
 }) {
   const { spacing } = useTheme();
-  const { query, items } = useMyAttendanceHistory(communityId, window);
+  const { query, items } = history;
 
   let body;
   if (query.isPending) {
@@ -105,7 +113,7 @@ export function HistorySection({
   } else if (query.isError && items.length === 0) {
     body = (
       <ErrorState
-        title="Could not load your history"
+        title={errorTitle}
         message={userMessage(toAppError(query.error).code)}
         onRetry={() => {
           query.refetch().catch((error: unknown) => reportError('statistics.history', error));
@@ -125,6 +133,18 @@ export function HistorySection({
             </View>
           ))}
         </Card>
+        {query.isRefetchError ? (
+          <Banner
+            tone="warning"
+            message={`${userMessage(toAppError(query.error).code)} Showing the last history that loaded.`}
+            action={{
+              label: 'Try again',
+              onPress: () => {
+                query.refetch().catch((error: unknown) => reportError('statistics.history', error));
+              },
+            }}
+          />
+        ) : null}
         {query.isFetchNextPageError ? (
           <Banner
             tone="warning"

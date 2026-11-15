@@ -8,6 +8,7 @@ import type { StatisticsWindow } from '@/lib/database.types';
  * Cached shapes:
  * - `mine`      -> `MyStatistics`
  * - `history`   -> infinite query of `AttendanceHistoryPage`
+ * - `memberHistory` -> infinite query of `AttendanceHistoryPage` (organizer looking at one member)
  * - `member`    -> `MemberStatistics` (organizer looking at one member)
  * - `community` -> `CommunityStatistics` (organizer)
  * - `summary`   -> `MemberStatisticsSummary` (organizer)
@@ -18,6 +19,8 @@ export const statisticsKeys = {
     ['statistics', 'mine', communityId, userId, window] as const,
   history: (communityId: string | null, userId: string | null, window: StatisticsWindow) =>
     ['statistics', 'history', communityId, userId, window] as const,
+  memberHistory: (communityId: string | null, memberId: string | null, window: StatisticsWindow) =>
+    ['statistics', 'memberHistory', communityId, memberId, window] as const,
   member: (communityId: string | null, memberId: string | null, window: StatisticsWindow) =>
     ['statistics', 'member', communityId, memberId, window] as const,
   community: (communityId: string | null, window: StatisticsWindow) =>

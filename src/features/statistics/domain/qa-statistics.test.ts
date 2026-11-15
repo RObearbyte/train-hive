@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { barHeight, barsFor, columnWidth, countScale, niceMax, rateScale, visibleLabelIndexes } from './chart';
-import { EMPTY_STATS, incompleteNote, truncatedNote } from './copy';
-import { DASH, formatDecimal, formatPercent, ofCount, sessionsText, smallSampleLabel, trimDecimal } from './format';
+import { EMPTY_STATS, MEMBER_LIST_NOTE, NOT_RECORDED_NOTE, RATE_NOTE, incompleteNote, truncatedNote } from './copy';
+import { DASH, formatDecimal, formatTickValue, smallRsvpSampleLabel, formatPercent, ofCount, sessionsText, smallSampleLabel, trimDecimal } from './format';
 import { axisLabels, monthLong, parsePeriod, weekLong } from './periods';
 import { memberRowLabel, monthlySummary, trendSummary } from './summaries';
 import { createWindowStore, isStatisticsWindow, windowPhrase } from './windows';
@@ -12,15 +12,37 @@ import { createWindowStore, isStatisticsWindow, windowPhrase } from './windows';
  * Pure functions only (the React components cannot render in the Node test environment).
  */
 
+describe('copy: Not recorded and the rate (Q5-1)', () => {
+  it('says Not recorded is not an absence but stays in the rate', () => {
+    expect(NOT_RECORDED_NOTE).toMatch(/not counted as an absence/);
+    expect(NOT_RECORDED_NOTE).toMatch(/included when the rate is calculated/);
+    expect(MEMBER_LIST_NOTE).toMatch(/included in that total/);
+    expect(RATE_NOTE).toMatch(/all finalized trainings/i);
+  });
+});
+
 describe('chart axis', () => {
   // DEFECT Q5-3: the middle tick of a count chart is max / 2 shown with one decimal. With a
   // maximum of 1.5 (a "nice" step) the middle is 0.75, printed "0.8": the axis says 0.8 at the height
   // of 0.75 (chart.ts countScale, BarChart.tsx formatTick = formatDecimal). Cosmetic.
-  it.fails('DEFECT Q5-3: every tick label of a count chart is the tick value it sits at', () => {
+  it('Q5-3 fixed: every tick label of a count chart is the tick value it sits at', () => {
     for (const highest of [1.2, 1.4, 2.4, 0.3, 7.1, 12.4]) {
       const scale = countScale([highest]);
-      for (const tick of scale.ticks) expect(Number(formatDecimal(tick)), `max ${scale.max}`).toBeCloseTo(tick, 6);
+      for (const tick of scale.ticks) expect(Number(formatTickValue(tick)), `max ${scale.max}`).toBeCloseTo(tick, 6);
     }
+  });
+
+  it('tick text is exact, without trailing zeros, and the dash when unusable', () => {
+    expect(formatTickValue(0.75)).toBe('0.75');
+    expect(formatTickValue(1.25)).toBe('1.25');
+    expect(formatTickValue(12.5)).toBe('12.5');
+    expect(formatTickValue(4)).toBe('4');
+    expect(formatTickValue(0)).toBe('0');
+    expect(formatTickValue(Number.NaN)).toBe(DASH);
+  });
+
+  it('RSVP sample label counts RSVPs, not trainings', () => {
+    expect([0, 1, 2, 3, Number.NaN].map((n) => smallRsvpSampleLabel(n))).toEqual([null, 'based on 1 RSVP', 'based on 2 RSVPs', null, null]);
   });
 
   it('ticks are 0, half and the maximum; the maximum is never below the largest value', () => {
@@ -108,9 +130,9 @@ describe('spoken summaries', () => {
   });
 
   it('member rows: no rate yet when there is none, "not recorded" is named, never "absent"', () => {
-    const row = { user_id: 'u', display_name: 'Ana', role: 'member' as const, joined_at: '', eligible: 0, attended: 0, absent: 0, not_recorded: 0, recorded: 0, attendance_rate: null, confirmed_rsvps: 0, missed: 0, rsvp_going_present: 0, rsvp_going_recorded: 0, rsvp_reliability: null, walk_ins: 0 };
+    const row = { user_id: 'u', display_name: 'Ana', role: 'member' as const, joined_at: '', eligible: 0, attended: 0, absent: 0, not_recorded: 0, attendance_rate: null, confirmed_rsvps: 0, missed: 0, rsvp_going_present: 0, rsvp_going_recorded: 0, rsvp_reliability: null, walk_ins: 0 };
     expect(memberRowLabel(row)).toBe('Ana, No finalized trainings, no rate yet');
-    const busy = memberRowLabel({ ...row, eligible: 4, attended: 2, recorded: 2, not_recorded: 2, attendance_rate: 50 });
+    const busy = memberRowLabel({ ...row, eligible: 4, attended: 2, not_recorded: 2, attendance_rate: 50 });
     expect(busy).toBe('Ana, 2 of 4 trainings, 50 percent, 2 not recorded');
     expect(busy).not.toMatch(/absent|miss/i);
   });

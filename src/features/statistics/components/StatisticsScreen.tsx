@@ -11,7 +11,7 @@ import { Banner, ErrorState, LoadingState, Screen, SegmentedControl, Text, useTh
 
 import { statisticsKeys } from '../api/keys';
 import { windowPhrase } from '../domain/windows';
-import { useMyStatistics, useStatsWindow } from '../hooks/useStatistics';
+import { useMyAttendanceHistory, useMyStatistics, useStatsWindow } from '../hooks/useStatistics';
 import { CommunityOverview } from './CommunityOverview';
 import { HistorySection } from './HistorySection';
 import { MemberStatsView } from './MemberStatsView';
@@ -29,6 +29,7 @@ function MyParticipation({
 }) {
   const { spacing } = useTheme();
   const stats = useMyStatistics(communityId, window);
+  const history = useMyAttendanceHistory(communityId, window);
 
   if (stats.isPending) return <StatsSkeleton />;
   if (!stats.data) {
@@ -58,7 +59,7 @@ function MyParticipation({
         />
       ) : null}
       <MemberStatsView stats={stats.data} />
-      <HistorySection communityId={communityId} window={window} />
+      <HistorySection history={history} />
     </View>
   );
 }

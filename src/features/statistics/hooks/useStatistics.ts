@@ -14,6 +14,7 @@ import type { AppError } from '@/lib/errors';
 
 import {
   fetchCommunityStatistics,
+  fetchMemberAttendanceHistory,
   fetchMemberStatistics,
   fetchMemberSummary,
   fetchMyAttendanceHistory,
@@ -56,6 +57,30 @@ export function useMyAttendanceHistory(communityId: string | null, window: Stati
     // null / undefined end the list: `next_before` is null exactly when `has_more` is false.
     getNextPageParam: (last) => (last.has_more ? last.next_before : null),
     enabled: communityId !== null && userId !== null,
+  });
+  return { query, items: flattenHistory(query.data?.pages) };
+}
+
+/** Organizer: one member's attendance history, same paging rule (`next_before` verbatim, window in the key). */
+export function useMemberAttendanceHistory(
+  communityId: string | null,
+  memberId: string | null,
+  window: StatisticsWindow,
+  enabled = true,
+) {
+  const query = useInfiniteQuery<
+    AttendanceHistoryPage,
+    AppError,
+    { pages: AttendanceHistoryPage[]; pageParams: (string | null)[] },
+    ReturnType<typeof statisticsKeys.memberHistory>,
+    string | null
+  >({
+    queryKey: statisticsKeys.memberHistory(communityId, memberId, window),
+    initialPageParam: null,
+    queryFn: ({ pageParam }) =>
+      fetchMemberAttendanceHistory(communityId as string, memberId as string, window, pageParam),
+    getNextPageParam: (last) => (last.has_more ? last.next_before : null),
+    enabled: enabled && communityId !== null && memberId !== null,
   });
   return { query, items: flattenHistory(query.data?.pages) };
 }

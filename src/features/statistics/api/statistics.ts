@@ -53,6 +53,24 @@ export async function fetchMyAttendanceHistory(
   return payload<AttendanceHistoryPage>(data, 'get_my_attendance_history');
 }
 
+/** Organizers only: one page of a member's history (the member may be removed); `before` is the previous `next_before`, verbatim. */
+export async function fetchMemberAttendanceHistory(
+  communityId: string,
+  userId: string,
+  window: StatisticsWindow,
+  before: string | null,
+): Promise<AttendanceHistoryPage> {
+  const { data, error } = await getSupabase().rpc('get_member_attendance_history', {
+    p_community_id: communityId,
+    p_user_id: userId,
+    p_window: window,
+    p_limit: HISTORY_PAGE_SIZE,
+    p_before: before,
+  });
+  if (error) throw toAppError(error);
+  return payload<AttendanceHistoryPage>(data, 'get_member_attendance_history');
+}
+
 /** Organizers only (`forbidden` otherwise). The member may be removed. */
 export async function fetchMemberStatistics(
   communityId: string,
