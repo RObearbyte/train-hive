@@ -22,6 +22,7 @@ export const BACKEND_ERROR_CODES = [
   'invalid_display_name',
   'session_not_editable',
   'session_not_cancellable',
+  'session_has_attendance',
   'rsvp_closed',
   'session_full',
   'session_not_confirmed',
@@ -180,6 +181,8 @@ const MESSAGES: Record<AppErrorCode, string> = {
   invalid_display_name: 'Your name must be between 2 and 40 characters.',
   session_not_editable: 'This training can no longer be edited.',
   session_not_cancellable: 'This training is already completed and cannot be cancelled.',
+  session_has_attendance:
+    'This training already has attendance recorded and can no longer be cancelled. Correct the attendance instead.',
   rsvp_closed: 'Responses are closed for this training.',
   session_full: 'This training is full. No spots are left.',
   session_not_confirmed:

@@ -169,7 +169,7 @@ describe('record_attendance', () => {
 });
 
 describe('when attendance can be taken', () => {
-  it('not before the session has ended, by the server clock (ends_at, else starts_at)', async () => {
+  it('not before the session has ended, by the server clock (ends_at, else starts_at + 2 hours)', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(1, 1, { ended: false });
     const m = memberIds[0];
     const notEnded = raised('session_not_ended');
@@ -187,13 +187,14 @@ describe('when attendance can be taken', () => {
     await expect(recordAttendance(organizerId, session.id, m, 'present')).rejects.toMatchObject(notEnded);
     await expect(finalizeAttendance(organizerId, session.id)).rejects.toMatchObject(notEnded);
 
-    // No end time: the start counts.
+    // No end time: it counts as ended 2 hours after the start, so not while it is running.
     await admin.query(
-      `update public.training_sessions set ends_at = null, starts_at = now() + interval '10 minutes',
+      `update public.training_sessions set ends_at = null, starts_at = now() - interval '1 hour',
          rsvp_deadline = now() - interval '2 hours' where id = $1`,
       [session.id],
     );
     await expect(recordAttendance(organizerId, session.id, m, 'present')).rejects.toMatchObject(notEnded);
+    await expect(finalizeAttendance(organizerId, session.id)).rejects.toMatchObject(notEnded);
     await makeEnded(session.id, { withEnd: false });
     expect((await recordAttendance(organizerId, session.id, m, 'present')).status).toBe('present');
 

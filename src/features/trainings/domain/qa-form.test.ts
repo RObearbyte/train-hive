@@ -1,7 +1,7 @@
 /**
  * QA (M1-Q1 part 2): the create / edit training form logic, hunted for
  * timezone, rounding, number-parsing and server-rule mismatches. Pure logic,
- * real date arithmetic, no mocks. Defects are `it.fails` tagged `DEFECT Q2-n`.
+ * real date arithmetic, no mocks. The defects found here (Q2-n) have been fixed and the tests assert the fixed behaviour.
  */
 import { describe, expect, it } from 'vitest';
 

@@ -7,8 +7,10 @@ import {
   countsText,
   deviceSaysEnded,
   isEditableMode,
+  canMarkAllRow,
   markAllTargets,
   needsAttendance,
+  needsEndRefetch,
   nextStatusOnTap,
   sheetMode,
   sortEntries,
@@ -76,7 +78,13 @@ describe('sheetMode', () => {
   });
 
   it('trusts the server over the device clock; the clock only picks the hint', () => {
+    // device says over, not refetched since: checking, no blame on the phone
     expect(sheetMode({ status: 'confirmed', ended: false }, true)).toEqual({
+      kind: 'not_ended',
+      hint: 'checking',
+    });
+    // refetched after the end and the server still says not ended
+    expect(sheetMode({ status: 'confirmed', ended: false }, true, true)).toEqual({
       kind: 'not_ended',
       hint: 'server_behind',
     });
@@ -152,5 +160,35 @@ describe('needsAttendance / deviceSaysEnded', () => {
       true,
     );
     expect(deviceSaysEnded(noEnd, new Date('2026-11-14T06:00:00Z'))).toBe(false);
+  });
+});
+
+describe('canMarkAllRow', () => {
+  it('only an unrecorded, idle row may be touched by mark all', () => {
+    expect(canMarkAllRow(entry('a', 'A'), false)).toBe(true);
+    expect(canMarkAllRow(entry('a', 'A', { attendance_status: 'absent' }), false)).toBe(false);
+    expect(canMarkAllRow(entry('a', 'A', { attendance_status: 'present' }), false)).toBe(false);
+    expect(canMarkAllRow(entry('a', 'A'), true)).toBe(false);
+    expect(canMarkAllRow(undefined, false)).toBe(false);
+  });
+});
+
+describe('needsEndRefetch', () => {
+  const session = { starts_at: '2026-01-01T10:00:00Z', ends_at: '2026-01-01T11:00:00Z' };
+  const before = new Date('2026-01-01T10:30:00Z');
+  const after = new Date('2026-01-01T11:00:01Z');
+  const loadedBefore = new Date('2026-01-01T10:20:00Z').getTime();
+  const loadedAfter = new Date('2026-01-01T11:00:00Z').getTime();
+  const open = { status: 'confirmed', ended: false } as const;
+
+  it('refetches once the device clock passes the end for a sheet loaded earlier', () => {
+    expect(needsEndRefetch(open, session, before, loadedBefore)).toBe(false);
+    expect(needsEndRefetch(open, session, after, loadedBefore)).toBe(true);
+  });
+
+  it('does not refetch a sheet that was loaded after the end, or one the server says ended', () => {
+    expect(needsEndRefetch(open, session, after, loadedAfter)).toBe(false);
+    expect(needsEndRefetch({ status: 'confirmed', ended: true }, session, after, loadedBefore)).toBe(false);
+    expect(needsEndRefetch({ status: 'cancelled', ended: false }, session, after, loadedBefore)).toBe(false);
   });
 });

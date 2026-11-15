@@ -13,6 +13,8 @@ export type MarkAllResult<T> = {
   failed: MarkAllFailure<T>[];
   /** Not attempted because an earlier failure made the rest pointless. */
   skipped: T[];
+  /** Left alone because, when their turn came, they were no longer eligible (marked meanwhile, or being saved). */
+  superseded: T[];
 };
 
 /**
@@ -36,13 +38,20 @@ export async function runMarkAll<T>(
   ids: readonly T[],
   worker: (id: T) => Promise<unknown>,
   onProgress?: (progress: MarkAllProgress) => void,
+  /** Asked right before each row's turn; true means leave the row alone. */
+  shouldSkip?: (id: T) => boolean,
 ): Promise<MarkAllResult<T>> {
-  const result: MarkAllResult<T> = { succeeded: [], failed: [], skipped: [] };
+  const result: MarkAllResult<T> = { succeeded: [], failed: [], skipped: [], superseded: [] };
   const total = ids.length;
   onProgress?.({ done: 0, total });
 
   for (let index = 0; index < total; index += 1) {
     const id = ids[index] as T;
+    if (shouldSkip?.(id)) {
+      result.superseded.push(id);
+      onProgress?.({ done: index + 1, total });
+      continue;
+    }
     try {
       await worker(id);
       result.succeeded.push(id);
@@ -65,9 +74,11 @@ export function markAllSummary(result: MarkAllResult<unknown>): string {
   const ok = result.succeeded.length;
   const failed = result.failed.length;
   const skipped = result.skipped.length;
-  if (failed === 0 && skipped === 0) return `Marked ${ok} ${ok === 1 ? 'person' : 'people'} present.`;
+  const superseded = result.superseded.length;
+  if (failed === 0 && skipped === 0 && superseded === 0) return `Marked ${ok} ${ok === 1 ? 'person' : 'people'} present.`;
   const parts = [`Marked ${ok} present`];
   if (failed > 0) parts.push(`${failed} failed`);
   if (skipped > 0) parts.push(`${skipped} not attempted`);
+  if (superseded > 0) parts.push(`${superseded} skipped because they changed meanwhile`);
   return `${parts.join(', ')}.`;
 }

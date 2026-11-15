@@ -63,13 +63,16 @@ export interface Sheet {
   entries: SheetEntry[];
 }
 
-/** Time travel: the session started two hours ago and ended one hour ago (or has no end). */
+/**
+ * Time travel: the session started two hours ago and ended one hour ago, or (without an end)
+ * started three hours ago, so it is past the 2-hour rule for sessions without `ends_at`.
+ */
 export async function makeEnded(sessionId: string, options: { withEnd?: boolean } = {}): Promise<void> {
   const { withEnd = true } = options;
   await admin.query(
     `update public.training_sessions
-     set rsvp_deadline = now() - interval '3 hours',
-         starts_at = now() - interval '2 hours',
+     set rsvp_deadline = now() - interval '4 hours',
+         starts_at = now() - case when $2::boolean then interval '2 hours' else interval '3 hours' end,
          ends_at = case when $2::boolean then now() - interval '1 hour' end
      where id = $1`,
     [sessionId, withEnd],

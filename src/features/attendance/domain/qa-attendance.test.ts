@@ -271,7 +271,7 @@ describe('QA: screen mode versus the server', () => {
   });
 
   it('a confirmed session the server calls not ended gets the clock hint only from the device', () => {
-    expect(sheetMode({ status: 'confirmed', ended: false }, true)).toEqual({ kind: 'not_ended', hint: 'server_behind' });
+    expect(sheetMode({ status: 'confirmed', ended: false }, true)).toEqual({ kind: 'not_ended', hint: 'checking' });
     expect(sheetMode({ status: 'confirmed', ended: false }, false)).toEqual({ kind: 'not_ended', hint: 'wait' });
   });
 

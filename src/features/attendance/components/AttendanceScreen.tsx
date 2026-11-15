@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 
 import { ConfirmDialog } from '@/features/community/components/ConfirmDialog';
@@ -15,16 +16,21 @@ import { Banner, Button, Card, EmptyState, ErrorState, LoadingState, Screen, Tex
 
 import { markAllSummary, runMarkAll, type MarkAllProgress, type MarkAllResult } from '../domain/markAll';
 import {
+  canMarkAllRow,
   countEntries,
   countsText,
   deviceSaysEnded,
   isEditableMode,
   markAllTargets,
+  needsEndRefetch,
+  sheetLoadedAfterEnd,
   nextStatusOnTap,
   sheetMode,
   sortEntries,
   type SheetMode,
 } from '../domain/sheet';
+import { attendanceKeys } from '../api/keys';
+import { isRowPending } from '../domain/sheetCache';
 import { useFinalizeAttendance, useRecordAttendance } from '../hooks/useAttendanceMutations';
 import { useAttendanceSheet } from '../hooks/useAttendanceSheet';
 import { AddAttendeeModal } from './AddAttendeeModal';
@@ -41,7 +47,7 @@ function unavailableCopy(
   mode: Exclude<SheetMode, { kind: 'record' } | { kind: 'correct' }>,
   session: TrainingSession | null | undefined,
   zone: string,
-): { title: string; message: string } {
+): { title: string; message: string; refresh?: boolean } {
   switch (mode.kind) {
     case 'not_confirmed':
       return {
@@ -55,11 +61,18 @@ function unavailableCopy(
         message: 'A cancelled training never takes attendance and does not count in anyone’s history.',
       };
     case 'not_ended':
+      if (mode.hint === 'checking') {
+        return {
+          title: 'Checking with the server',
+          message: 'The training has just ended. Refreshing the attendance list.',
+        };
+      }
       return mode.hint === 'server_behind'
         ? {
             title: 'Waiting for the server',
             message:
-              'This phone says the training is over, but the server has not registered its end yet. Check that the date and time on your phone are right, then pull down to refresh.',
+              'The server has not yet reached this training’s end time. Tap Refresh to check again.',
+            refresh: true,
           }
         : {
             title: 'This training has not ended yet',
@@ -81,6 +94,7 @@ function unavailableCopy(
  */
 export function AttendanceScreen({ sessionId }: { sessionId: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { spacing, colors } = useTheme();
   const now = useNow();
   const { community } = useCurrentMembership();
@@ -93,6 +107,9 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [markAllOpen, setMarkAllOpen] = useState(false);
   const [markAll, setMarkAll] = useState<MarkAllState>({ phase: 'idle' });
+  // True once the sheet has been read again after the device clock passed the end time.
+  const [refetchedSinceEnd, setRefetchedSinceEnd] = useState(false);
+  const endCheckStarted = useRef(false);
   const [historyFor, setHistoryFor] = useState<{ userId: string; name: string } | null>(null);
   const [reasonFor, setReasonFor] = useState<{ entry: AttendanceSheetEntry; next: 'present' | 'absent' | 'unrecorded' } | null>(null);
 
@@ -100,9 +117,29 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
   const session = training.data;
   const zone = session && isValidTimeZone(session.timezone) ? session.timezone : 'UTC';
   const mode = sheet
-    ? sheetMode(sheet, session ? deviceSaysEnded(session, now) : false)
+    ? sheetMode(
+        sheet,
+        session ? deviceSaysEnded(session, now) : false,
+        refetchedSinceEnd || (session ? sheetLoadedAfterEnd(session, sheetQuery.dataUpdatedAt) : false),
+      )
     : null;
-  const editable = mode !== null && isEditableMode(mode);
+  const markAllRunning = markAll.phase === 'running';
+  // Row toggles are locked while mark all runs, so a tap cannot race the run.
+  const editable = mode !== null && isEditableMode(mode) && !markAllRunning;
+
+  // The sheet may have been loaded before the end time. When the device clock crosses it,
+  // read the sheet once more; only if the server still says not ended is it "behind".
+  const sheetLoadedAt = sheetQuery.dataUpdatedAt;
+  const sheetRefetch = sheetQuery.refetch;
+  useEffect(() => {
+    if (!sheet || !session || endCheckStarted.current) return;
+    if (sheet.status !== 'confirmed' || sheet.ended || !deviceSaysEnded(session, now)) return;
+    if (!needsEndRefetch(sheet, session, now, sheetLoadedAt)) return;
+    endCheckStarted.current = true;
+    sheetRefetch()
+      .catch((error: unknown) => reportError('attendance.endRefetch', error))
+      .finally(() => setRefetchedSinceEnd(true));
+  }, [sheet, session, now, sheetLoadedAt, sheetRefetch]);
 
   const entries = useMemo(() => sortEntries(sheet?.entries ?? []), [sheet]);
   const counts = useMemo(() => countEntries(sheet?.entries ?? []), [sheet]);
@@ -137,6 +174,13 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
       ids,
       (userId) => record.markAsync({ userId, next: 'present', reason: null }),
       (progress) => setMarkAll({ phase: 'running', progress }),
+      (userId) => {
+        // Decided from the live cache when the row's turn comes, not from the list at start.
+        const current = queryClient
+          .getQueryData<AttendanceSheet>(attendanceKeys.sheet(sessionId))
+          ?.entries.find((entry) => entry.user_id === userId);
+        return !canMarkAllRow(current, isRowPending(queryClient, sessionId, userId));
+      },
     )
       .then((result) => setMarkAll({ phase: 'done', result }))
       .catch((error: unknown) => {
@@ -189,7 +233,11 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
         <EmptyState
           title={copy.title}
           message={copy.message}
-          action={{ label: 'Back to the training', onPress: goBack }}
+          action={
+            copy.refresh
+              ? { label: 'Refresh', onPress: refetch }
+              : { label: 'Back to the training', onPress: goBack }
+          }
           style={{ flex: 1 }}
         />
       </Screen>
@@ -262,6 +310,7 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
         label="Add attendee"
         variant="secondary"
         icon="plus"
+        disabled={markAllRunning}
         onPress={() => setAddOpen(true)}
         fullWidth
       />
@@ -275,14 +324,25 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
       ) : null}
       {markAll.phase === 'done' ? (
         <Banner
-          tone={markAll.result.failed.length > 0 || markAll.result.skipped.length > 0 ? 'warning' : 'success'}
+          tone={
+            markAll.result.failed.length > 0 ||
+            markAll.result.skipped.length > 0 ||
+            markAll.result.superseded.length > 0
+              ? 'warning'
+              : 'success'
+          }
           title={markAllSummary(markAll.result)}
           message={
-            markAll.result.failed.length === 0
-              ? 'You can change any of them below.'
-              : markAll.result.failed
-                  .map((failure) => `${nameOf(failure.id)}: ${userMessage(failure.code)}`)
-                  .join('\n')
+            [
+              ...markAll.result.failed.map(
+                (failure) => `${nameOf(failure.id)}: ${userMessage(failure.code)}`,
+              ),
+              ...(markAll.result.superseded.length > 0
+                ? [
+                    `Left unchanged because they were marked or being saved meanwhile: ${markAll.result.superseded.map(nameOf).join(', ')}.`,
+                  ]
+                : []),
+            ].join('\n') || 'You can change any of them below.'
           }
           action={{ label: 'Dismiss', onPress: () => setMarkAll({ phase: 'idle' }) }}
         />

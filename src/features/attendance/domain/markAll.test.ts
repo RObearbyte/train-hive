@@ -23,7 +23,7 @@ describe('runMarkAll', () => {
     );
     expect(order).toEqual(['a', 'b', 'c']);
     expect(maxRunning).toBe(1);
-    expect(result).toEqual({ succeeded: ['a', 'b', 'c'], failed: [], skipped: [] });
+    expect(result).toEqual({ succeeded: ['a', 'b', 'c'], failed: [], skipped: [], superseded: [] });
     expect(progress).toEqual([
       { done: 0, total: 3 },
       { done: 1, total: 3 },
@@ -68,7 +68,30 @@ describe('runMarkAll', () => {
       succeeded: [],
       failed: [],
       skipped: [],
+      superseded: [],
     });
+  });
+
+  it('leaves alone a row that is no longer eligible when its turn comes', async () => {
+    const marked = new Set<string>();
+    const absent = new Set<string>();
+    const progress: MarkAllProgress[] = [];
+    const result = await runMarkAll(
+      ['a', 'b', 'c'],
+      async (id) => {
+        marked.add(id);
+        // The organizer taps Absent on c while a is being saved.
+        if (id === 'a') absent.add('c');
+      },
+      (p) => progress.push(p),
+      (id) => absent.has(id),
+    );
+    expect([...marked]).toEqual(['a', 'b']);
+    expect(result.succeeded).toEqual(['a', 'b']);
+    expect(result.superseded).toEqual(['c']);
+    expect(result.failed).toEqual([]);
+    expect(progress.at(-1)).toEqual({ done: 3, total: 3 });
+    expect(markAllSummary(result)).toBe('Marked 2 present, 1 skipped because they changed meanwhile.');
   });
 
   it('classifies codes', () => {

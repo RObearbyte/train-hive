@@ -36,8 +36,9 @@ export function OrganizerActions({ session, onEdit }: OrganizerActionsProps) {
     cancel.mutate(undefined, {
       onSuccess: closeDialog,
       onError: (error) => {
-        // Completed in the meantime: nothing to retry, so close and explain on the screen.
-        if (error.code === 'session_not_cancellable') closeDialog();
+        // Completed or already has attendance: nothing to retry, so close and explain on the
+        // screen (the hook has already refetched the session).
+        if (error.code === 'session_not_cancellable' || error.code === 'session_has_attendance') closeDialog();
       },
     });
   };

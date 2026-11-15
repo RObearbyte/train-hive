@@ -1,6 +1,6 @@
 /**
  * QA (M1-Q1 part 2): "Open in maps" links built from organizer-entered text.
- * Defects are `it.fails` tagged `DEFECT Q2-n`.
+ * The defects found here (Q2-n) have been fixed and the tests assert the fixed behaviour.
  */
 import { describe, expect, it } from 'vitest';
 

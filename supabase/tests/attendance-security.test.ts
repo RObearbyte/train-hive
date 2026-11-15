@@ -217,6 +217,7 @@ describe('direct writes to attendance tables are denied', () => {
       ['select private.lock_session_for_attendance($1)', [a.session.id]],
       ['select private.lock_attendance_people($1, $2, $3)', [a.organizerId, a.memberIds[0], a.communityId]],
       ["select private.clean_attendance_reason('x')", []],
+      ['select private.session_ended(now(), null, now())', []],
     ];
     for (const [sql, params] of sqls) {
       await expect(asUser(a.organizerId, (db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);

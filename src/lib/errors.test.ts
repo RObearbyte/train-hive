@@ -37,6 +37,7 @@ describe('contract coverage', () => {
         'revoked',
         'rsvp_closed',
         'session_full',
+        'session_has_attendance',
         'session_not_cancellable',
         'session_not_confirmed',
         'session_not_editable',
@@ -68,6 +69,13 @@ describe('contract coverage', () => {
       expect(message).not.toContain('_');
     },
   );
+
+  it('explains a refused cancel of a training that already has attendance', () => {
+    expect(userMessage('session_has_attendance')).toBe(
+      'This training already has attendance recorded and can no longer be cancelled. Correct the attendance instead.',
+    );
+    expect(toAppError(pgError('session_has_attendance')).code).toBe('session_has_attendance');
+  });
 
   it('gives every code a different message', () => {
     const messages = BACKEND_ERROR_CODES.map((code) => userMessage(code));

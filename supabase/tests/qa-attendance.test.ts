@@ -83,22 +83,18 @@ describe('attendance and update_training (a confirmed, ended session with marks)
     expect((await getSession(session.id)).status).toBe('confirmed');
   });
 
-  // DEFECT Q3-1: update_training only refuses `cancelled` / `completed`. On a confirmed session
-  // that already ended and has marks, the end can be pushed into the future (the start is
-  // unchanged, so no future-check applies). The session is then "not ended" again: further marks
-  // and the finalization are refused, while the marks already taken stay.
-  it.fails('DEFECT Q3-1: a session with attendance marks cannot be made "not ended" again by editing its end', async () => {
+  // Fixed Q3-1 (M2-B2): once a confirmed session has ended or has attendance records, its
+  // starts_at and ends_at are frozen.
+  it('Q3-1: a session with attendance marks cannot be made "not ended" again by editing its end', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(1, 1);
     await recordAttendance(organizerId, session.id, memberIds[0], 'present');
     const current = await getSession(session.id);
     await expect(
       updateTraining(organizerId, session.id, formOf(current, { ends_at: hoursFromNow(24) })),
-    ).rejects.toBeDefined();
+    ).rejects.toMatchObject(raised('validation_failed:ends_at'));
   });
 
-  // DEFECT Q3-1 (second path): the start can move to the future too, so marks exist for a
-  // training that has not happened yet.
-  it.fails('DEFECT Q3-1: a session with attendance marks cannot be moved to the future', async () => {
+  it('Q3-1: a session with attendance marks cannot be moved to the future', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(1, 1);
     await recordAttendance(organizerId, session.id, memberIds[0], 'present');
     const current = await getSession(session.id);
@@ -108,31 +104,160 @@ describe('attendance and update_training (a confirmed, ended session with marks)
         session.id,
         formOf(current, { starts_at: hoursFromNow(23), ends_at: hoursFromNow(24) }),
       ),
-    ).rejects.toBeDefined();
+    ).rejects.toMatchObject(raised('validation_failed:starts_at'));
   });
 
-  it('documents the consequence: after such an edit the sheet says not ended and marks are refused', async () => {
+  it('after a refused time edit nothing changed: still ended, marks and finalization still work', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(2, 2);
     await recordAttendance(organizerId, session.id, memberIds[0], 'present');
     const current = await getSession(session.id);
-    await updateTraining(organizerId, session.id, formOf(current, { ends_at: hoursFromNow(24) }));
-    expect((await attendanceSheet(organizerId, session.id)).ended).toBe(false);
-    await expect(recordAttendance(organizerId, session.id, memberIds[1], 'present')).rejects.toMatchObject(
-      raised('session_not_ended'),
+    await expect(
+      updateTraining(organizerId, session.id, formOf(current, { ends_at: hoursFromNow(24) })),
+    ).rejects.toMatchObject(raised('validation_failed:ends_at'));
+    const after = await getSession(session.id);
+    expect(after.starts_at).toEqual(current.starts_at);
+    expect(after.ends_at).toEqual(current.ends_at);
+    expect(after.updated_at).toEqual(current.updated_at);
+    expect((await attendanceSheet(organizerId, session.id)).ended).toBe(true);
+    expect((await recordAttendance(organizerId, session.id, memberIds[1], 'absent')).status).toBe('absent');
+    expect((await finalizeAttendance(organizerId, session.id)).status).toBe('completed');
+  });
+});
+
+describe('Q3-1 time freeze rules (M2-B2)', () => {
+  it('an ended confirmed session without any record: times frozen, descriptive fields editable', async () => {
+    const { organizerId, session } = await confirmedSession(1, 1);
+    const current = await getSession(session.id);
+    const rawTimes = async () =>
+      (
+        await admin.query<{ s: string; e: string }>(
+          'select starts_at::text as s, ends_at::text as e from public.training_sessions where id = $1',
+          [session.id],
+        )
+      ).rows[0];
+    const rawBefore = await rawTimes();
+    await expect(
+      updateTraining(organizerId, session.id, formOf(current, { ends_at: hoursFromNow(24) })),
+    ).rejects.toMatchObject(raised('validation_failed:ends_at'));
+    await expect(
+      updateTraining(organizerId, session.id, formOf(current, { starts_at: hoursFromNow(1), ends_at: hoursFromNow(2) })),
+    ).rejects.toMatchObject(raised('validation_failed:starts_at'));
+    // Moving the start back within the past is a change too.
+    const earlier = new Date(current.starts_at.getTime() - 60_000).toISOString();
+    await expect(
+      updateTraining(organizerId, session.id, formOf(current, { starts_at: earlier })),
+    ).rejects.toMatchObject(raised('validation_failed:starts_at'));
+    // Clearing the end is a change too.
+    await expect(
+      updateTraining(organizerId, session.id, formOf(current, { ends_at: null })),
+    ).rejects.toMatchObject(raised('validation_failed:ends_at'));
+    const edited = await updateTraining(
+      organizerId,
+      session.id,
+      formOf(current, { title: 'New title', location_name: 'Other park', description: 'Bring water' }),
     );
-    await expect(finalizeAttendance(organizerId, session.id)).rejects.toMatchObject(raised('session_not_ended'));
-    // The mark that was taken is still there.
-    expect((await recordsOf(session.id)).map((r) => r.status)).toEqual(['present']);
+    expect(edited).toMatchObject({ title: 'New title', location_name: 'Other park', description: 'Bring water' });
+    // The stored instants are kept at full precision (the form carries milliseconds only).
+    expect(await rawTimes()).toEqual(rawBefore);
+  });
+
+  it('an ended session without ends_at: adding an end is refused', async () => {
+    const { organizerId, session } = await confirmedSession(1, 1, { withEnd: false });
+    const current = await getSession(session.id);
+    expect(current.ends_at).toBeNull();
+    await expect(
+      updateTraining(organizerId, session.id, formOf(current, { ends_at: hoursFromNow(1) })),
+    ).rejects.toMatchObject(raised('validation_failed:ends_at'));
+  });
+
+  it('a session with records is frozen even when its end lies in the future (records rule)', async () => {
+    const { organizerId, memberIds, session } = await confirmedSession(1, 1);
+    await recordAttendance(organizerId, session.id, memberIds[0], 'unrecorded');
+    expect(await recordsOf(session.id)).toHaveLength(1);
+    // Not reachable through the RPCs any more; a superuser repair could do it.
+    await admin.query(
+      "update public.training_sessions set ends_at = now() + interval '2 hours' where id = $1",
+      [session.id],
+    );
+    const current = await getSession(session.id);
+    await expect(
+      updateTraining(organizerId, session.id, formOf(current, { ends_at: hoursFromNow(5) })),
+    ).rejects.toMatchObject(raised('validation_failed:ends_at'));
+  });
+
+  it('a confirmed session that has not ended and has no records may still move its start to the future', async () => {
+    const { organizerId, session } = await confirmedSession(1, 1, { ended: false });
+    const current = await getSession(session.id);
+    const start = new Date(current.starts_at.getTime() + 3_600_000).toISOString();
+    const end = new Date(current.starts_at.getTime() + 2 * 3_600_000).toISOString();
+    const moved = await updateTraining(organizerId, session.id, formOf(current, { starts_at: start, ends_at: end }));
+    expect(moved.starts_at.toISOString()).toBe(start);
+  });
+
+  it('the freeze answers only organizers: a member gets forbidden', async () => {
+    const { memberIds, session } = await confirmedSession(1, 1);
+    const current = await getSession(session.id);
+    await expect(
+      updateTraining(memberIds[0], session.id, formOf(current, { ends_at: hoursFromNow(24) })),
+    ).rejects.toMatchObject(raised('forbidden'));
   });
 });
 
 describe('attendance and cancel_training', () => {
-  it('cancelling a confirmed, ended session keeps marks and audit, freezes them, and keeps them out of statistics', async () => {
+  // O1 decision (M2-B2): a session with real attendance (present / absent) is not cancellable.
+  it('a session with a present or an absent mark cannot be cancelled (session_has_attendance)', async () => {
+    for (const status of ['present', 'absent'] as const) {
+      await resetData();
+      const { organizerId, memberIds, session } = await confirmedSession(1, 1);
+      await recordAttendance(organizerId, session.id, memberIds[0], status);
+      const before = await getSession(session.id);
+      await expect(cancelTraining(organizerId, session.id), status).rejects.toMatchObject(
+        raised('session_has_attendance'),
+      );
+      const after = await getSession(session.id);
+      expect(after).toMatchObject({ status: 'confirmed', cancel_reason: null, cancelled_at: null });
+      expect(after.updated_at).toEqual(before.updated_at);
+      // Corrections stay possible.
+      expect((await recordAttendance(organizerId, session.id, memberIds[0], 'unrecorded')).status).toBe('unrecorded');
+    }
+  });
+
+  it('a walk-in (present) blocks the cancel too', async () => {
+    const { organizerId, memberIds, session } = await confirmedSession(2, 1);
+    await addWalkIn(organizerId, session.id, memberIds[1]);
+    await expect(cancelTraining(organizerId, session.id)).rejects.toMatchObject(raised('session_has_attendance'));
+  });
+
+  it('only unrecorded rows (never marked, or a mark cleared again) do not block the cancel', async () => {
+    const { organizerId, memberIds, session } = await confirmedSession(2, 2);
+    const [m0, m1] = memberIds;
+    await recordAttendance(organizerId, session.id, m0, 'unrecorded');
+    await recordAttendance(organizerId, session.id, m1, 'present');
+    await recordAttendance(organizerId, session.id, m1, 'unrecorded');
+    expect((await recordsOf(session.id)).map((r) => r.status)).toEqual(['unrecorded', 'unrecorded']);
+    expect((await cancelTraining(organizerId, session.id)).status).toBe('cancelled');
+  });
+
+  it('a member or a removed organizer gets forbidden, not session_has_attendance', async () => {
+    const { organizerId, memberIds, session } = await confirmedSession(1, 1);
+    await recordAttendance(organizerId, session.id, memberIds[0], 'present');
+    await expect(cancelTraining(memberIds[0], session.id)).rejects.toMatchObject(raised('forbidden'));
+    await admin.query("update public.memberships set status = 'removed' where user_id = $1", [organizerId]);
+    await expect(cancelTraining(organizerId, session.id)).rejects.toMatchObject(raised('forbidden'));
+  });
+
+  it('a session cancelled while it had marks (repair, or data from before the rule) keeps them frozen and out of statistics', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(2, 2);
     const [m0, m1] = memberIds;
     await recordAttendance(organizerId, session.id, m0, 'present');
     await recordAttendance(organizerId, session.id, m1, 'absent');
-    await cancelTraining(organizerId, session.id);
+    // Not reachable through cancel_training any more.
+    await admin.query(
+      "update public.training_sessions set status = 'cancelled', cancel_reason = 'organizer', cancelled_at = now() where id = $1",
+      [session.id],
+    );
+    // Cancelling again is the idempotent no-op, not an error.
+    expect((await cancelTraining(organizerId, session.id)).status).toBe('cancelled');
 
     const stored = await getSession(session.id);
     expect(stored.status).toBe('cancelled');
@@ -185,18 +310,17 @@ describe('attendance and cancel_training', () => {
 });
 
 describe('lock queues against the Milestone 1 RPCs (both orders, deterministic)', () => {
-  it('record queued before cancel: the mark is taken, then the session is cancelled', async () => {
+  it('record queued before cancel: the mark is taken, then the cancel is refused (session_has_attendance)', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(1, 1);
     const outcomes = await queued(session.id, [
       { fragment: 'record_attendance', run: () => recordAttendance(organizerId, session.id, memberIds[0], 'present') },
       { fragment: 'cancel_training', run: () => cancelTraining(organizerId, session.id) },
     ]);
-    expect(outcomes).toEqual(['ok', 'ok']);
-    expect((await getSession(session.id)).status).toBe('cancelled');
+    expect(outcomes).toEqual(['ok', 'P0001:session_has_attendance']);
+    expect((await getSession(session.id)).status).toBe('confirmed');
     expect(await recordsOf(session.id)).toHaveLength(1);
     expect(await auditOf(session.id)).toHaveLength(1);
   });
-
   it('cancel queued before record: the mark is refused and nothing is written', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(1, 1);
     const outcomes = await queued(session.id, [
@@ -260,29 +384,32 @@ describe('lock queues against the Milestone 1 RPCs (both orders, deterministic)'
 });
 
 describe('removed organizer whose call was already waiting for the session lock', () => {
-  // DEFECT Q3-2: authorization (is_organizer) is evaluated before the lock wait and never
-  // repeated. An organizer removed while their call waits still completes it. Same pattern as
-  // update_training / cancel_training in Milestone 1; the window is the lock wait.
+  // Fixed Q3-2 (M2-B2): the organizer role is checked again after the session lock is granted.
+  // memberIds[0] RSVP'd going, memberIds[1] did not (a walk-in candidate).
+  const REMOVE = "update public.memberships set status = 'removed' where user_id = $1";
+  const DEMOTE = "update public.memberships set role = 'member' where user_id = $1";
   async function removedMidWait(
-    run: (organizerId: string, sessionId: string, memberId: string) => Promise<unknown>,
+    run: (organizerId: string, sessionId: string, memberIds: string[]) => Promise<unknown>,
     fragment: string,
-  ): Promise<{ outcome: string; recordCount: number; status: string }> {
-    const { organizerId, memberIds, session } = await confirmedSession(1, 1);
+    change: string = REMOVE,
+  ): Promise<{ outcome: string; recordCount: number; status: string; title: string }> {
+    const { organizerId, memberIds, session } = await confirmedSession(2, 1);
     const gate = await admin.connect();
     let result: Promise<string>;
     try {
       await gate.query('begin');
       await gate.query('select 1 from public.training_sessions where id = $1 for update', [session.id]);
-      result = run(organizerId, session.id, memberIds[0]).then(() => 'ok', errorKey);
+      result = run(organizerId, session.id, memberIds).then(() => 'ok', errorKey);
       await waitForBlocked(fragment);
-      await admin.query("update public.memberships set status = 'removed' where user_id = $1", [organizerId]);
+      await admin.query(change, [organizerId]);
       await gate.query('commit');
     } finally {
       await gate.query('rollback');
       gate.release();
     }
     const outcome = await result;
-    return { outcome, recordCount: (await recordsOf(session.id)).length, status: (await getSession(session.id)).status };
+    const stored = await getSession(session.id);
+    return { outcome, recordCount: (await recordsOf(session.id)).length, status: stored.status, title: stored.title };
   }
 
   it('sanity: the same flow without the removal completes', async () => {
@@ -293,19 +420,59 @@ describe('removed organizer whose call was already waiting for the session lock'
     expect(outcome).toBe('ok');
   });
 
-  it.fails('DEFECT Q3-2: record_attendance of an organizer removed during the lock wait is refused', async () => {
+  it('Q3-2: record_attendance of an organizer removed during the lock wait is refused', async () => {
     const { outcome, recordCount } = await removedMidWait(
-      (organizer, sessionId, member) => recordAttendance(organizer, sessionId, member, 'present'),
+      (organizer, sessionId, members) => recordAttendance(organizer, sessionId, members[0], 'present'),
       'record_attendance',
     );
     expect(outcome).toBe('P0001:forbidden');
     expect(recordCount).toBe(0);
   });
 
-  it.fails('DEFECT Q3-2: finalize_attendance of an organizer removed during the lock wait is refused', async () => {
-    const { outcome, status } = await removedMidWait(
+  it('Q3-2: finalize_attendance of an organizer removed during the lock wait is refused', async () => {
+    const { outcome, status, recordCount } = await removedMidWait(
       (organizer, sessionId) => finalizeAttendance(organizer, sessionId),
       'finalize_attendance',
+    );
+    expect(outcome).toBe('P0001:forbidden');
+    expect(status).toBe('confirmed');
+    expect(recordCount).toBe(0);
+  });
+
+  it('Q3-2: add_walk_in_attendee of an organizer removed during the lock wait is refused', async () => {
+    const { outcome, recordCount } = await removedMidWait(
+      (organizer, sessionId, members) => addWalkIn(organizer, sessionId, members[1]),
+      'add_walk_in_attendee',
+    );
+    expect(outcome).toBe('P0001:forbidden');
+    expect(recordCount).toBe(0);
+  });
+
+  it('Q3-2: record_attendance of an organizer demoted to member during the lock wait is refused', async () => {
+    const { outcome, recordCount } = await removedMidWait(
+      (organizer, sessionId, members) => recordAttendance(organizer, sessionId, members[0], 'absent'),
+      'record_attendance',
+      DEMOTE,
+    );
+    expect(outcome).toBe('P0001:forbidden');
+    expect(recordCount).toBe(0);
+  });
+
+  it('Q3-2: update_training of an organizer removed during the lock wait is refused', async () => {
+    const { outcome, title } = await removedMidWait(
+      async (organizer, sessionId) =>
+        updateTraining(organizer, sessionId, formOf(await getSession(sessionId), { title: 'Edited while removed' })),
+      'update_training',
+    );
+    expect(outcome).toBe('P0001:forbidden');
+    expect(title).not.toBe('Edited while removed');
+  });
+
+  it('Q3-2: cancel_training of an organizer demoted during the lock wait is refused', async () => {
+    const { outcome, status } = await removedMidWait(
+      (organizer, sessionId) => cancelTraining(organizer, sessionId),
+      'cancel_training',
+      DEMOTE,
     );
     expect(outcome).toBe('P0001:forbidden');
     expect(status).toBe('confirmed');
@@ -487,18 +654,73 @@ describe('realtime publication', () => {
 });
 
 describe('sessions without an end time', () => {
-  it('attendance opens when the session starts and finalization is possible from then on (documented)', async () => {
-    const { organizerId, memberIds, session } = await confirmedSession(1, 1, { ended: false });
-    // Started 5 minutes ago, no end time: the server treats the start as the end.
+  // O2 decision (M2-B2): without ends_at a session counts as ended 2 hours after its start.
+  async function startedAgo(sessionId: string, interval: string): Promise<void> {
     await admin.query(
       `update public.training_sessions
-       set rsvp_deadline = now() - interval '3 hours', starts_at = now() - interval '5 minutes', ends_at = null
+       set rsvp_deadline = now() - interval '5 hours', starts_at = now() - $2::interval, ends_at = null
        where id = $1`,
-      [session.id],
+      [sessionId, interval],
     );
+  }
+
+  it('started 5 minutes ago (still running): not ended for the sheet, the marks, the walk-ins and the finalization', async () => {
+    const { organizerId, memberIds, session } = await confirmedSession(2, 1, { ended: false });
+    await startedAgo(session.id, '5 minutes');
+    expect((await attendanceSheet(organizerId, session.id)).ended).toBe(false);
+    const notEnded = raised('session_not_ended');
+    await expect(recordAttendance(organizerId, session.id, memberIds[0], 'present')).rejects.toMatchObject(notEnded);
+    await expect(addWalkIn(organizerId, session.id, memberIds[1])).rejects.toMatchObject(notEnded);
+    await expect(finalizeAttendance(organizerId, session.id)).rejects.toMatchObject(notEnded);
+    // Not ended and no records: the times are not frozen yet (a future start is still allowed).
+    const current = await getSession(session.id);
+    const moved = await updateTraining(organizerId, session.id, formOf(current, { starts_at: hoursFromNow(3) }));
+    expect(moved.ends_at).toBeNull();
+  });
+
+  it('1 hour 59 minutes after the start: still not ended', async () => {
+    const { organizerId, memberIds, session } = await confirmedSession(1, 1, { ended: false });
+    await startedAgo(session.id, '1 hour 59 minutes');
+    expect((await attendanceSheet(organizerId, session.id)).ended).toBe(false);
+    await expect(recordAttendance(organizerId, session.id, memberIds[0], 'present')).rejects.toMatchObject(
+      raised('session_not_ended'),
+    );
+  });
+
+  it('2 hours after the start: ended; marks and finalization work, and the times are frozen', async () => {
+    const { organizerId, memberIds, session } = await confirmedSession(1, 1, { ended: false });
+    await startedAgo(session.id, '2 hours 1 second');
     expect((await attendanceSheet(organizerId, session.id)).ended).toBe(true);
     expect((await recordAttendance(organizerId, session.id, memberIds[0], 'present')).status).toBe('present');
+    const current = await getSession(session.id);
+    await expect(
+      updateTraining(organizerId, session.id, formOf(current, { ends_at: hoursFromNow(1) })),
+    ).rejects.toMatchObject(raised('validation_failed:ends_at'));
     expect((await finalizeAttendance(organizerId, session.id)).status).toBe('completed');
+  });
+
+  it('the rule lives in one helper, used by every "ended" check', async () => {
+    const { rows } = await admin.query<{ name: string; src: string }>(
+      `select p.proname as name, p.prosrc as src
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname in ('public', 'private')`,
+    );
+    const users = rows.filter((r) => r.src.includes('private.session_ended(')).map((r) => r.name).sort();
+    expect(users).toEqual([
+      'finalize_attendance',
+      'get_attendance_sheet',
+      'lock_session_for_attendance',
+      'update_training',
+    ]);
+    const inline = rows.filter((r) => /coalesce\(\s*\w*\.?ends_at\s*,\s*\w*\.?starts_at\s*\)/.test(r.src)).map((r) => r.name);
+    expect(inline).toEqual([]);
+    const helper = await admin.query<{ a: boolean; b: boolean; c: boolean }>(
+      `select private.session_ended(t, null, t + interval '2 hours') as a,
+              private.session_ended(t, null, t + interval '2 hours' - interval '1 microsecond') as b,
+              private.session_ended(t, t + interval '30 minutes', t + interval '30 minutes') as c
+       from (select now() as t) x`,
+    );
+    expect(helper.rows[0]).toEqual({ a: true, b: false, c: true });
   });
 
   it('one second before the start: not ended, for the sheet, the marks and the finalization', async () => {
@@ -550,7 +772,7 @@ describe('mixed concurrent storm: marks, walk-ins, finalize, cancel, edits, remo
       const outcomes = new Outcomes();
       // Everything a business rule may legitimately answer in this storm.
       const allowed =
-        /^P0001:(no_going_rsvp|session_not_confirmed|session_not_cancellable|session_not_editable|attendee_not_a_member|attendee_has_going_rsvp|session_not_ended)$/;
+        /^P0001:(no_going_rsvp|session_not_confirmed|session_not_cancellable|session_not_editable|attendee_not_a_member|attendee_has_going_rsvp|session_not_ended|session_has_attendance)$/;
 
       const ops: (() => Promise<unknown>)[] = [];
       for (let i = 0; i < 50; i += 1) {

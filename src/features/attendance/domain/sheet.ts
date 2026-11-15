@@ -76,18 +76,21 @@ export function countsText(counts: SheetCounts): string {
  * - `record`: confirmed and ended, attendance not finalized yet.
  * - `correct`: completed; every change is audited.
  * - `not_ended`: confirmed but the server says it has not ended. `hint`
- *   chooses the wording from the device clock (display only).
+ *   chooses the wording (display only): `wait` (device clock agrees), `checking`
+ *   (device clock says over, the sheet has not been refetched since), `server_behind`
+ *   (refetched after the end and the server still says not ended).
  */
 export type SheetMode =
   | { kind: 'record' }
   | { kind: 'correct' }
   | { kind: 'not_confirmed' }
   | { kind: 'cancelled' }
-  | { kind: 'not_ended'; hint: 'wait' | 'server_behind' };
+  | { kind: 'not_ended'; hint: 'wait' | 'checking' | 'server_behind' };
 
 export function sheetMode(
   sheet: Pick<AttendanceSheet, 'status' | 'ended'>,
   deviceSaysEnded: boolean,
+  refetchedSinceEnd = false,
 ): SheetMode {
   switch (sheet.status) {
     case 'completed':
@@ -99,7 +102,7 @@ export function sheetMode(
     case 'confirmed':
       return sheet.ended
         ? { kind: 'record' }
-        : { kind: 'not_ended', hint: deviceSaysEnded ? 'server_behind' : 'wait' };
+        : { kind: 'not_ended', hint: !deviceSaysEnded ? 'wait' : refetchedSinceEnd ? 'server_behind' : 'checking' };
   }
 }
 
@@ -189,3 +192,47 @@ export function statusLabel(status: AttendanceStatus): string {
 export function originLabel(entry: Pick<AttendanceSheetEntry, 'is_walk_in'>): string {
   return entry.is_walk_in ? 'Walk-in' : 'Said going';
 }
+
+/** Epoch ms of the session's end (start when there is no end). */
+function endMs(session: Pick<TrainingSession, 'starts_at' | 'ends_at'>): number {
+  return new Date(session.ends_at ?? session.starts_at).getTime();
+}
+
+/**
+ * True when the sheet on screen was loaded before the end time and the device
+ * clock now says the end has passed, so the screen should refetch once. The
+ * clock only triggers a refetch; the server's answer decides what is shown.
+ */
+export function needsEndRefetch(
+  sheet: Pick<AttendanceSheet, 'status' | 'ended'>,
+  session: Pick<TrainingSession, 'starts_at' | 'ends_at'>,
+  now: Date,
+  sheetLoadedAt: number,
+): boolean {
+  return (
+    sheet.status === 'confirmed' &&
+    !sheet.ended &&
+    deviceSaysEnded(session, now) &&
+    !sheetLoadedAfterEnd(session, sheetLoadedAt)
+  );
+}
+
+/** True when the sheet was read at or after the session's end time (so a "not ended" answer is current). */
+export function sheetLoadedAfterEnd(
+  session: Pick<TrainingSession, 'starts_at' | 'ends_at'>,
+  sheetLoadedAt: number,
+): boolean {
+  return sheetLoadedAt >= endMs(session);
+}
+
+/**
+ * Whether "Mark all present" may still touch a row when its turn comes: the
+ * row exists, is still unrecorded, and no other change for it is being saved.
+ */
+export function canMarkAllRow(
+  entry: Pick<AttendanceSheetEntry, 'attendance_status'> | undefined,
+  rowPending: boolean,
+): boolean {
+  return entry !== undefined && entry.attendance_status === 'unrecorded' && !rowPending;
+}
+

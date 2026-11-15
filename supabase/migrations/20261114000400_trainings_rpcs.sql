@@ -322,6 +322,10 @@ begin
   if not found then
     raise exception using errcode = 'P0001', message = 'not_found';
   end if;
+  -- Re-checked after the lock wait: the caller may have been removed or demoted meanwhile.
+  if not public.is_organizer(v_community_id) then
+    raise exception using errcode = 'P0001', message = 'forbidden';
+  end if;
 
   if v_session.status in ('cancelled', 'completed') then
     raise exception using errcode = 'P0001', message = 'session_not_editable';
@@ -428,6 +432,10 @@ begin
   for update;
   if not found then
     raise exception using errcode = 'P0001', message = 'not_found';
+  end if;
+  -- Re-checked after the lock wait: the caller may have been removed or demoted meanwhile.
+  if not public.is_organizer(v_community_id) then
+    raise exception using errcode = 'P0001', message = 'forbidden';
   end if;
 
   if v_session.status = 'cancelled' then

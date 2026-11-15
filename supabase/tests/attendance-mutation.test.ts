@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { admin, asUser, closeDb, resetData } from './helpers';
+import { admin, asUser, cancelTraining, closeDb, getSession, hoursFromNow, resetData, updateTraining } from './helpers';
 import {
   addWalkIn,
   auditOf,
@@ -8,7 +8,7 @@ import {
   finalizeAttendance,
   recordAttendance,
 } from './attendance-helpers';
-import { errorKey, waitForBlocked } from './qa-helpers';
+import { errorKey, formOf, waitForBlocked } from './qa-helpers';
 
 /**
  * Mutation checks for attendance rules, in the style of qa-mutation.test.ts: each case breaks
@@ -104,6 +104,59 @@ const goingMemberIsNotAWalkIn: Probe = async () => {
   return rejectsWith('P0001:attendee_has_going_rsvp', () => addWalkIn(organizerId, session.id, memberIds[0]));
 };
 
+/** The organizer is removed while `run` waits for the session lock; the call must be refused. */
+async function refusedAfterRemovalMidWait(
+  fragment: string,
+  run: (organizerId: string, sessionId: string, memberIds: string[]) => Promise<unknown>,
+): Promise<boolean> {
+  const { organizerId, memberIds, session } = await confirmedSession(1, 1);
+  const gate = await admin.connect();
+  let result: Promise<string> = Promise.resolve('not started');
+  try {
+    await gate.query('begin');
+    await gate.query('select 1 from public.training_sessions where id = $1 for update', [session.id]);
+    result = run(organizerId, session.id, memberIds).then(() => 'ok', errorKey);
+    await waitForBlocked(fragment);
+    await admin.query("update public.memberships set status = 'removed' where user_id = $1", [organizerId]);
+    await gate.query('commit');
+  } finally {
+    await gate.query('rollback');
+    gate.release();
+  }
+  return (await result) === 'P0001:forbidden';
+}
+
+const markRefusedAfterRemovalMidWait: Probe = () =>
+  refusedAfterRemovalMidWait('record_attendance', (o, s, m) => recordAttendance(o, s, m[0], 'present'));
+
+const cancelRefusedAfterRemovalMidWait: Probe = () =>
+  refusedAfterRemovalMidWait('cancel_training', (o, s) => cancelTraining(o, s));
+
+const sessionWithAttendanceIsNotCancellable: Probe = async () => {
+  const { organizerId, memberIds, session } = await confirmedSession(1, 1);
+  await recordAttendance(organizerId, session.id, memberIds[0], 'absent');
+  return rejectsWith('P0001:session_has_attendance', () => cancelTraining(organizerId, session.id));
+};
+
+const endedSessionTimesAreFrozen: Probe = async () => {
+  const { organizerId, session } = await confirmedSession(1, 1);
+  const current = await getSession(session.id);
+  return rejectsWith('P0001:validation_failed:ends_at', () =>
+    updateTraining(organizerId, session.id, formOf(current, { ends_at: hoursFromNow(24) })),
+  );
+};
+
+const runningSessionWithoutEndIsNotEnded: Probe = async () => {
+  const { organizerId, memberIds, session } = await confirmedSession(1, 1, { ended: false });
+  await admin.query(
+    `update public.training_sessions
+     set rsvp_deadline = now() - interval '3 hours', starts_at = now() - interval '1 hour', ends_at = null
+     where id = $1`,
+    [session.id],
+  );
+  return rejectsWith('P0001:session_not_ended', () => recordAttendance(organizerId, session.id, memberIds[0], 'present'));
+};
+
 /** finalize_attendance and the deletion of a going member's account, racing on a held session. */
 const finalizeDoesNotDeadlockWithDeletion: Probe = async () => {
   const { organizerId, memberIds, session } = await confirmedSession(1, 1);
@@ -131,13 +184,21 @@ const finalizeDoesNotDeadlockWithDeletion: Probe = async () => {
 const RECORD = 'public.record_attendance(uuid, uuid, public.attendance_status, text)';
 const LOCK_SESSION = 'private.lock_session_for_attendance(uuid)';
 const POLICY = 'attendance_records_select_own_or_organizer';
+const CANCEL = 'public.cancel_training(uuid)';
+const UPDATE = 'public.update_training(uuid, jsonb)';
+const SESSION_ENDED = 'private.session_ended(timestamptz, timestamptz, timestamptz)';
 
 const MUTANTS: [string, Probe, (probe: Probe) => Promise<boolean>][] = [
   [
     'attendance before the end of the session',
     notEndedIsRejected,
     (probe) =>
-      withMutatedFunction(LOCK_SESSION, 'coalesce(v_session.ends_at, v_session.starts_at) > clock_timestamp()', 'false', probe),
+      withMutatedFunction(
+        LOCK_SESSION,
+        'not private.session_ended(v_session.starts_at, v_session.ends_at, clock_timestamp())',
+        'false',
+        probe,
+      ),
   ],
   [
     'attendance on any session status',
@@ -189,6 +250,38 @@ const MUTANTS: [string, Probe, (probe: Probe) => Promise<boolean>][] = [
     finalizeDoesNotDeadlockWithDeletion,
     (probe) =>
       withMutatedFunction('public.finalize_attendance(uuid)', 'order by p.id\n  for key share;', 'order by p.id;', probe),
+  ],
+  [
+    'attendance without the organizer re-check after the lock wait',
+    markRefusedAfterRemovalMidWait,
+    (probe) =>
+      withMutatedFunction(LOCK_SESSION, 'if not public.is_organizer(v_session.community_id) then', 'if false then', probe),
+  ],
+  [
+    'cancel_training without the organizer re-check after the lock wait',
+    cancelRefusedAfterRemovalMidWait,
+    (probe) =>
+      withMutatedFunction(
+        CANCEL,
+        '-- Re-checked after the lock wait: the caller may have been removed or demoted meanwhile.\n  if not public.is_organizer(v_community_id) then',
+        'if false then',
+        probe,
+      ),
+  ],
+  [
+    'cancel_training on a session with attendance',
+    sessionWithAttendanceIsNotCancellable,
+    (probe) => withMutatedFunction(CANCEL, "and a.status in ('present', 'absent')", 'and false', probe),
+  ],
+  [
+    'update_training that moves the times of an ended confirmed session',
+    endedSessionTimesAreFrozen,
+    (probe) => withMutatedFunction(UPDATE, "if v_session.status = 'confirmed'", 'if false', probe),
+  ],
+  [
+    'a session without an end counted as ended at its start',
+    runningSessionWithoutEndIsNotEnded,
+    (probe) => withMutatedFunction(SESSION_ENDED, "p_starts_at + interval '2 hours'", 'p_starts_at', probe),
   ],
   [
     'walk-in for a going member',

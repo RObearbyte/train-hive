@@ -23,7 +23,7 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 ## Milestone 2 — Attendance Management
 - [x] M2-B1 (M, backend) attendance_records, audit log, record / finalize / correct RPCs, `completed` transition + tests
 - [x] M2-A1 (M, mobile) Organizer attendance screen, walk-in attendee, history
-- [ ] M2-Q1 (S, qa) Review + tests
+- [x] M2-Q1 (+ fixes M2-B2, M2-F1) (S, qa) Review + tests
 
 ## Milestone 3 — Communications and Notifications
 - [ ] M3-B1 (L, backend) announcements, notifications, push tokens, outbox, scheduled publish, triggers + tests

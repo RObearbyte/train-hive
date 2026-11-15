@@ -10,7 +10,7 @@
  * `onlineManager` from NetInfo, so `setOnline(false)` is exactly what airplane
  * mode does on a phone.
  *
- * Defects are `it.fails` with a `DEFECT Q2-n` tag; see docs/QA_REPORT.md Part 2.
+ * The defects found here (Q2-n) have been fixed and the tests assert the fixed behaviour; see docs/QA_REPORT.md Part 2.
  */
 import {
   MutationObserver,
