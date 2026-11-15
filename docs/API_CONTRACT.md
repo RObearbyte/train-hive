@@ -281,3 +281,22 @@ Expo push API behaviour assumed (to be re-checked against the Expo docs in M3-B2
 - A job counts as `sent` when at least one of the user's tokens got an `ok` ticket (no duplicate pushes to devices that already received it); if every token failed transiently → `failed`.
 - **Push receipts** (`POST /--/api/v2/push/getReceipts` with ticket ids, ready ~15 minutes later, kept ~24 h) can also report `DeviceNotRegistered`. M3-B1 stores no ticket ids; M3-B2 either checks receipts within its own run or adds a ticket column in its own migration.
 - Delivery is at-least-once: a worker that crashes after sending but before completing is reclaimed after 5 minutes and may push twice. The in-app notification is never duplicated.
+
+## Milestone 3, B2 notes (push dispatcher; append-only)
+
+Implemented in `supabase/functions/dispatch-notifications/` (`dispatch.ts` pure logic, `index.ts` Deno handler), scheduled by `20261115000600_schedule_dispatch.sql`, owner guide `docs/PUSH_SETUP.md`.
+
+Corrections to "Expo push API behaviour assumed" (checked against docs.expo.dev on 2026-11-15):
+- The message `data` is `{ deepLink, notificationId, kind }` (camelCase), **not** `{ url, notification_id, kind }`. The mobile app must read `data.deepLink`. `badge` = `unread_count` is sent as an extra top-level field. Also sent: `sound: 'default'`, `channelId: 'default'` (the app must create an Android channel named `default`), `priority: 'high'`, `ttl`.
+- 600/s is a project rate limit; per request the limit is 100 messages (`PUSH_TOO_MANY_NOTIFICATIONS`) and 1000 ids for receipts. Total payload at most 4 KiB.
+- Ticket errors are only `DeviceNotRegistered` at ticket level in the docs; `MessageTooBig`, `MessageRateExceeded`, `MismatchSenderId`, `InvalidCredentials` are listed for receipts. The dispatcher handles all of them whichever level they arrive on. A whole-request failure is HTTP 4xx/5xx with `errors: [{code, message}]` and no `data`.
+- A ticket error `message` can contain the token, so the dispatcher stores/logs only `details.error` codes.
+- Status mapping: ok to at least one token = `sent` (even if another token failed transiently, to avoid duplicates); all tokens `DeviceNotRegistered` = `skipped` with `last_error` `no_valid_tokens`; any transient (network error, timeout, 429, 5xx, `MessageRateExceeded`, unknown error code, malformed response, 401/403) with nothing delivered = `failed` (honours `Retry-After`, else the RPC's backoff); `MessageTooBig` / `InvalidCredentials` / `InvalidPayload` / `MismatchSenderId` / other 4xx = `dead`. `last_error` is `transient:<codes>` or `permanent:<codes>`.
+- Optional header `Authorization: Bearer <EXPO_ACCESS_TOKEN>` is sent when the secret is set (enhanced push security). Do not retry HTTP 400. Retry 429/5xx with backoff.
+- Authentication of the function: header `x-dispatch-secret` compared in constant time to the function secret `DISPATCH_SECRET`; deployed with `--no-verify-jwt` (`verify_jwt = false` in config.toml); the service key is never read from the request. Method must be POST.
+- Expo Go on Android does not support remote push since SDK 53; a development build is required (confirmed in the expo-notifications docs).
+- `claim_notification_jobs` does not return `expires_at`, so `ttl` is a fixed default (announcements 86400 s, trainings 3600 s); the dispatcher uses `expires_at` automatically if a later migration adds it to the claimed row.
+
+Receipts are NOT implemented: ticket ids are not stored. Wanted migration if receipt handling is required: add `expo_tickets jsonb` (array of `{id, token_id}`) and `receipts_checked_at timestamptz` to `notification_delivery_jobs` (or a small `push_tickets(ticket_id, job_id, token, created_at)` table), a `claim_receipt_checks()` / `complete_receipt_check()` RPC pair, and a second pass of the dispatcher 15 min to 24 h after sending that calls `/push/getReceipts` (up to 1000 ids) and invalidates tokens on `DeviceNotRegistered`.
+
+Not verified (M3-B2): the real Expo Push Service, FCM delivery, a physical device, `pg_cron` + `pg_net` + Vault on the hosted project, the Deno runtime/deployment of `index.ts` (only `dispatch.ts` is run, under Node, by `supabase/tests/dispatch.test.ts`; `index.ts` is excluded from `tsc`).
