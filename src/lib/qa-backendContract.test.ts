@@ -190,6 +190,11 @@ describe('QA contract: RPCs called by the app', () => {
         'mark_all_notifications_read',
         'register_push_token',
         'set_notification_preferences',
+        'get_my_statistics',
+        'get_my_attendance_history',
+        'get_member_statistics',
+        'get_community_statistics',
+        'list_member_statistics_summary',
       ]),
     );
   });

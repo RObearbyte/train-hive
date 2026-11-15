@@ -33,7 +33,7 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 
 ## Milestone 4 — Statistics
 - [x] M4-B1 (M, backend) Statistics SQL functions with documented metric definitions + tests
-- [ ] M4-A1 (M, mobile) Statistics tab, charts, time filters
+- [x] M4-A1 (M, mobile) Statistics tab, charts, time filters
 - [ ] M4-Q1 (S, qa) Review + tests
 
 ## Wrap-up

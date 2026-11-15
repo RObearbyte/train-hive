@@ -1,6 +1,7 @@
 import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
+import { invalidateStatistics, isSheetFinalized } from '@/features/statistics/api/invalidate';
 import { trainingKeys } from '@/features/trainings/api/keys';
 import type { AttendanceRecord, AttendanceSheet, TrainingSession } from '@/lib/database.types';
 import type { AppError } from '@/lib/errors';
@@ -88,6 +89,10 @@ export function useRecordAttendance(sessionId: string): RecordAttendance {
     onSettled: () => {
       invalidateSheetUnlessPending(queryClient, sessionId, { selfSettling: true });
       void queryClient.invalidateQueries({ queryKey: attendanceKeys.audit(sessionId) });
+      // A correction after finalization changes the statistics at once.
+      if (isSheetFinalized(queryClient.getQueryData<AttendanceSheet>(attendanceKeys.sheet(sessionId)))) {
+        invalidateStatistics(queryClient);
+      }
     },
   });
 
@@ -144,6 +149,9 @@ export function useAddWalkIn(sessionId: string) {
     onSettled: () => {
       invalidateSheetUnlessPending(queryClient, sessionId, { selfSettling: false });
       void queryClient.invalidateQueries({ queryKey: attendanceKeys.audit(sessionId) });
+      if (isSheetFinalized(queryClient.getQueryData<AttendanceSheet>(attendanceKeys.sheet(sessionId)))) {
+        invalidateStatistics(queryClient);
+      }
     },
   });
 }
@@ -185,6 +193,8 @@ export function useFinalizeAttendance(sessionId: string) {
       void queryClient.invalidateQueries({ queryKey: trainingKeys.detail(sessionId) });
       void queryClient.invalidateQueries({ queryKey: attendanceKeys.allMine() });
       void queryClient.invalidateQueries({ queryKey: attendanceKeys.allMyRecords() });
+      // The session just became part of everyone's statistics.
+      invalidateStatistics(queryClient);
     },
   });
 }

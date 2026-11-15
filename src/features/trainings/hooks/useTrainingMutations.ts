@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
+import { invalidateStatistics } from '@/features/statistics/api/invalidate';
 import type { TrainingInput, TrainingSession } from '@/lib/database.types';
 import type { AppError } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -15,6 +16,8 @@ function applySavedSession(queryClient: QueryClient, session: TrainingSession): 
   queryClient.setQueryData(trainingKeys.detail(session.id), session);
   void queryClient.invalidateQueries({ queryKey: trainingKeys.lists() });
   void queryClient.invalidateQueries({ queryKey: trainingKeys.details() });
+  // A moved or cancelled session moves between statistics windows; refetch when the tab is shown.
+  invalidateStatistics(queryClient, 'none');
 }
 
 /** A failed save may mean the session changed under the form: refetch it. */

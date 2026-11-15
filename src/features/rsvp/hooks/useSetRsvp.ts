@@ -2,6 +2,7 @@ import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-quer
 
 import { useSession } from '@/features/community/hooks/SessionProvider';
 import { membershipKeys } from '@/features/community/hooks/useCurrentMembership';
+import { invalidateStatistics } from '@/features/statistics/api/invalidate';
 import { rsvpKeys, trainingKeys } from '@/features/trainings/api/keys';
 import type { RsvpResponse, SetRsvpResult } from '@/lib/database.types';
 import type { AppError } from '@/lib/errors';
@@ -79,6 +80,8 @@ export function useSetRsvp(sessionId: string): SetRsvp {
       void queryClient.invalidateQueries({ queryKey: trainingKeys.detail(sessionId) });
       void queryClient.invalidateQueries({ queryKey: trainingKeys.participants(sessionId) });
       void queryClient.invalidateQueries({ queryKey: rsvpKeys.all });
+      // Confirmed RSVPs feed the statistics once finalized; mark them stale, refetch when the tab is shown.
+      invalidateStatistics(queryClient, 'none');
     },
   });
 

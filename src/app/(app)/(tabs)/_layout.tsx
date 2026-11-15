@@ -12,7 +12,6 @@ function tabIcon(name: IconName) {
   return TabIcon;
 }
 
-// The Statistics tab is added when Milestone 4 is functional.
 export default function TabsLayout() {
   const { colors, typography } = useTheme();
   // Display only: announcements and notifications the server says are unread.
@@ -40,6 +39,7 @@ export default function TabsLayout() {
           tabBarAccessibilityLabel: unread ? `Activity, ${unread} unread` : 'Activity',
         }}
       />
+      <Tabs.Screen name="statistics" options={{ title: 'Statistics', tabBarIcon: tabIcon('chart') }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('person') }} />
     </Tabs>
   );

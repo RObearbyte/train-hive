@@ -231,6 +231,8 @@ const FIELD_LABELS: Record<string, string> = {
   token: 'push token',
   platform: 'platform',
   device_label: 'device name',
+  window: 'time period',
+  limit: 'page size',
 };
 
 /**

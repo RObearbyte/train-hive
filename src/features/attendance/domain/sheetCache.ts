@@ -21,6 +21,8 @@ import type {
   AttendanceStatus,
 } from '@/lib/database.types';
 
+import { invalidateStatistics } from '@/features/statistics/api/invalidate';
+
 import { attendanceKeys, recordAttendanceKey } from '../api/keys';
 
 /** Variables of one `record_attendance` mutation. */
@@ -184,4 +186,6 @@ export function invalidateSheetUnlessPending(
 export function invalidateAttendanceUnlessPending(queryClient: QueryClient): void {
   if (queryClient.isMutating({ mutationKey: ['attendance', 'record'] }) > 0) return;
   void queryClient.invalidateQueries({ queryKey: attendanceKeys.all });
+  // Finalization and corrections change the statistics too (same coalesced event).
+  invalidateStatistics(queryClient);
 }
