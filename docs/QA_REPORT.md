@@ -297,3 +297,132 @@ New files, all under `src/`, all run by `npm test` (no database needed):
 | `features/trainings/domain/qa-status.test.ts` | exact product strings, 11 stored states, deadline boundaries, provisional vs final, list sectioning, RSVP control rules |
 
 The `it.fails` tests keep `main` green; each turns red the moment its defect is fixed (remove `.fails` then). The Q2-1 and Q2-5 tests copy the `defaultOptions` of `queryClient.ts` because that file imports NetInfo and cannot load in node; if those options change, update the tests.
+
+---
+
+## Milestone 2: attendance, backend and mobile (M2-Q1)
+
+Scope: `supabase/migrations/20261115000100_attendance_schema.sql`, `20261115000200_attendance_rpcs.sql` (read as an attacker, against the Milestone 2 section of `docs/API_CONTRACT.md` and the product rules, not the developers' summaries), `src/features/attendance/**`, the attendance routes, the entry points on details / Home / Trainings / Profile, the extended Realtime hook, `src/features/community/api/members.ts`. App code and migrations were not changed. New QA tests: `supabase/tests/qa-attendance.test.ts` (25 tests) and `src/features/attendance/domain/qa-attendance.test.ts` (31 tests).
+
+### Verdict
+
+**Milestone 2 passes review with conditions: no critical or high defect; one medium (Q3-1) should be fixed before the milestone is called done, and the manual script below must be run on a phone against hosted Supabase.** The security model held under every attack tried: only active organizers of the session's community can read or change attendance (members, outsiders, organizers of another community, removed organizers and `anon` all get `forbidden` or a privilege error), members see only their own rows by every path tried (direct select, joins, counts, filters, the sheet RPC), no client can write the tables or alter an audit row, locks are taken in the Milestone 1 order (no deadlock in 4 randomized mixed storms with cancel, edit, removal and account deletion), every real change writes exactly one audit row and no-ops write none, and `unrecorded` is never turned into `absent` (finalization, the UI wording and the history screen were all checked for that).
+
+The defects are about interplay and polish, not about the attendance core: an edit of a confirmed session can make an already-marked session "not ended" again (Q3-1); an organizer removed while a call was waiting still completes it (Q3-2); "Mark all present" can overwrite a mark entered meanwhile (Q3-3); a screen opened before the end time does not notice the end and blames the phone clock (Q3-4). Q3-1 and Q3-2 are demonstrated by `it.fails` tests (four of them, `DEFECT Q3-n`); Q3-3 and Q3-4 are found by reading, because the wiring lives in a React component that cannot be rendered here. Nothing ran on a device or against hosted Supabase.
+
+### Defects
+
+| Id | Severity | Owner | Where | Summary |
+|---|---|---|---|---|
+| Q3-1 | medium | backend | `20261114000400_trainings_rpcs.sql:326-364` (`update_training`) | A confirmed, ended session that already has marks can be edited so it is "not ended" again or moved into the future. |
+| Q3-2 | low | backend | `20261115000200_attendance_rpcs.sql:24-45, 157, 254, 318, 403` | Authorization is checked before the session lock wait and never repeated: an organizer removed during the wait completes the call. |
+| Q3-3 | low | mobile | `AttendanceScreen.tsx:132-145` | "Mark all present" overwrites a mark the organizer set on a not-yet-processed row during the run. |
+| Q3-4 | low | mobile | `AttendanceScreen.tsx:102-105, 58-65`; `sheet.ts:95-103` | A sheet loaded before the end time keeps `ended: false`; when the device clock passes the end the screen says "Waiting for the server ... check the date and time on your phone" and never refetches by itself. |
+
+**Q3-1 — editing a session that has marks.**
+Reproduction: `qa-attendance.test.ts`, "DEFECT Q3-1" (two `it.fails`): `confirmedSession(1,1)`, mark the member present, then `update_training` with the stored form and `ends_at` = now + 24 h (start unchanged, so no future check applies), or `starts_at` / `ends_at` in the future.
+Expected: rejected, or at least refused once attendance rows exist (the contract blocks edits only for `completed`, but marks on a training that "has not happened yet" are nonsense, and statistics later count only `completed`). Actual: succeeds. Consequence (test "documents the consequence"): the sheet reports `ended = false`, further marks and the finalization are refused with `session_not_ended`, the marks already taken stay, and the session reappears under "upcoming" for everyone. Recoverable by editing the end back, so not data loss.
+Suggested fix: in `update_training`, when `status = 'confirmed'` and any `attendance_records` row exists (or when the session has already ended), reject changes to `starts_at` / `ends_at` with `validation_failed:starts_at` / `ends_at` (keep title, description and place editable). Product decision: also refuse cancel once marks exist (see O1).
+
+**Q3-2 — removed organizer still completes a queued call.**
+Reproduction: `qa-attendance.test.ts`, "DEFECT Q3-2" (two `it.fails`, `record_attendance` and `finalize_attendance`): hold the session lock, start the call (it waits), remove the organizer's membership, release. Expected: `forbidden`. Actual: `ok`; the mark or completion is written after the removal committed. A fresh call from the removed organizer is refused (test passes). The window is the lock wait. Same pattern as `update_training` / `cancel_training` in Milestone 1.
+Suggested fix: re-evaluate `public.is_organizer(v_community_id)` after `select ... for update` of the session (in `private.lock_session_for_attendance` and in `finalize_attendance`).
+
+**Q3-3 — mark all overwrites a concurrent mark.** `startMarkAll` captures the target ids once and calls `markAsync({ userId, next: 'present' })` for each, with no check of the row's current status and no `isRowPending` check, while the rows stay tappable (`editable` ignores `markAll.phase`). An organizer who taps Absent on a not-yet-reached row during a long run gets that row overwritten by Present (audited as a correction, but silently). Two mutations for the same row can also overlap, so rollback snapshots chain. Suggested fix: lock the toggles while `markAll.phase === 'running'`, and have the worker skip any row whose current cached status is no longer `unrecorded` or which `isRowPending`. Not demonstrated by a test (component wiring).
+
+**Q3-4 — stale `ended` after the end time passes.** The sheet is fetched once (stale time 30 s); `useNow` ticks every 30 s but nothing refetches when the device clock crosses the end. The screen then shows `hint: 'server_behind'` ("Waiting for the server ... check that the date and time on your phone are right"), which blames the phone although the cache is simply old; the organizer has to pull to refresh. Suggested fix: refetch the sheet once when `deviceSaysEnded` flips to true while `sheet.ended` is false, and reword the hint ("Refreshing ...") so the clock wording only appears if the refetch still says not ended. Not demonstrated by a test.
+
+### Observations (no defect filed; decisions for the lead)
+
+- **O1** `cancel_training` is allowed on a confirmed session that already ended and has marks (the contract says so). The marks then stay but can never be corrected (`session_not_confirmed`), the entry points disappear, nothing is audited, and statistics ignore them (`qa-attendance.test.ts`, "cancelling a confirmed, ended session ..."). Decide whether cancel should be refused once attendance exists.
+- **O2** A session without `ends_at` takes attendance and can be finalized from its start time, while the training is still running (test "sessions without an end time"). Contract-conformant; the UI should say so or the form should encourage an end time.
+- **O3** A walk-in can be marked Absent or cleared to Unrecorded (the row stays `is_walk_in`). "Absent walk-in" is meaningless; the UI offers both buttons for walk-ins.
+- **O4** The audit log is append-only for every client and every RPC (test "append-only through every RPC"), but not against account deletion: deleting an attendee deletes their audit rows (cascade, by contract) and deleting an organizer nulls `changed_by`, so the history then reads "a former organizer". `service_role` and superusers can edit anything (trusted keys).
+- **O5** Realtime: `attendance_records` is published with default replica identity. INSERT and UPDATE events pass the select policy per subscriber (RLS is enabled, test "realtime publication"), but Supabase does not apply RLS to DELETE events; they carry only the primary key (no user, no status), and rows are deleted only by cascades. Cannot be verified without a hosted project. The audit log is not published.
+- **O6** `training_sessions.attendance_finalized_by` and `_at` are readable by every member (whole-row RLS): members can see which organizer finalized. No absence information leaks.
+- **O7** Finalization placeholders (`unrecorded`) carry `recorded_by` = the finalizing organizer, which reads as "recorded by" for a row that records nothing. Cosmetic.
+- **O8** A free-text reason is offered only after finalization (`correct` mode); corrections before finalization carry none. The server stores a reason only on a real change.
+- **O9** Realtime attendance invalidation is skipped while any record mutation is in flight; the settle refetch covers the sheet and audit only. An organizer who marks themselves can see a stale "my record" or history until the next refetch. Negligible.
+- **O10** `fetchMyAttendance` applies `.limit(1000)` before the client-side `completed` filter and without an order; rows of cancelled sessions count against the cap. Irrelevant at Milestone 2 sizes.
+- **O11** No index supports `training_sessions.status = 'completed'` scans (Milestone 4). Index coverage of the new tables is otherwise complete: the unique `(session_id, user_id)` serves the session lookups, plus indexes on `user_id`, `community_id`, `recorded_by`, `changed_by` and `(session_id, changed_at)`.
+- **O12** `get_attendance_sheet.ended` uses the statement time (`now()`), the writers use `clock_timestamp()`. Harmless (a read), but it explains a sheet that says "not ended" a moment before a mark is accepted.
+
+Reviewed and found sound (backend): every function is `security definer` with an empty `search_path` and a single grantee; the private helpers are unreachable for API roles; the caller is always `auth.uid()` (the only user id parameter is the attendee, and an attendee who is not an active member of the session's community cannot get a new row); composite foreign keys keep `community_id` honest; `had_rsvp_going <> is_walk_in` and `status = 'completed' iff attendance_finalized_at is not null` are table checks; `clock_timestamp()` after the lock wait is used for the "ended" rule (proved by the developers' test); the lock order profile, membership, session is the Milestone 1 order, and finalize additionally key-share-locks the going members' profiles before the session, so a concurrent account deletion cannot deadlock; the first mark is audited `record` and every later one `correct`; finalization creates placeholders only for active going members and is idempotent.
+
+### Evidence map: Milestone 2 requirements
+
+Key: **test** = automated, ran green; **dev** = the developers' suites (`attendance*.test.ts`, `src/features/attendance/domain/*.test.ts`); **qa** = QA files; **code** = read in the source; **device** = needs the manual script; **hosted** = needs a hosted Supabase project.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| RSVP is intention, attendance is actual participation | dev (`attendance.test.ts` going / walk-in / snapshot); qa (snapshot stays when the RSVP row changes; a walk-in cannot RSVP going after confirmation) | holds |
+| After the session ends the organizer opens it and sees who RSVP'd | dev (sheet); code (`AttendanceScreen`, entry points on details, Home "Needs attendance", Trainings cue) | holds; device |
+| Mark Present / Absent, fast toggling | code (two large radio buttons, tap again clears, one change per row, optimistic with single-row rollback); dev + qa (`sheetCache`, tap matrix) | holds on paper; device for feel; Q3-3 |
+| Add a walk-in | dev (backend, modal logic); qa (a not_going member is a walk-in; a going member is refused; the search is plain text) | holds; O3 |
+| Finalize, history updates | dev; qa (placeholders after later removal, queue orders with cancel and edit); code (finalize invalidates lists, detail, sheet, audit, my history and my record) | holds; hosted for the live refresh on a member's phone |
+| Present / Absent / Unrecorded; Unrecorded is not Absent | dev (finalize never converts); qa (wording scan: no "absent / missed / no-show" in any member-facing text for unrecorded, distinct glyph and color, header counts) | holds |
+| Corrections after finalization with who / when / what | dev; qa (audit rows are append-only through every RPC; a correction after finalization records actor, old, new and the trimmed reason) | holds; O4 |
+| Cancelled sessions never count toward statistics | qa (a cancelled session keeps marks, a `completed`-only query returns 0; history filter on the client) | holds as a rule; O1; the statistics themselves are Milestone 4 |
+| DB uniqueness prevents duplicates | dev (constraint); qa + dev (concurrent identical marks and walk-ins, mixed storms) | holds |
+| Unauthorized attendance edits | dev (`attendance-security.test.ts`); qa (removed organizer, fresh call and queued call; direct writes and joins) | holds; Q3-2 low |
+| Members see only their own attendance | dev; qa (counts, joins, filters, an organizer of another community, the sheet RPC) | holds; hosted for Realtime |
+| Audit trail consistency | dev (trace trigger: audit equals real changes); qa (chains from `unrecorded` to the stored status in 4 mixed storms; append-only snapshot test) | holds |
+| Concurrency (mark vs finalize vs cancel vs edit vs removal vs account deletion) | dev; qa (deterministic queue tests in both orders; 4 randomized storms, zero unexpected errors) | holds; Q3-1 shows an edit interplay |
+| Timezone and clock | dev (server clock after a lock wait); qa (no end time, one second before the start, history month in the session's zone across the new year, unknown zone) | holds; Q3-4 for the screen's clock use |
+| Query shapes match the schema | qa (`qa-attendance.test.ts` reads the SQL: sheet jsonb keys equal the TypeScript types, RPC argument names, named foreign keys incl. the two links from the audit log to `profiles`, every selected column exists) | holds; hosted for PostgREST embed resolution |
+| A removed member's name | code: the sheet comes from the RPC (definer; shows removed members as "No longer a member"); the audit "changed by" is an RLS-filtered embed, so a removed organizer renders as "a former organizer" (acceptable) | holds |
+| Accessibility | code (radio group with per-member labels, `checked` / `busy` state, status as glyph plus text, dashed chip for Not recorded, 44 px targets, History button labelled with the name); `qa-hygiene` (roles, touch targets, no color literals) | holds on paper; device (TalkBack, 1.6x font; no live region on the mark-all banner) |
+| Realtime | code (one channel, community filter, coalesced, skipped while a change is saved); dev (`coalesce`); qa (publication and RLS) | unverified live |
+| Expo Go | web export builds; code reading found no native-only API outside Expo Go | device |
+
+### Not verifiable until hosted Supabase and a device exist
+
+1. Realtime for `attendance_records`: delivery, RLS filtering per subscriber with the definer helpers, DELETE events (O5), the `community_id` filter, and that a member's phone learns of finalization and corrections.
+2. PostgREST: resolving the `training_sessions!attendance_records_session_fkey` embed (a composite foreign key) and the `profiles!attendance_audit_log_changed_by_fkey` embed; the composite return of the record RPCs as a single JSON object.
+3. Default privileges on the new tables and functions on the hosted project (re-run the privilege queries of `qa-privileges.test.ts`).
+4. React Compiler behaviour of the new components at runtime, the modals on Android (the back button closes the sheet and the reason dialog), `FlatList` with 100+ rows, keyboard behaviour of the reason field.
+5. TalkBack reading of the toggles, chips and banners; the dashed "Not recorded" chip on Android; dark theme.
+6. Whether a phone clock that differs from the server's makes the entry-point cue and the screen disagree (Q3-4).
+
+### Manual test script additions (continue the numbering of the Milestone 1 script)
+
+Setup: accounts A (organizer), B, C, D (members), optionally E (second organizer). A training that is confirmed: minimum 2, short deadline, A's phone knows B and C answer going, D does not answer; let the deadline pass and the training start and end (use a short training that starts about 10 minutes after the deadline). An owner with SQL access can move the times as the tests do.
+
+26. **(M2)** A: Home. Expect a "Needs attendance" section with the training once it is over (warning glyph plus the words). The Trainings tab card shows the same cue. B (member): neither appears.
+27. A: open the training from Home. Expect the "Attendance" screen: header "Present 0 · Absent 0 · Unrecorded 2 · of 2 who said going", the sentence that Not recorded is never counted as absent, B and C listed as "Said going" with a dashed "Not recorded" chip.
+28. A: tap Present on B. The button turns teal and filled at once with a check, the chip changes to Present, the count updates. Tap Present on B again: back to Not recorded. Tap Absent on B: red, filled, chip Absent. Tap rapidly three times on one row: no stacking, no flicker back to an old value.
+29. A: turn on airplane mode, tap Present on C. Expect the row to return to Not recorded with "Not saved ... The previous value is back." and no other row affected. Turn the network on and tap again: saved.
+30. A: tap Add attendee, search D by part of the name (also try a name with an accent). D is listed "Add as walk-in (Present)". Tap D: banner "D was added as Present", D drops out of the list and appears on the sheet as "Walk-in", Present. Tap Done.
+31. A: with C still unrecorded tap Mark all present: the confirmation states how many; confirm. Expect progress text, then success, C Present. In a run with many rows, tap Absent on a row further down while it runs and record what happens (Q3-3).
+32. B: open the training: nothing about attendance yet (not finalized). Profile tab, "My attendance": expect the empty state.
+33. A: clear C back to Not recorded, tap Finalize attendance. The dialog states the number of people who stay Not recorded and that they are NOT counted as absent. Confirm. Expect the screen to switch to "Attendance is finalized ... by <A>" and the training to read Completed on the details screen and in the lists within seconds, without a refresh.
+34. C (said going, left Unrecorded): open the training: the card says "Attendance not recorded" (never "absent"). Profile, My attendance: the training appears under its month with "Not recorded", and the counts line says "Not recorded 1", not "Absent". B sees "You were marked absent" (or present, as marked). D (walk-in): "You were present".
+35. A: View / correct attendance. Tap Present on C. A "Save correction" dialog with an optional reason appears: enter "arrived late" and save. Expect Present. Tap History on C: exactly one line, "Corrected: Not recorded to Present", time in the session's zone, "by <A>", "Reason: arrived late". Save another correction with an empty reason: no reason line.
+36. A: tap the same segment again (clear C) with a 200-character reason; try to type a 201st character (the field stops at 200). C's History lists the changes in order.
+37. E (second organizer) corrects B while A corrects C: both succeed. Correct the same member from both phones within a second: the later one wins and both histories show both changes.
+38. With B's and C's phones open on the training details, A corrects them: the outcome text updates within a few seconds without a refresh (Realtime).
+39. A: Edit the finalized training: "can no longer be edited"; Cancel: "already completed and cannot be cancelled".
+40. A cancelled training and one still awaiting the minimum: the attendance screen explains why nothing can be recorded, no buttons. Open the attendance screen of a confirmed training in the future, with a correct phone clock: "has not ended yet".
+41. Set A's phone clock one hour ahead and open a confirmed training that ends in 30 minutes: the entry shows "Record attendance", the screen says the server has not registered the end. Record that the hint blames the phone clock and whether a pull to refresh clears it (Q3-4). Reset the clock.
+42. Open the attendance screen 2 minutes before a training ends and keep it open past the end: record whether it updates by itself (Q3-4).
+43. Remove D's membership (SQL) after finalization: the sheet still lists D as "No longer a member", and a correction works; D's phone shows onboarding and no history. Repeat before finalization with a going member: that member gets no placeholder row.
+44. TalkBack on A: a row reads "Attendance of <name>" with Present / Absent as radio buttons and their state; the chip reads "Status: Not recorded"; the History button reads "History of <name>". Largest font size: no clipped names or buttons. Dark theme: the dashed chip, filled buttons and banners are readable.
+45. B opens `/trainings/<id>/attendance` (deep link, or by typing the route on the web build): redirected to the details screen, no sheet.
+
+### What was run (M2-Q1)
+
+On Windows, embedded Postgres, 2026-11-15:
+
+- `npm test` (run twice in a row) -> both times `Test Files  47 passed (47)`, `Tests  1180 passed | 4 expected fail (1184)`. The 4 expected failures are the `DEFECT Q3-1` (2) and `DEFECT Q3-2` (2) tests; the Milestone 1 `it.fails` tests no longer exist. Each defect test was also run once with `.fails` removed and failed for the stated reason (`promise resolved ... instead of rejecting`; `expected 'ok' to be 'P0001:forbidden'`).
+- `npm run typecheck` -> exit 0, no output.
+- `npm run lint` -> exit 0, no output.
+- `npx expo export --platform web` -> `Exported: dist`.
+- `npx expo-doctor` -> `20/20 checks passed. No issues detected!`
+- Not run: the Android bundle, any device, any hosted Supabase.
+
+### Test inventory (M2-Q1)
+
+| File | Tests | Covers |
+|---|---|---|
+| `supabase/tests/qa-attendance.test.ts` | 25 (21 passing, 4 expected fail) | update_training and cancel_training on sessions with marks; deterministic lock queues (record / cancel / finalize / edit in both orders); removed organizer mid-wait; snapshot integrity; append-only audit; leakage through joins and counts; realtime publication and RLS; sessions without an end; placeholders of later-removed members; mixed concurrent storm (4 rounds) |
+| `src/features/attendance/domain/qa-attendance.test.ts` | 31 | sheet JSON keys vs SQL, RPC argument names, FK names and columns vs SQL; "Not recorded" wording and glyphs; tap matrix; mark-all targets and stop rules for every error code; counts and sorting; walk-in search; mode matrix (status, ended, device clock); history grouping across zones; overlapping optimistic rows |
