@@ -39,10 +39,10 @@ npx supabase@latest link --project-ref YOUR_PROJECT_REF
 ```
 
 ```bash
-npx supabase@latest db push
+npx supabase@latest db push --remote
 ```
 
-`YOUR_PROJECT_REF` is the random id in your project URL (`https://YOUR_PROJECT_REF.supabase.co`). `link` asks for the database password from step 1. `db push` applies every file in `supabase/migrations/` in order and remembers which ones were applied, so you can run it again after pulling new migrations.
+`YOUR_PROJECT_REF` is the random id in your project URL (`https://YOUR_PROJECT_REF.supabase.co`). `link` asks for the database password from step 1. Use `--remote` (older CLI versions call it `--linked`): without it the CLI targets a local Docker stack and fails with `ECONNREFUSED 127.0.0.1:54322`. `db push` applies every file in `supabase/migrations/` in order and remembers which ones were applied, so you can run it again after pulling new migrations.
 
 Option B — no CLI: open **SQL Editor**, and for each file in `supabase/migrations/` **in filename order**, paste its full contents and press **Run**. Every file must finish without an error before you run the next.
 

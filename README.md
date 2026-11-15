@@ -76,7 +76,7 @@ The essentials:
 
 ## Database migrations
 
-`supabase/migrations/` is the source of truth. Apply with `npx supabase@latest db push` or by pasting files in order into the SQL editor; details in [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md).
+`supabase/migrations/` is the source of truth. Apply with `npx supabase@latest db push --remote` (the flag matters: without it the CLI targets a local Docker stack) or by pasting files in order into the SQL editor; details in [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md).
 
 ## Deployment notes
 
