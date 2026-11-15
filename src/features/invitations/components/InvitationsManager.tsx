@@ -82,8 +82,10 @@ function InvitationRow({
       </View>
       {state === 'active' ? (
         <InvitationCodeActions
-          code={invitation.code}
+          invitation={invitation}
           communityName={communityName}
+          zone={zone}
+          now={now}
           onRevoke={onRevoke}
         />
       ) : null}
@@ -177,7 +179,13 @@ export function InvitationsManager({ community }: { community: Community }) {
           <Text color="textMuted" align="center">
             {remainingUsesText(createdNow)} · {expiryText(createdNow, zone, now)}
           </Text>
-          <InvitationCodeActions code={createdNow.code} communityName={community.name} />
+          <InvitationCodeActions
+            invitation={createdNow}
+            communityName={community.name}
+            zone={zone}
+            now={now}
+            showPreview
+          />
           <View style={{ alignItems: 'flex-start' }}>
             <Button label="Done" variant="ghost" size="sm" onPress={() => setCreated(null)} />
           </View>

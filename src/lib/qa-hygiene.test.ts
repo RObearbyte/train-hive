@@ -56,10 +56,14 @@ describe('QA hygiene: colors, secrets, logging', () => {
     expect(found).toEqual([]);
   });
 
-  it('only EXPO_PUBLIC_ URL and anon key are read from the environment', () => {
+  it('only the known EXPO_PUBLIC_ variables are read from the environment', () => {
     const vars = new Set<string>();
     for (const [, source] of text) for (const m of code(source).matchAll(/process\.env\.(\w+)/g)) vars.add(m[1]);
-    expect([...vars].sort()).toEqual(['EXPO_PUBLIC_SUPABASE_ANON_KEY', 'EXPO_PUBLIC_SUPABASE_URL']);
+    expect([...vars].sort()).toEqual([
+      'EXPO_PUBLIC_APP_DOWNLOAD_URL',
+      'EXPO_PUBLIC_SUPABASE_ANON_KEY',
+      'EXPO_PUBLIC_SUPABASE_URL',
+    ]);
   });
 
   it('the only console call is the central error reporter', () => {

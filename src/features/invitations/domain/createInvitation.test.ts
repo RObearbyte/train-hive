@@ -7,7 +7,6 @@ import {
   createInvitationFormSchema,
   expiryFromPreset,
   expiryText,
-  invitationShareMessage,
   invitationStateLabel,
   parseMaxUses,
 } from './createInvitation';
@@ -128,12 +127,6 @@ describe('texts', () => {
     // Expires AT the instant, like invitationState.
     expect(expiryText({ expires_at: now.toISOString() }, 'UTC', now)).toBe(
       'Expired Sun 15 Nov, 10:00',
-    );
-  });
-
-  it('builds the share message', () => {
-    expect(invitationShareMessage('Bears', 'ABCD-EFGH')).toBe(
-      'Join Bears on TrainHive. Open the app and enter the invitation code ABCD-EFGH',
     );
   });
 });

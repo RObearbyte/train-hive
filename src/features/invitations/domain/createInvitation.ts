@@ -110,8 +110,3 @@ export function expiryText(
   const passed = new Date(invitation.expires_at).getTime() <= now.getTime();
   return `${passed ? 'Expired' : 'Expires'} ${formatDateTime(invitation.expires_at, zone)}`;
 }
-
-/** Text handed to the share sheet. `formattedCode` is the `ABCD-EFGH` form. */
-export function invitationShareMessage(communityName: string, formattedCode: string): string {
-  return `Join ${communityName} on TrainHive. Open the app and enter the invitation code ${formattedCode}`;
-}

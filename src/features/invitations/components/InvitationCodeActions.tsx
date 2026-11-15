@@ -1,12 +1,15 @@
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useState } from 'react';
-import { Share, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { AccessibilityInfo, Share, View } from 'react-native';
 
 import { formatInvitationCode } from '@/features/onboarding/domain/invitationCode';
+import { APP_DOWNLOAD_URL } from '@/lib/appLink';
+import type { InvitationCode } from '@/lib/database.types';
 import { reportError } from '@/lib/logger';
-import { Banner, Button, useTheme } from '@/ui';
+import { Banner, Button, Text, useTheme } from '@/ui';
 
-import { invitationShareMessage } from '../domain/createInvitation';
+import { remainingUses } from '../domain/invitation';
+import { buildInvitationMessage } from '../domain/invitationMessage';
 
 const COPIED_NOTICE_MS = 2500;
 
@@ -16,67 +19,134 @@ function isShareCancelled(error: unknown): boolean {
 }
 
 export interface InvitationCodeActionsProps {
-  code: string;
-  communityName: string;
+  invitation: Pick<InvitationCode, 'code' | 'expires_at' | 'max_redemptions' | 'redemption_count'>;
+  /** From the current community; the message falls back to a neutral wording without it. */
+  communityName: string | null | undefined;
+  /** The community's IANA time zone, for the expiry date in the message. */
+  zone: string;
+  now: Date;
+  /** Shows the message text in a card above the buttons. */
+  showPreview?: boolean;
   /** Adds a Revoke button. */
   onRevoke?: () => void;
 }
 
-/** Copy / Share (and optionally Revoke) for one code, with the outcome shown underneath. */
-export function InvitationCodeActions({ code, communityName, onRevoke }: InvitationCodeActionsProps) {
-  const { spacing } = useTheme();
-  const [copied, setCopied] = useState(false);
+type Copied = 'message' | 'code';
+
+/** Copy message / Share / Copy code only (and optionally Revoke) for one active code. */
+export function InvitationCodeActions({
+  invitation,
+  communityName,
+  zone,
+  now,
+  showPreview = false,
+  onRevoke,
+}: InvitationCodeActionsProps) {
+  const { spacing, colors, radii } = useTheme();
+  const [copied, setCopied] = useState<Copied | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const formatted = formatInvitationCode(code);
+  const formatted = formatInvitationCode(invitation.code);
+
+  const message = useMemo(
+    () =>
+      buildInvitationMessage({
+        communityName,
+        code: invitation.code,
+        expiresAt: invitation.expires_at,
+        maxRedemptions: invitation.max_redemptions,
+        remainingUses: remainingUses(invitation),
+        appLink: APP_DOWNLOAD_URL,
+        now,
+        timeZone: zone,
+      }),
+    [communityName, invitation, now, zone],
+  );
 
   useEffect(() => {
     if (!copied) return undefined;
-    const timer = setTimeout(() => setCopied(false), COPIED_NOTICE_MS);
+    const timer = setTimeout(() => setCopied(null), COPIED_NOTICE_MS);
     return () => clearTimeout(timer);
   }, [copied]);
 
-  const copy = async () => {
+  const copy = async (what: Copied) => {
     setProblem(null);
+    const text = what === 'message' ? message : formatted;
+    const failure =
+      what === 'message'
+        ? 'Could not copy the message. Select it and copy it by hand.'
+        : 'Could not copy the code. Select it and copy it by hand.';
     try {
       // Resolves false on web when the browser refuses clipboard access.
-      const saved = await Clipboard.setStringAsync(formatted);
-      if (saved) setCopied(true);
-      else setProblem('Could not copy the code. Select it and copy it by hand.');
+      const saved = await Clipboard.setStringAsync(text);
+      if (saved) {
+        setCopied(what);
+        AccessibilityInfo.announceForAccessibility(
+          what === 'message' ? 'Message copied' : 'Code copied',
+        );
+      } else {
+        setProblem(failure);
+      }
     } catch (error) {
       reportError('invitations.copy', error);
-      setProblem('Could not copy the code. Select it and copy it by hand.');
+      setProblem(failure);
     }
   };
 
   const share = async () => {
     setProblem(null);
     try {
-      await Share.share({ message: invitationShareMessage(communityName, formatted) });
+      await Share.share({ message });
     } catch (error) {
       if (isShareCancelled(error)) return;
       reportError('invitations.share', error);
-      setProblem('Sharing is not available here. Copy the code instead.');
+      setProblem('Sharing is not available here. Copy the message instead.');
     }
   };
 
   return (
     <View style={{ gap: spacing.sm }}>
+      {showPreview ? (
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            borderWidth: 1,
+            borderRadius: radii.md,
+            padding: spacing.md,
+            gap: spacing.xs,
+          }}
+        >
+          <Text variant="label" color="textMuted">
+            Message to send
+          </Text>
+          <Text selectable>{message}</Text>
+        </View>
+      ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
         <Button
-          label={copied ? 'Copied' : 'Copy'}
-          accessibilityLabel={copied ? `Copied code ${formatted}` : `Copy code ${formatted}`}
-          variant="secondary"
+          label={copied === 'message' ? 'Copied' : 'Copy message'}
+          accessibilityLabel={
+            copied === 'message' ? `Message copied for code ${formatted}` : `Copy invitation message for code ${formatted}`
+          }
           size="sm"
-          icon={copied ? 'check' : 'copy'}
-          onPress={() => void copy()}
+          icon={copied === 'message' ? 'check' : 'copy'}
+          onPress={() => void copy('message')}
         />
         <Button
           label="Share"
-          accessibilityLabel={`Share code ${formatted}`}
+          accessibilityLabel={`Share invitation message for code ${formatted}`}
           variant="secondary"
           size="sm"
           icon="share"
           onPress={() => void share()}
+        />
+        <Button
+          label={copied === 'code' ? 'Copied' : 'Copy code only'}
+          accessibilityLabel={copied === 'code' ? `Code ${formatted} copied` : `Copy code ${formatted} only`}
+          variant="ghost"
+          size="sm"
+          icon={copied === 'code' ? 'check' : undefined}
+          onPress={() => void copy('code')}
         />
         {onRevoke ? (
           <Button
@@ -89,6 +159,11 @@ export function InvitationCodeActions({ code, communityName, onRevoke }: Invitat
           />
         ) : null}
       </View>
+      {copied ? (
+        <Text color="success" accessibilityLiveRegion="polite">
+          {copied === 'message' ? 'Message copied' : 'Code copied'}
+        </Text>
+      ) : null}
       {problem ? <Banner tone="error" message={problem} /> : null}
     </View>
   );
