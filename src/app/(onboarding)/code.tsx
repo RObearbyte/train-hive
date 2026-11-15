@@ -64,6 +64,7 @@ export default function InvitationCodeScreen() {
           label="Back"
           variant="ghost"
           size="sm"
+          icon="chevron-left"
           onPress={() => router.back()}
           disabled={preview.isPending}
         />

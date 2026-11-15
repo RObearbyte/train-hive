@@ -69,6 +69,7 @@ export default function DisplayNameScreen() {
           label="Back"
           variant="ghost"
           size="sm"
+          icon="chevron-left"
           onPress={() => router.back()}
           disabled={busy}
         />

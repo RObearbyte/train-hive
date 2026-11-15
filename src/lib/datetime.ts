@@ -214,3 +214,31 @@ export function formatSessionWhen(instant: string | Date, zone: string, now: Dat
 export function hasPassed(instant: string | Date, now: Date): boolean {
   return toDate(instant).getTime() <= now.getTime();
 }
+
+/** The device's IANA zone, or null when the runtime does not report one. */
+export function deviceTimeZone(): string | null {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return isValidTimeZone(zone) ? zone : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when the two zones show different clock times at `instant` (compared
+ * by UTC offset, so Europe/Bucharest and Europe/Athens count as the same).
+ * Used to add a "shown in ... time" note for someone travelling.
+ */
+export function zonesDifferAt(instant: string | Date, zoneA: string, zoneB: string): boolean {
+  assertZone(zoneA);
+  assertZone(zoneB);
+  const date = toDate(instant);
+  return tzOffset(zoneA, date) !== tzOffset(zoneB, date);
+}
+
+/** "Europe/Bucharest" → "Bucharest", "America/Argentina/Buenos_Aires" → "Buenos Aires". */
+export function zoneCityName(zone: string): string {
+  const last = zone.split('/').pop() ?? zone;
+  return last.replace(/_/g, ' ');
+}

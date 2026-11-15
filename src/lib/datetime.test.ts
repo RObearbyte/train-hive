@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   calendarDaysFromNow,
   defaultRsvpDeadline,
+  deviceTimeZone,
   formatDateTime,
   formatDateTimeRange,
   formatLongDate,
@@ -17,6 +18,8 @@ import {
   relativeDayLabel,
   utcToWallTime,
   wallTimeToUtc,
+  zoneCityName,
+  zonesDifferAt,
 } from '@/lib/datetime';
 
 const BUCHAREST = 'Europe/Bucharest';
@@ -353,3 +356,34 @@ describe.each(['UTC', 'America/Los_Angeles', 'Asia/Tokyo', 'Europe/Bucharest', '
     });
   },
 );
+
+describe('zone comparison', () => {
+  it('compares by offset at that instant, not by name', () => {
+    expect(zonesDifferAt(SAT_0900, BUCHAREST, 'Europe/Athens')).toBe(false);
+    expect(zonesDifferAt(SAT_0900, BUCHAREST, BUCHAREST)).toBe(false);
+    expect(zonesDifferAt(SAT_0900, BUCHAREST, 'Europe/Berlin')).toBe(true);
+    expect(zonesDifferAt(SAT_0900, BUCHAREST, TOKYO)).toBe(true);
+  });
+
+  it('follows DST: Bucharest and Johannesburg only match for part of the year', () => {
+    // Winter: both UTC+2.
+    expect(zonesDifferAt('2026-01-15T12:00:00Z', BUCHAREST, 'Africa/Johannesburg')).toBe(false);
+    // Summer: Bucharest is UTC+3, Johannesburg stays UTC+2.
+    expect(zonesDifferAt('2026-07-15T12:00:00Z', BUCHAREST, 'Africa/Johannesburg')).toBe(true);
+  });
+
+  it('throws on an invalid zone', () => {
+    expect(() => zonesDifferAt(SAT_0900, BUCHAREST, 'Nope/Zone')).toThrow(RangeError);
+  });
+
+  it('names a zone by its city', () => {
+    expect(zoneCityName(BUCHAREST)).toBe('Bucharest');
+    expect(zoneCityName('America/Argentina/Buenos_Aires')).toBe('Buenos Aires');
+    expect(zoneCityName('UTC')).toBe('UTC');
+  });
+
+  it('reports the device zone as a valid zone or null', () => {
+    const zone = deviceTimeZone();
+    expect(zone === null || isValidTimeZone(zone)).toBe(true);
+  });
+});

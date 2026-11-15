@@ -1,15 +1,11 @@
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { HexMotif, Text, brand, useTheme } from '@/ui';
+import { HexMotif, Text, useTheme } from '@/ui';
 
-/**
- * Navy brand block with the hexagon motif. The same in light and dark themes,
- * so its colors come from the brand palette rather than the theme tokens
- * (Arctic White on Midnight Navy is 14.2:1).
- */
+/** Navy brand block with the hexagon motif; the same in light and dark themes (the `hero` color tokens). */
 export function BrandHero() {
-  const { spacing } = useTheme();
+  const { colors, spacing } = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
@@ -17,7 +13,7 @@ export function BrandHero() {
       style={{
         flex: 1,
         minHeight: 260,
-        backgroundColor: brand.midnightNavy,
+        backgroundColor: colors.hero,
         justifyContent: 'flex-end',
         paddingTop: insets.top + spacing.xl,
         paddingBottom: spacing.xxl,
@@ -28,10 +24,10 @@ export function BrandHero() {
       }}
     >
       <HexMotif color="accent" opacity={0.5} cell={26} />
-      <Text variant="display" style={{ color: brand.arcticWhite }}>
+      <Text variant="display" color="onHero">
         TrainHive
       </Text>
-      <Text variant="heading" accessibilityRole="text" style={{ color: brand.warmSand }}>
+      <Text variant="heading" accessibilityRole="text" color="onHeroMuted">
         One Pack. Stronger together.
       </Text>
     </View>

@@ -329,6 +329,22 @@ describe('trainingFormSchema: create', () => {
     });
   });
 
+  it('enforces the server length caps on optional text', () => {
+    expect(createErrors({ description: 'a'.repeat(2000) })).toEqual({});
+    expect(Object.keys(createErrors({ description: 'a'.repeat(2001) }))).toEqual(['description']);
+    expect(createErrors({ address: 'a'.repeat(200) })).toEqual({});
+    expect(Object.keys(createErrors({ address: 'a'.repeat(201) }))).toEqual(['address']);
+    expect(createErrors({ meetingInstructions: 'a'.repeat(1000) })).toEqual({});
+    expect(Object.keys(createErrors({ meetingInstructions: 'a'.repeat(1001) }))).toEqual([
+      'meetingInstructions',
+    ]);
+    const base = 'https://example.com/';
+    expect(createErrors({ mapUrl: base + 'a'.repeat(2048 - base.length) })).toEqual({});
+    expect(Object.keys(createErrors({ mapUrl: base + 'a'.repeat(2049 - base.length) }))).toEqual([
+      'mapUrl',
+    ]);
+  });
+
   it('requires an activity', () => {
     expect(createErrors({ activityType: '' }).activityType).toBeDefined();
     // Keys are rows in a lookup table, so unknown ones are allowed.

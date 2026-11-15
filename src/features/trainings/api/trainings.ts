@@ -1,0 +1,100 @@
+import type { ActivityType, RsvpResponse, TrainingSession } from '@/lib/database.types';
+import { toAppError } from '@/lib/errors';
+import { getSupabase } from '@/lib/supabase';
+
+import type { MyRsvps } from './keys';
+
+/** Newest sessions kept in the list; older history arrives with statistics (Milestone 4). */
+export const SESSION_LIST_LIMIT = 200;
+
+/**
+ * Sessions of a community, newest start first. RLS returns rows only to
+ * active members, so a removed member simply gets an empty list.
+ */
+export async function fetchCommunitySessions(communityId: string): Promise<TrainingSession[]> {
+  const { data, error } = await getSupabase()
+    .from('training_sessions')
+    .select('*')
+    .eq('community_id', communityId)
+    .order('starts_at', { ascending: false })
+    .limit(SESSION_LIST_LIMIT);
+  if (error) throw toAppError(error);
+  return data;
+}
+
+/** One session, or null when it does not exist or the caller may not see it. */
+export async function fetchSession(sessionId: string): Promise<TrainingSession | null> {
+  const { data, error } = await getSupabase()
+    .from('training_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (error) throw toAppError(error);
+  return data;
+}
+
+/** The caller's answers in a community, keyed by session id. */
+export async function fetchMyRsvps(communityId: string, userId: string): Promise<MyRsvps> {
+  const { data, error } = await getSupabase()
+    .from('training_rsvps')
+    .select('session_id, response')
+    .eq('community_id', communityId)
+    .eq('user_id', userId);
+  if (error) throw toAppError(error);
+
+  const mine: MyRsvps = {};
+  for (const row of data) mine[row.session_id] = row.response;
+  return mine;
+}
+
+export type Participant = {
+  userId: string;
+  response: RsvpResponse;
+  /** Falls back to a neutral label when the profile is not visible (a former member). */
+  displayName: string;
+  respondedAt: string;
+};
+
+export const UNKNOWN_PARTICIPANT_NAME = 'Former member';
+
+/** Everyone who answered for a session, with their display names. */
+export async function fetchParticipants(sessionId: string): Promise<Participant[]> {
+  const { data, error } = await getSupabase()
+    .from('training_rsvps')
+    // training_rsvps has a single foreign key to profiles; the name keeps the embed unambiguous.
+    .select('user_id, response, responded_at, profile:profiles!training_rsvps_user_id_fkey(display_name)')
+    .eq('session_id', sessionId);
+  if (error) throw toAppError(error);
+
+  return data.map((row) => ({
+    userId: row.user_id,
+    response: row.response,
+    displayName: row.profile?.display_name ?? UNKNOWN_PARTICIPANT_NAME,
+    respondedAt: row.responded_at,
+  }));
+}
+
+/**
+ * The organizer's display name, or null when their profile is not visible.
+ * training_sessions has two foreign keys to profiles (organizer_id and
+ * cancelled_by), so the embed must name the one it means.
+ */
+export async function fetchOrganizerName(sessionId: string): Promise<string | null> {
+  const { data, error } = await getSupabase()
+    .from('training_sessions')
+    .select('organizer:profiles!training_sessions_organizer_id_fkey(display_name)')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (error) throw toAppError(error);
+  return data?.organizer?.display_name ?? null;
+}
+
+/** The activity type lookup table, in display order. */
+export async function fetchActivityTypes(): Promise<ActivityType[]> {
+  const { data, error } = await getSupabase()
+    .from('activity_types')
+    .select('*')
+    .order('sort_order', { ascending: true });
+  if (error) throw toAppError(error);
+  return data;
+}

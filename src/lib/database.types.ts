@@ -104,7 +104,7 @@ export type Database = {
           community_id: string;
           code: string;
           role: Database['public']['Enums']['membership_role'];
-          created_by: string;
+          created_by: string | null;
           expires_at: string | null;
           max_redemptions: number | null;
           redemption_count: number;
@@ -116,7 +116,7 @@ export type Database = {
           community_id: string;
           code: string;
           role?: Database['public']['Enums']['membership_role'];
-          created_by: string;
+          created_by?: string | null;
           expires_at?: string | null;
           max_redemptions?: number | null;
           redemption_count?: number;
@@ -128,7 +128,7 @@ export type Database = {
           community_id?: string;
           code?: string;
           role?: Database['public']['Enums']['membership_role'];
-          created_by?: string;
+          created_by?: string | null;
           expires_at?: string | null;
           max_redemptions?: number | null;
           redemption_count?: number;
@@ -141,6 +141,13 @@ export type Database = {
             columns: ['community_id'];
             isOneToOne: false;
             referencedRelation: 'communities';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'invitation_codes_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -170,6 +177,13 @@ export type Database = {
             columns: ['invitation_id'];
             isOneToOne: false;
             referencedRelation: 'invitation_codes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'invitation_redemptions_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -314,6 +328,13 @@ export type Database = {
             referencedColumns: ['id'];
           },
           {
+            foreignKeyName: 'training_sessions_cancelled_by_fkey';
+            columns: ['cancelled_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
             foreignKeyName: 'training_sessions_activity_type_fkey';
             columns: ['activity_type'];
             isOneToOne: false;
@@ -352,11 +373,11 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: 'training_rsvps_session_id_fkey';
-            columns: ['session_id'];
+            foreignKeyName: 'training_rsvps_session_fkey';
+            columns: ['session_id', 'community_id'];
             isOneToOne: false;
             referencedRelation: 'training_sessions';
-            referencedColumns: ['id'];
+            referencedColumns: ['id', 'community_id'];
           },
           {
             foreignKeyName: 'training_rsvps_community_id_fkey';
@@ -519,11 +540,11 @@ export type SetRsvpResult = {
 export type TrainingInput = {
   title: string;
   description?: string | null;
-  activity_type?: string;
+  activity_type?: string | null;
   starts_at: string;
   ends_at?: string | null;
   rsvp_deadline?: string | null;
-  timezone?: string;
+  timezone?: string | null;
   location_name: string;
   address?: string | null;
   latitude?: number | null;

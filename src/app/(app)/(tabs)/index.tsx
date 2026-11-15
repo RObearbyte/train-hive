@@ -1,28 +1,132 @@
+import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
-import { EmptyState, Screen, Text, useTheme } from '@/ui';
+import { TrainingCard } from '@/features/trainings/components/TrainingCard';
+import { statusBadgeLabel } from '@/features/trainings/domain/presentation';
+import { deriveDisplayStatus, participationSummary } from '@/features/trainings/domain/status';
+import { useCommunityTrainings } from '@/features/trainings/hooks/useTrainings';
+import { formatSessionWhen, isValidTimeZone } from '@/lib/datetime';
+import { userMessage } from '@/lib/errors';
+import { useNow } from '@/lib/useNow';
+import {
+  Banner,
+  Card,
+  Divider,
+  EmptyState,
+  ErrorState,
+  ListItem,
+  LoadingState,
+  Screen,
+  StatusBadge,
+  Text,
+  useTheme,
+} from '@/ui';
 
-// The next training and one-tap RSVP arrive with M1-A2.
+const THEN_COUNT = 3;
+
 export default function HomeScreen() {
+  const router = useRouter();
   const { spacing } = useTheme();
+  const now = useNow();
   const { community, profile, isOrganizer } = useCurrentMembership();
+  const trainings = useCommunityTrainings(now);
 
-  return (
-    <Screen scroll edges={['top', 'left', 'right']}>
-      <View style={{ gap: spacing.xs }}>
-        <Text variant="title">{profile ? `Hi, ${profile.display_name}` : 'Home'}</Text>
-        {community ? <Text color="textMuted">{community.name}</Text> : null}
-      </View>
+  const next = trainings.next;
+  const then = trainings.upcoming.filter((session) => session.id !== next?.id).slice(0, THEN_COUNT);
+  const hasUpcoming = next !== null || then.length > 0;
+
+  let body;
+  if (trainings.error && !hasUpcoming) {
+    body = (
+      <ErrorState
+        message={userMessage(trainings.error.code, trainings.error.field)}
+        onRetry={trainings.refetch}
+        style={{ flex: 1 }}
+      />
+    );
+  } else if (trainings.isLoading) {
+    body = <LoadingState message="Loading trainings" style={{ flex: 1 }} />;
+  } else if (!hasUpcoming) {
+    body = (
       <EmptyState
         title="No trainings yet"
         message={
           isOrganizer
-            ? 'Trainings you create will show up here for the whole community.'
+            ? 'Trainings you plan will show up here for the whole community.'
             : 'When your organizer plans a training, it will show up here.'
         }
         style={{ flex: 1 }}
       />
+    );
+  } else {
+    body = (
+      <>
+        {trainings.error ? (
+          <Banner
+            tone="warning"
+            message={userMessage(trainings.error.code, trainings.error.field)}
+            action={{ label: 'Try again', onPress: trainings.refetch }}
+          />
+        ) : null}
+
+        {next ? (
+          <View style={{ gap: spacing.sm }}>
+            <Text variant="heading">Next training</Text>
+            <TrainingCard
+              featured
+              session={next}
+              myResponse={trainings.myResponse(next.id)}
+              now={now}
+              onPress={() => router.push(`/trainings/${next.id}`)}
+            />
+          </View>
+        ) : null}
+
+        {then.length > 0 ? (
+          <View style={{ gap: spacing.sm }}>
+            <Text variant="heading">{next ? 'Then' : 'Upcoming'}</Text>
+            <Card>
+              {then.map((session, index) => {
+                const zone = isValidTimeZone(session.timezone) ? session.timezone : 'UTC';
+                const status = deriveDisplayStatus(session, now);
+                return (
+                  <View key={session.id}>
+                    {index > 0 ? <Divider /> : null}
+                    <ListItem
+                      title={formatSessionWhen(session.starts_at, zone, now)}
+                      subtitle={`${session.title} · ${session.location_name}`}
+                      trailing={
+                        <StatusBadge
+                          size="sm"
+                          status={status}
+                          label={statusBadgeLabel(status, participationSummary(session))}
+                        />
+                      }
+                      onPress={() => router.push(`/trainings/${session.id}`)}
+                    />
+                  </View>
+                );
+              })}
+            </Card>
+          </View>
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <Screen
+      scroll
+      edges={['top', 'left', 'right']}
+      onRefresh={trainings.refetch}
+      refreshing={trainings.isRefetching}
+    >
+      <View style={{ gap: spacing.xs }}>
+        <Text variant="title">{community?.name ?? 'Home'}</Text>
+        {profile ? <Text color="textMuted">Hi, {profile.display_name}</Text> : null}
+      </View>
+      {body}
     </Screen>
   );
 }

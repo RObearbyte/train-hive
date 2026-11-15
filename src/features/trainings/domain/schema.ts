@@ -26,6 +26,10 @@ import { DEFAULT_ACTIVITY_TYPE } from './activity';
 
 export const TITLE_MAX = 80;
 export const LOCATION_NAME_MAX = 120;
+export const DESCRIPTION_MAX = 2000;
+export const ADDRESS_MAX = 200;
+export const MAP_URL_MAX = 2048;
+export const MEETING_INSTRUCTIONS_MAX = 1000;
 
 export const TRAINING_FORM_FIELDS = [
   'title',
@@ -227,6 +231,22 @@ export function trainingFormSchema(context: TrainingFormContext) {
     const mapUrl = values.mapUrl.trim();
     if (mapUrl !== '' && !HTTP_URL_PATTERN.test(mapUrl)) {
       issue('mapUrl', 'Enter a link that starts with http:// or https://.');
+    } else if (mapUrl.length > MAP_URL_MAX) {
+      issue('mapUrl', 'This link is too long. Use a shorter share link.');
+    }
+
+    // Same length caps as the server.
+    if (values.description.trim().length > DESCRIPTION_MAX) {
+      issue('description', `Keep the description to ${DESCRIPTION_MAX} characters.`);
+    }
+    if (values.address.trim().length > ADDRESS_MAX) {
+      issue('address', `Keep the address to ${ADDRESS_MAX} characters.`);
+    }
+    if (values.meetingInstructions.trim().length > MEETING_INSTRUCTIONS_MAX) {
+      issue(
+        'meetingInstructions',
+        `Keep the meeting instructions to ${MEETING_INSTRUCTIONS_MAX} characters.`,
+      );
     }
 
     // --- Date and time ------------------------------------------------------
