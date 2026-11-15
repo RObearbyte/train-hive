@@ -17,7 +17,7 @@ Dashboard labels change now and then; if a menu is named slightly differently, l
 
 1. **Authentication → Sign In / Providers** (may be under **Authentication → Settings**).
 2. Turn on **Allow anonymous sign-ins**. Save.
-3. Recommended for production: enable **CAPTCHA protection** on the same page later, to limit abuse of anonymous sign-up.
+3. **Keep CAPTCHA protection OFF** (Authentication → Attack Protection). The app does not send CAPTCHA tokens yet, so with it on, joining fails with "captcha protection: request disallowed (no captcha_token found)". Instead, review Authentication → Rate Limits (anonymous sign-ins per hour) to limit abuse. CAPTCHA support is a future task.
 
 ## 3. Enable the scheduler extension
 

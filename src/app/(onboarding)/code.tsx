@@ -81,6 +81,12 @@ export default function InvitationCodeScreen() {
           message={userMessage(bannerError.code, bannerError.field)}
         />
       ) : null}
+      {/* Development builds only: shows the underlying error so setup problems can be diagnosed. */}
+      {__DEV__ && bannerError ? (
+        <Text variant="caption" color="textMuted" selectable>
+          {`Detail: ${bannerError.code}: ${bannerError.message}`}
+        </Text>
+      ) : null}
 
       <TextField
         label="Invitation code"

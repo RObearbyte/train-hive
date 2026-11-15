@@ -81,7 +81,7 @@ The essentials:
 ## Deployment notes
 
 - Android builds: EAS Build (`npx eas-cli@latest build -p android`). Expo Go is enough for Milestone 1.
-- Enable Supabase's anonymous sign-in rate limit and CAPTCHA before inviting real users; the in-app invitation rate limit is per account.
+- Set a sensible Supabase rate limit for anonymous sign-ins (Authentication → Rate Limits); the in-app invitation rate limit is per account. Keep CAPTCHA off until the app supports CAPTCHA tokens (otherwise anonymous sign-in fails). Adding CAPTCHA support is a known follow-up.
 - After the first deploy, confirm the deadline job exists: `select jobname, schedule from cron.job;`
 
 ## Known limitations
