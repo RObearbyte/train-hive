@@ -13,12 +13,11 @@ import {
   reconcileRsvpInCache,
   rollbackRsvpInCache,
   rsvpAffectedKeys,
+  setRsvpKey,
   type RsvpCacheSnapshot,
 } from '../domain/rsvpCache';
 
 type Variables = { previous: RsvpResponse; next: RsvpResponse };
-
-const setRsvpKey = (sessionId: string) => ['rsvps', 'set', sessionId] as const;
 
 export type SetRsvp = {
   /** Change my answer. Ignored while a change for this session is being saved. */
@@ -34,7 +33,7 @@ export type SetRsvp = {
  * Optimistic RSVP for one session:
  * 1. cancel in-flight reads that could overwrite the optimistic state;
  * 2. snapshot and apply the change to every cached copy;
- * 3. on error put the snapshot back exactly;
+ * 3. on error put back only this session's entries (never other sessions');
  * 4. on success take the server's count / status / answer;
  * 5. either way refetch, so the screen ends on server truth (this is what
  *    shows the real state after `rsvp_closed` or `session_full`).

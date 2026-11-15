@@ -10,6 +10,7 @@ import {
 import { reportError } from '@/lib/logger';
 import { getSupabase } from '@/lib/supabase';
 
+import { invalidateUnlessRsvpPending } from '@/features/rsvp/domain/rsvpCache';
 import { rsvpKeys, trainingKeys } from '../api/keys';
 import {
   createCoalescer,
@@ -23,11 +24,11 @@ const ALL_TOPICS: RealtimeTopic[] = ['sessions', 'rsvps', 'membership'];
 function invalidateTopics(queryClient: QueryClient, topics: RealtimeTopic[]): void {
   for (const topic of topics) {
     if (topic === 'sessions') {
-      void queryClient.invalidateQueries({ queryKey: trainingKeys.lists() });
-      void queryClient.invalidateQueries({ queryKey: trainingKeys.details() });
+      invalidateUnlessRsvpPending(queryClient, { queryKey: trainingKeys.lists() });
+      invalidateUnlessRsvpPending(queryClient, { queryKey: trainingKeys.details() });
     } else if (topic === 'rsvps') {
-      void queryClient.invalidateQueries({ queryKey: rsvpKeys.all });
-      void queryClient.invalidateQueries({ queryKey: trainingKeys.allParticipants() });
+      invalidateUnlessRsvpPending(queryClient, { queryKey: rsvpKeys.all });
+      invalidateUnlessRsvpPending(queryClient, { queryKey: trainingKeys.allParticipants() });
     } else {
       void queryClient.invalidateQueries({ queryKey: membershipKeys.all });
     }
@@ -39,7 +40,9 @@ function invalidateTopics(queryClient: QueryClient, topics: RealtimeTopic[]): vo
  *
  * One channel listens for changes to the community's sessions and RSVPs and
  * to my own membership. An event never touches the cache: it only marks the
- * affected queries stale, coalesced so a burst causes one refetch. Duplicate
+ * affected queries stale, coalesced so a burst causes one refetch. While an RSVP change is
+ * being saved, session and answer invalidations are skipped (the change refetches when it
+ * settles), so a read that predates it cannot flip the optimistic answer back. Duplicate
  * or out-of-order events are therefore harmless.
  *
  * Every (re)subscription and every return to the foreground also invalidates

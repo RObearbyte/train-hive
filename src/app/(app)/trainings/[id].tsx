@@ -234,7 +234,11 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
         <InfoRow icon="person">
           <Text variant="label">Organizer</Text>
           <Text color="textMuted">
-            {organizer.isPending ? 'Loading' : (organizer.data ?? 'Not available')}
+            {session.organizer_id === null
+              ? 'Former organizer'
+              : organizer.isPending
+                ? 'Loading'
+                : (organizer.data ?? 'Former organizer')}
           </Text>
         </InfoRow>
       </Card>

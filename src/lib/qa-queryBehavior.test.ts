@@ -20,10 +20,20 @@ import {
 } from '@tanstack/react-query';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { membershipStateOf } from '@/features/community/domain/gate';
+
+import { queryDefaultOptions } from './queryDefaults';
+
+// The app's real defaults (queryDefaults.ts) with retries off so the tests are quick.
 const APP_DEFAULTS = {
-  queries: { staleTime: 30_000, retry: false, refetchOnReconnect: true },
+  queries: { ...queryDefaultOptions.queries, retry: false },
+  mutations: { ...queryDefaultOptions.mutations },
+};
+// The TanStack library default, which the app does NOT use ('online': pauses while offline).
+const LIBRARY_DEFAULTS = {
+  queries: { retry: false },
   mutations: { retry: false },
-} as const;
+};
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 25));
 
@@ -36,7 +46,7 @@ describe('offline cold start (the gate query)', () => {
   // session, the membership query never runs: it is `pending` + `paused`. useCurrentMembership
   // maps that to state 'pending', the gate keeps route 'loading', and the native splash screen
   // is never hidden. The "Can't reach TrainHive" screen (route 'error') is unreachable offline.
-  it.fails('an offline first load ends in an error state instead of waiting forever (DEFECT Q2-1)', async () => {
+  it('an offline first load ends in an error state instead of waiting forever (was DEFECT Q2-1)', async () => {
     onlineManager.setOnline(false);
     const client = new QueryClient({ defaultOptions: APP_DEFAULTS });
     let calls = 0;
@@ -56,9 +66,9 @@ describe('offline cold start (the gate query)', () => {
     expect(result.isError).toBe(true); //  and the user is told it failed
   });
 
-  it('characterization: offline, the query is paused with no data and no error', async () => {
+  it('characterization: with the library default networkMode, offline queries are paused', async () => {
     onlineManager.setOnline(false);
-    const client = new QueryClient({ defaultOptions: APP_DEFAULTS });
+    const client = new QueryClient({ defaultOptions: LIBRARY_DEFAULTS });
     const observer = new QueryObserver(client, {
       queryKey: ['membership', 'current', 'user'],
       queryFn: async () => ({ ok: true }),
@@ -74,9 +84,9 @@ describe('offline cold start (the gate query)', () => {
     expect(result.error).toBeNull();
   });
 
-  it('it resumes by itself when the connection returns', async () => {
+  it('a paused query resumes by itself when the connection returns', async () => {
     onlineManager.setOnline(false);
-    const client = new QueryClient({ defaultOptions: APP_DEFAULTS });
+    const client = new QueryClient({ defaultOptions: LIBRARY_DEFAULTS });
     client.mount(); // QueryClientProvider does this in the app
     const observer = new QueryObserver(client, {
       queryKey: ['membership', 'current', 'user'],
@@ -100,7 +110,7 @@ describe('a refetch that fails after the first success (joining a community)', (
   // computes `state` from `data !== undefined` first, so it reports 'none', never 'error'; the
   // "You have joined ... Try again" banner (`membership.state === 'error'`) cannot appear and the
   // Join button stays in its loading state because `joined = redeem.isSuccess`.
-  it('keeps the old data (null) and reports isError, so data-first state mapping says "none"', async () => {
+  it('keeps the old data (null) and reports isError; the state mapping says "error"', async () => {
     const client = new QueryClient({ defaultOptions: APP_DEFAULTS });
     let fail = false;
     const observer = new QueryObserver(client, {
@@ -122,11 +132,12 @@ describe('a refetch that fails after the first success (joining a community)', (
     expect(result.isError).toBe(true);
     expect(result.data).toBeNull(); // still defined
 
-    // The hook's mapping, copied from useCurrentMembership.ts:
-    let state: 'pending' | 'error' | 'none' | 'active';
-    if (result.data !== undefined) state = result.data === null ? 'none' : 'active';
-    else state = result.isError ? 'error' : 'pending';
-    expect(state).toBe('none'); // not 'error': the banner condition is never true
+    // The hook's mapping (gate.ts): the failed refetch wins over the stale null (was DEFECT Q2-2).
+    expect(membershipStateOf(result)).toBe('error');
+    // ...but a failed background refetch of an active membership keeps the app.
+    expect(membershipStateOf({ data: { id: 'm' }, isError: true })).toBe('active');
+    expect(membershipStateOf({ data: null, isError: false })).toBe('none');
+    expect(membershipStateOf({ data: undefined, isError: false })).toBe('pending');
   });
 
   it('invalidateQueries (the redeem onSuccess) resolves even though the refetch failed', async () => {
@@ -153,21 +164,32 @@ describe('RSVP mutation while offline', () => {
   // no error. The member sees a spinner and an answer that looks saved; taps are ignored
   // (`isMutating > 0`); when the connection returns the stale request is sent, possibly after the
   // deadline, and only then does a rollback or an error appear.
-  it.fails('an RSVP attempted offline fails fast and is rolled back (DEFECT Q2-5)', async () => {
+  it('an RSVP attempted offline fails fast and is rolled back (was DEFECT Q2-5)', async () => {
     onlineManager.setOnline(false);
     const client = new QueryClient({ defaultOptions: APP_DEFAULTS });
+    const events: string[] = [];
     const mutation = new MutationObserver(client, {
       mutationKey: ['rsvps', 'set', 's1'],
-      mutationFn: async () => ({ response: 'going' }),
+      onMutate: () => {
+        events.push('optimistic');
+      },
+      onError: () => {
+        events.push('rollback');
+      },
+      mutationFn: async () => {
+        throw new Error('Network request failed');
+      },
     });
     void mutation.mutate().catch(() => undefined);
     await settle();
     expect(mutation.getCurrentResult().isPaused).toBe(false);
+    expect(mutation.getCurrentResult().isError).toBe(true);
+    expect(events).toEqual(['optimistic', 'rollback']);
   });
 
-  it('characterization: offline, onMutate runs but the request is held back', async () => {
+  it('characterization: with the library default, offline onMutate runs but the request is held back', async () => {
     onlineManager.setOnline(false);
-    const client = new QueryClient({ defaultOptions: APP_DEFAULTS });
+    const client = new QueryClient({ defaultOptions: LIBRARY_DEFAULTS });
     client.mount();
     const events: string[] = [];
     const mutation = new MutationObserver(client, {

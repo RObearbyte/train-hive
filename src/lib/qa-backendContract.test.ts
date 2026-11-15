@@ -260,7 +260,7 @@ describe('QA contract: database.types.ts versus the SQL', () => {
 
   // DEFECT Q2-7: organizer_id is nullable since the Q1-2 fix (on delete set null), but the
   // hand-written type still says `string`. Remove `.fails` when database.types.ts is updated.
-  it.fails('Row of training_sessions agrees with the SQL about nullability (DEFECT Q2-7)', () => {
+  it('Row of training_sessions agrees with the SQL about nullability (was DEFECT Q2-7)', () => {
     expect(nullabilityMismatches('training_sessions')).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { myRsvpText } from '@/features/trainings/domain/presentation';
+import { useMyAnswersState } from '@/features/trainings/hooks/useTrainings';
 import type { RsvpResponse, TrainingSession } from '@/lib/database.types';
 import { userMessage } from '@/lib/errors';
 import { Banner, Icon, RsvpToggle, Text, useTheme } from '@/ui';
@@ -28,6 +29,7 @@ export function RsvpControl({ session, myResponse, now }: RsvpControlProps) {
   const { spacing } = useTheme();
   const rsvp = useSetRsvp(session.id);
   const [fullNotice, setFullNotice] = useState(false);
+  const answers = useMyAnswersState();
 
   const open = canChangeRsvp(session, now);
 
@@ -36,7 +38,8 @@ export function RsvpControl({ session, myResponse, now }: RsvpControlProps) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         <Icon name={open.reason === 'closed' ? 'clock' : 'info'} size={18} color="textMuted" />
         <Text variant="label" color="textMuted" style={{ flex: 1 }}>
-          {rsvpBlockedMessage(open.reason)} {myRsvpText(myResponse)}.
+          {rsvpBlockedMessage(open.reason)}
+          {answers.status === 'ready' ? ` ${myRsvpText(myResponse)}.` : ''}
         </Text>
       </View>
     );
@@ -53,9 +56,25 @@ export function RsvpControl({ session, myResponse, now }: RsvpControlProps) {
     rsvp.submit(myResponse, next);
   };
 
+  // "No answer yet" with live buttons would be a guess while my answers are unknown.
+  if (answers.status === 'error') {
+    return (
+      <Banner
+        tone="warning"
+        message="We could not load your answers."
+        action={{ label: 'Try again', onPress: answers.retry }}
+      />
+    );
+  }
+
   return (
     <View style={{ gap: spacing.sm }}>
-      <RsvpToggle value={myResponse} onChange={onChange} pending={rsvp.isPending} />
+      <RsvpToggle
+        value={myResponse}
+        onChange={onChange}
+        pending={rsvp.isPending}
+        disabled={answers.status === 'loading'}
+      />
       {fullNotice && !rsvp.error ? (
         <Banner tone="info" message={userMessage('session_full')} />
       ) : null}

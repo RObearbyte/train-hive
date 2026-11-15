@@ -37,7 +37,8 @@ export function deriveDisplayStatus(session: StatusFields, now: Date): TrainingD
         ? 'cancelled_insufficient'
         : 'cancelled_organizer';
     case 'scheduled':
-      // Deadline passed but the server job has not decided yet.
+      // Deadline passed but the server job has not decided yet. Q2-10: judged by the device
+      // clock (display only), so a fast clock shows 'Finalizing' early.
       if (now.getTime() >= new Date(session.rsvp_deadline).getTime()) return 'finalizing';
       return session.going_count < session.min_participants
         ? 'awaiting_minimum'

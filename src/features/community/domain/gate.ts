@@ -67,3 +67,19 @@ export function decideRoute(input: GateInput, previous: AppRoute): AppRoute {
       return isSettled(previous) ? previous : 'error';
   }
 }
+
+/**
+ * The gate's view of the membership query. A failed refetch wins over a stale
+ * "no membership" (`null`): right after joining, the refetch that should find
+ * the new membership can fail while the cache still holds null, and the user
+ * must see "joined, try again" rather than a spinner. A failed background
+ * refetch of an active membership keeps showing the app.
+ */
+export function membershipStateOf(query: {
+  data: unknown;
+  isError: boolean;
+}): MembershipState {
+  if (query.isError && (query.data === undefined || query.data === null)) return 'error';
+  if (query.data !== undefined) return query.data === null ? 'none' : 'active';
+  return 'pending';
+}

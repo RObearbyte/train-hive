@@ -56,6 +56,8 @@ function makeSession(overrides: Partial<TrainingSession> = {}): TrainingSession 
     decided_at: null,
     cancelled_at: null,
     cancelled_by: null,
+    attendance_finalized_at: null,
+    attendance_finalized_by: null,
     created_at: '2026-11-01T10:00:00+00:00',
     updated_at: '2026-11-01T10:00:00+00:00',
     ...overrides,

@@ -40,11 +40,11 @@ describe('text length is counted the way Postgres counts it (char_length = code 
   // char_length(title) <= 80 and char_length(location_name) <= 120, so 41 emoji (41 characters,
   // 82 UTF-16 units) are valid on the server but rejected by the form. Display names are already
   // counted in code points (displayName.ts), so this is inconsistent inside the app.
-  it.fails('accepts a title of 41 emoji (DEFECT Q2-8)', () => {
+  it('accepts a title of 41 emoji (was DEFECT Q2-8)', () => {
     expect(issues(validForm({ title: '🏃'.repeat(41) }))).toEqual([]);
   });
 
-  it.fails('accepts a location of 61 emoji (DEFECT Q2-8)', () => {
+  it('accepts a location of 61 emoji (was DEFECT Q2-8)', () => {
     expect(issues(validForm({ locationName: '🏃'.repeat(61) }))).toEqual([]);
   });
 
@@ -159,6 +159,8 @@ describe('editing: untouched timestamps are sent back exactly (no accidental cha
       decided_at: null,
       cancelled_at: null,
       cancelled_by: null,
+      attendance_finalized_at: null,
+      attendance_finalized_by: null,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     };

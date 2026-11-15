@@ -49,6 +49,11 @@ export function locationSearchText(location: Pick<LocationFields, 'location_name
     .join(', ');
 }
 
+/** Parentheses would end the Android `geo:` label early; encodeURIComponent leaves them alone. */
+function encodeGeoLabel(label: string): string {
+  return encodeURIComponent(label).replaceAll('(', '%28').replaceAll(')', '%29');
+}
+
 function googleSearchUrl(query: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
@@ -73,7 +78,7 @@ export function buildMapsLink(location: LocationFields, platform: MapsPlatform):
     }
     if (platform === 'android') {
       return {
-        url: `geo:${point}?q=${point}(${encodeURIComponent(label)})`,
+        url: `geo:${point}?q=${point}(${encodeGeoLabel(label)})`,
         fallbackUrl,
         source: 'coordinates',
       };

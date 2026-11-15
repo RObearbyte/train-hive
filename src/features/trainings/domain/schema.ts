@@ -24,6 +24,11 @@ import {
 
 import { DEFAULT_ACTIVITY_TYPE } from './activity';
 
+/** Length in characters (code points), as Postgres `char_length` counts, not UTF-16 units. */
+function charCount(text: string): number {
+  return Array.from(text).length;
+}
+
 export const TITLE_MAX = 80;
 export const LOCATION_NAME_MAX = 120;
 export const DESCRIPTION_MAX = 2000;
@@ -218,11 +223,11 @@ export function trainingFormSchema(context: TrainingFormContext) {
     // --- Text -------------------------------------------------------------
     const title = values.title.trim();
     if (title === '') issue('title', 'Enter a title.');
-    else if (title.length > TITLE_MAX) issue('title', `Keep the title to ${TITLE_MAX} characters.`);
+    else if (charCount(title) > TITLE_MAX) issue('title', `Keep the title to ${TITLE_MAX} characters.`);
 
     const locationName = values.locationName.trim();
     if (locationName === '') issue('locationName', 'Enter where the training takes place.');
-    else if (locationName.length > LOCATION_NAME_MAX) {
+    else if (charCount(locationName) > LOCATION_NAME_MAX) {
       issue('locationName', `Keep the location name to ${LOCATION_NAME_MAX} characters.`);
     }
 

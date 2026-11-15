@@ -102,15 +102,41 @@ export function useTraining(sessionId: string) {
   });
 }
 
-/** My answer for one session, from the same cache the list uses. */
-export function useMyResponse(sessionId: string, communityId: string | null): RsvpResponse {
+function useMyRsvpsQuery(communityId: string | null) {
   const { userId } = useSession();
-  const mine = useQuery({
+  return useQuery({
     queryKey: rsvpKeys.mine(userId),
     queryFn: () => fetchMyRsvps(communityId as string, userId as string),
     enabled: communityId !== null && userId !== null,
   });
+}
+
+/** My answer for one session, from the same cache the list uses. */
+export function useMyResponse(sessionId: string, communityId: string | null): RsvpResponse {
+  const mine = useMyRsvpsQuery(communityId);
   return mine.data?.[sessionId] ?? 'no_response';
+}
+
+export type MyAnswersState = {
+  /** 'loading': not known yet; 'error': could not be loaded; 'ready': answers are known. */
+  status: 'loading' | 'error' | 'ready';
+  retry: () => void;
+};
+
+/**
+ * Whether "my answers" are known. Until they are, "No answer yet" would be a
+ * guess, so the RSVP control shows a loading or error state instead of live buttons.
+ */
+export function useMyAnswersState(): MyAnswersState {
+  const { community } = useCurrentMembership();
+  const mine = useMyRsvpsQuery(community?.id ?? null);
+  const status = mine.data !== undefined ? 'ready' : mine.isError ? 'error' : 'loading';
+  return {
+    status,
+    retry: () => {
+      mine.refetch().catch((error: unknown) => reportError('rsvp.mineRetry', error));
+    },
+  };
 }
 
 export function useParticipants(sessionId: string) {
@@ -120,11 +146,11 @@ export function useParticipants(sessionId: string) {
   });
 }
 
-export function useOrganizerName(sessionId: string, organizerId: string | undefined) {
+export function useOrganizerName(sessionId: string, organizerId: string | null | undefined) {
   return useQuery<string | null>({
     queryKey: trainingKeys.organizer(organizerId ?? ''),
     queryFn: () => fetchOrganizerName(sessionId),
-    enabled: organizerId !== undefined,
+    enabled: organizerId !== undefined && organizerId !== null,
     // Names change rarely; do not refetch on every visit.
     staleTime: 5 * 60_000,
   });

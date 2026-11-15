@@ -32,7 +32,8 @@ export function CreateInvitationForm({ communityId, onCreated }: CreateInvitatio
     if (create.isPending) return;
     create.mutate(
       {
-        // The server stores an absolute expiry and enforces it with its own clock.
+        // The server stores an absolute expiry and enforces it with its own clock. Q2-10: this
+        // timestamp is computed from the DEVICE clock, so a wrong clock shifts the expiry.
         expiresAt: expiryFromPreset(values.expiry, new Date()),
         maxRedemptions: parseMaxUses(values.maxUses),
       },

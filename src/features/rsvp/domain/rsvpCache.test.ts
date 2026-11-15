@@ -40,6 +40,8 @@ function makeSession(id: string, overrides: Partial<TrainingSession> = {}): Trai
     decided_at: null,
     cancelled_at: null,
     cancelled_by: null,
+    attendance_finalized_at: null,
+    attendance_finalized_by: null,
     created_at: '2026-11-01T10:00:00+00:00',
     updated_at: '2026-11-01T10:00:00+00:00',
     ...overrides,
@@ -138,7 +140,9 @@ describe('applyRsvpToCache', () => {
 
     expect(queryClient.getQueryData(trainingKeys.detail('a'))).toBeUndefined();
     expect(queryClient.getQueryData(rsvpKeys.mine(USER))).toBeUndefined();
-    expect(snapshot.entries).toHaveLength(1);
+    expect(snapshot.lists).toHaveLength(1);
+    expect(snapshot.detail).toBeNull();
+    expect(snapshot.answer.loaded).toBe(false);
   });
 
   it('copes with an empty cache and a not-found detail', () => {
@@ -148,7 +152,7 @@ describe('applyRsvpToCache', () => {
 
     const snapshot = applyRsvpToCache(queryClient, change('going', 'no_response'));
 
-    expect(snapshot.entries).toEqual([]);
+    expect(snapshot.lists).toEqual([]);
     expect(dump(queryClient)).toEqual(before);
   });
 

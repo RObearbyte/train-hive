@@ -19,7 +19,7 @@ describe('Android geo: label', () => {
   // encodeURIComponent leaves ( and ) alone, so a place called "Parc Carol (poarta nord)" produces
   // a label that Android maps apps cut short or reject. Parentheses must be percent-encoded
   // (%28 / %29) inside the label.
-  it.fails('percent-encodes parentheses inside the label (DEFECT Q2-9)', () => {
+  it('percent-encodes parentheses inside the label (was DEFECT Q2-9)', () => {
     const { url } = buildMapsLink({ ...base, location_name: 'Parc Carol (poarta nord)' }, 'android');
     const label = url.slice(url.indexOf('(') + 1, url.lastIndexOf(')'));
     expect(label).not.toMatch(/[()]/);

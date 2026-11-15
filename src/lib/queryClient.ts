@@ -6,28 +6,10 @@ import NetInfo from '@react-native-community/netinfo';
 import { QueryClient, focusManager, onlineManager } from '@tanstack/react-query';
 import { AppState, Platform } from 'react-native';
 
-import { toAppError } from './errors';
-
-const MAX_NETWORK_RETRIES = 2;
-
-/** Retry only what can succeed on a second try: a failed connection. */
-export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
-  return toAppError(error).code === 'network_error' && failureCount < MAX_NETWORK_RETRIES;
-}
+import { queryDefaultOptions } from './queryDefaults';
 
 export function createQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 30_000,
-        retry: shouldRetryQuery,
-        refetchOnReconnect: true,
-        refetchOnWindowFocus: true,
-      },
-      // Mutations are never retried automatically: a retry could repeat a side effect.
-      mutations: { retry: false },
-    },
-  });
+  return new QueryClient({ defaultOptions: queryDefaultOptions });
 }
 
 export const queryClient = createQueryClient();

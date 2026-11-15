@@ -4,17 +4,18 @@
  * time; these tests interleave changes the way two cards, Realtime and a slow
  * network do on a phone.
  *
- * Defects are `it.fails` with a `DEFECT Q2-n` tag (docs/QA_REPORT.md Part 2).
- * Remove `.fails` when the defect is fixed.
+ * Fixed defects (Q2-3, Q2-4) are ordinary tests now (docs/QA_REPORT.md Part 2).
  */
-import { QueryClient, QueryObserver } from '@tanstack/react-query';
+import { MutationObserver, QueryClient, QueryObserver } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 
 import {
   applyRsvpToCache,
+  invalidateUnlessRsvpPending,
   reconcileRsvpInCache,
   rollbackRsvpInCache,
   rsvpAffectedKeys,
+  setRsvpKey,
   type RsvpChange,
 } from '@/features/rsvp/domain/rsvpCache';
 import { applyOptimisticRsvp } from '@/features/rsvp/domain/rsvp';
@@ -51,6 +52,8 @@ function makeSession(id: string, overrides: Partial<TrainingSession> = {}): Trai
     decided_at: null,
     cancelled_at: null,
     cancelled_by: null,
+    attendance_finalized_at: null,
+    attendance_finalized_by: null,
     created_at: '2026-11-01T10:00:00+00:00',
     updated_at: '2026-11-01T10:00:00+00:00',
     ...overrides,
@@ -89,7 +92,7 @@ describe('two RSVP changes on different sessions are in flight together', () => 
   // "my answers" map, so when A fails, rolling it back also throws away B's optimistic change.
   // DEFECT Q2-3: list and detail of B now disagree and B's answer disappears from "my answers"
   // until B's own reconcile / onSettled refetch lands. Transient, but visibly wrong.
-  it.fails('rolling back A leaves B optimistic change in place (DEFECT Q2-3)', () => {
+  it('rolling back A leaves B optimistic change in place (was DEFECT Q2-3)', () => {
     const client = seed();
     const snapshotA = applyRsvpToCache(client, change('a', 'no_response', 'going'));
     applyRsvpToCache(client, change('b', 'no_response', 'going'));
@@ -102,13 +105,32 @@ describe('two RSVP changes on different sessions are in flight together', () => 
     expect(mine(client)).toEqual({ b: 'going' });
   });
 
-  it('characterization: after that rollback list and detail of B disagree', () => {
+  it('after that rollback list and detail of B still agree', () => {
     const client = seed();
     const snapshotA = applyRsvpToCache(client, change('a', 'no_response', 'going'));
     applyRsvpToCache(client, change('b', 'no_response', 'going'));
     rollbackRsvpInCache(client, snapshotA);
-    expect(listCount(client, 'b')).toBe(3);
+    expect(listCount(client, 'b')).toBe(4);
     expect(detailCount(client, 'b')).toBe(4);
+    expect(detailCount(client, 'a')).toBe(7);
+  });
+
+  it('rolling back restores a previously stored answer for that session only', () => {
+    const client = seed();
+    client.setQueryData<MyRsvps>(rsvpKeys.mine(USER), { a: 'not_going', c: 'going' });
+    const snapshot = applyRsvpToCache(client, change('a', 'not_going', 'going'));
+    expect(mine(client)).toEqual({ a: 'going', c: 'going' });
+    rollbackRsvpInCache(client, snapshot);
+    expect(mine(client)).toEqual({ a: 'not_going', c: 'going' });
+  });
+
+  it('a stale "no response" does not add a phantom +1 for an answer already stored', () => {
+    const client = seed();
+    client.setQueryData<MyRsvps>(rsvpKeys.mine(USER), { a: 'going' });
+    // The card showed "no answer" while answers were loading and the member tapped "I'm going".
+    applyRsvpToCache(client, change('a', 'no_response', 'going'));
+    expect(listCount(client, 'a')).toBe(7);
+    expect(detailCount(client, 'a')).toBe(7);
   });
 
   it('the failure heals: B reconciles with the server result afterwards', () => {
@@ -145,8 +167,9 @@ describe('a refetch that starts while the RSVP request is in flight', () => {
   // change yet, so that read brings back the old count and answer and overwrites the optimistic
   // state. DEFECT Q2-4: the tapped button flips back for the duration of the request, then flips
   // forward again on success. Low severity: it ends correct, but it looks like the tap was lost.
-  it.fails('an invalidation during the mutation does not undo the optimistic answer (DEFECT Q2-4)', async () => {
+  it('an invalidation during the mutation does not undo the optimistic answer (was DEFECT Q2-4)', async () => {
     const client = seed();
+    client.mount();
     // Server state before our RPC commits.
     const serverList = [makeSession('a', { going_count: 7 }), makeSession('b', { going_count: 3 })];
     const observer = new QueryObserver(client, {
@@ -156,17 +179,48 @@ describe('a refetch that starts while the RSVP request is in flight', () => {
     });
     const unsubscribe = observer.subscribe(() => undefined);
 
-    // onMutate: cancel, then apply (what useSetRsvp does)
+    // A change is being saved: the mutation is pending, the RPC has not answered.
+    let release: () => void = () => undefined;
+    const mutation = new MutationObserver(client, {
+      mutationKey: setRsvpKey('a'),
+      mutationFn: () => new Promise<void>((resolve) => (release = resolve)),
+    });
+    const done = mutation.mutate().catch(() => undefined);
+
     const c = change('a', 'no_response', 'going');
     await Promise.all(rsvpAffectedKeys(c).map((queryKey) => client.cancelQueries({ queryKey })));
     applyRsvpToCache(client, c);
     expect(listCount(client, 'a')).toBe(8);
 
     // Realtime: another member answered, the coalescer invalidates the lists.
-    await client.invalidateQueries({ queryKey: trainingKeys.lists() });
-    unsubscribe();
-
+    invalidateUnlessRsvpPending(client, { queryKey: trainingKeys.lists() });
+    await new Promise((resolve) => setTimeout(resolve, 25));
     expect(listCount(client, 'a')).toBe(8); // still our optimistic value
+
+    release();
+    await done;
+    unsubscribe();
+    client.unmount();
+  });
+
+  it('invalidations go through when no RSVP change is pending', async () => {
+    const client = seed();
+    let reads = 0;
+    const observer = new QueryObserver(client, {
+      queryKey: trainingKeys.list(COMMUNITY),
+      queryFn: async () => {
+        reads += 1;
+        return [makeSession('a'), makeSession('b')];
+      },
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const before = reads;
+    invalidateUnlessRsvpPending(client, { queryKey: trainingKeys.lists() });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    unsubscribe();
+    expect(reads).toBeGreaterThan(before);
   });
 });
 

@@ -4,7 +4,7 @@ import type { Community, Membership, Profile } from '@/lib/database.types';
 import { toAppError, type AppError } from '@/lib/errors';
 
 import { fetchCurrentMembership, type CurrentMembership } from '../api/membership';
-import type { MembershipState } from '../domain/gate';
+import { membershipStateOf, type MembershipState } from '../domain/gate';
 import { useSession } from './SessionProvider';
 
 export const membershipKeys = {
@@ -40,9 +40,7 @@ export function useCurrentMembership(): CurrentMembershipResult {
   });
 
   const data = query.data ?? null;
-  let state: MembershipState;
-  if (query.data !== undefined) state = query.data === null ? 'none' : 'active';
-  else state = query.isError ? 'error' : 'pending';
+  const state = membershipStateOf(query);
 
   return {
     community: data?.community ?? null,

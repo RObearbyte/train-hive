@@ -40,6 +40,9 @@ export function canChangeRsvp(
   if (session.status === 'cancelled') return { allowed: false, reason: 'cancelled' };
   if (session.status === 'completed') return { allowed: false, reason: 'completed' };
   if (session.status !== 'scheduled') return { allowed: false, reason: 'closed' };
+  // Q2-10: the DEVICE clock gates the buttons here (display only). A phone whose clock runs fast
+  // hides them while the server would still accept an answer. Open decision: always show them for a
+  // 'scheduled' session and let the server's `rsvp_closed` explain.
   if (now.getTime() >= new Date(session.rsvp_deadline).getTime()) {
     return { allowed: false, reason: 'closed' };
   }
