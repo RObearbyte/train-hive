@@ -29,7 +29,7 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 - [x] M3-B1 (L, backend) announcements, notifications, push tokens, outbox, scheduled publish, triggers + tests
 - [x] M3-B2 (M, backend) Edge Function: Expo push delivery with retry and invalid-token handling
 - [x] M3-A1 (L, mobile) Activity tab, unread state, push registration, deep links, preferences
-- [ ] M3-Q1 (S, qa) Review + tests
+- [x] M3-Q1 (+ fixes M3-B3, M3-F1) (S, qa) Review + tests
 
 ## Milestone 4 — Statistics
 - [ ] M4-B1 (M, backend) Statistics SQL functions with documented metric definitions + tests

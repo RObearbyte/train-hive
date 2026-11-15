@@ -273,7 +273,7 @@ describe('dedupe', () => {
     await expect(
       admin.query(
         `insert into public.notifications (user_id, community_id, kind, title, body, deep_link, related_session_id, dedupe_key)
-         values ($1, $2, 'training_created', 't', 'b', '/trainings/x', $3, $4)`,
+         values ($1, $2, 'training_created', 't', 'b', '/trainings/' || $3::uuid::text, $3, $4)`,
         [p.memberIds[0], p.communityId, session.id, `training_created:${session.id}`],
       ),
     ).rejects.toMatchObject({ code: '23505' });

@@ -76,7 +76,7 @@ describe('dispatcher: request-level failures must not spread to other users', ()
   // well-formed token (anonymous sign-in is free). One hostile or stale token therefore kills
   // the pending notification of up to 99 other users per chunk. Expected: drop or bisect the
   // offending token(s) and resend, so unrelated jobs are still delivered.
-  it.fails('DEFECT Q4-1: one foreign-project token makes Expo reject the chunk; the other users are still delivered', async () => {
+  it('Q4-1 (fixed): one foreign-project token makes Expo reject the chunk; the other users are still delivered', async () => {
     const p = await createPack(3);
     await createTraining(p.organizerId, p.communityId);
     const [good1, bad, good2] = p.memberIds;
@@ -105,7 +105,7 @@ describe('dispatcher: request-level failures must not spread to other users', ()
   // 150 s cap with 10 tokens per user) leaves jobs that Expo already accepted in `sending`; they
   // are reclaimed after 5 minutes and pushed AGAIN. Expected: a job is completed as soon as its
   // own Expo answer is known.
-  it.fails('DEFECT Q4-2: jobs of an answered chunk are completed before the next Expo request is made', async () => {
+  it('Q4-2 (fixed): jobs of an answered chunk are completed before the next Expo request is made', async () => {
     const p = await createPack(130);
     await createTraining(p.organizerId, p.communityId);
     for (const [i, id] of p.memberIds.entries()) await addToken(id, expoToken(`bulk-${i}`));

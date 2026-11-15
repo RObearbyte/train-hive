@@ -4,6 +4,8 @@
 
 How it works: when something notifiable happens, the database queues a job. Every minute the database calls the Edge Function `dispatch-notifications`, which claims jobs, sends them to the Expo Push Service (`https://exp.host/--/api/v2/push/send`), and Expo hands them to Google's FCM, which wakes the phone.
 
+One run keeps claiming batches of 100 jobs for up to about 40 seconds (or until the queue is empty), so a large announcement goes out in one run. Each batch is sent in requests of at most 100 messages, and the jobs of a request are marked done right after Expo answers it. If Expo rejects a whole request (for example because one token belongs to another Expo project), the dispatcher splits the request in halves until only the offending message fails; that token is marked invalid. A run makes at most 60 requests and starts none after 100 seconds; anything left is retried by the next run.
+
 Prerequisite: the project setup in `docs/SUPABASE_SETUP.md` is done (in particular Supabase CAPTCHA protection stays OFF; the app sends no captcha token, and nothing here changes that).
 
 You need: a Windows PC with Node.js, the Supabase project already linked (`npx supabase@latest link`), an Android phone with USB debugging or the ability to install an APK, and a Google account.
@@ -91,13 +93,13 @@ select id, status_code, error_msg, created from net._http_response order by crea
 curl.exe -i -X POST "https://<project-ref>.supabase.co/functions/v1/dispatch-notifications" -H "x-dispatch-secret: <secret>" -H "content-type: application/json" -d "{}"
 ```
 
-Expected: `200` and JSON counts such as `{"claimed":1,"sent":1,"skipped":0,"failed":0,"dead":0,...}`. Without or with a wrong header: `401 {"error":"unauthorized"}`. To create something to deliver, create an announcement in the app as an organizer while a second account's phone has a registered token.
+Expected: `200` and JSON counts such as `{"claimed":1,"sent":1,"skipped":0,"failed":0,"dead":0,...,"batches":1,"bisections":0,"deferred":0}`. Without or with a wrong header: `401 {"error":"unauthorized"}`. To create something to deliver, create an announcement in the app as an organizer while a second account's phone has a registered token.
 
 Queue state (SQL editor): `select status, count(*) from notification_delivery_jobs group by 1;` and `select last_error, count(*) from notification_delivery_jobs where status in ('failed','dead','skipped') group by 1;`
 
 ## 8. Logs
 
-Supabase dashboard > **Edge Functions** > `dispatch-notifications` > **Logs** (or **Invocations**). Logs hold counts and error codes only (events `expo_chunk`, `job_dead`, `dispatch_done`, `complete_failed`); never tokens or message text.
+Supabase dashboard > **Edge Functions** > `dispatch-notifications` > **Logs** (or **Invocations**). Logs hold counts and error codes only (events `expo_chunk`, `tokens_rejected`, `job_dead`, `dispatch_done`, `complete_failed`, `invalidate_failed`); never tokens or message text.
 
 ## 9. Troubleshooting
 
@@ -112,13 +114,18 @@ Supabase dashboard > **Edge Functions** > `dispatch-notifications` > **Logs** (o
 | `dead` with `permanent:MessageTooBig` | payload over 4 KiB (should not happen with these titles and bodies) |
 | `failed` with `transient:HTTP_401` | `EXPO_ACCESS_TOKEN` missing/wrong while enhanced push security is on |
 | `failed` with `transient:HTTP_429` / `MessageRateExceeded` | Expo's 600/s per project limit; retried automatically with `Retry-After` or backoff (30 s doubling, max 1 h, 5 attempts) |
-| Jobs stuck in `sending` | a run died mid-way; they are reclaimed after 5 minutes (a duplicate push is possible) |
+| Jobs stuck in `sending` | a run died mid-way; they are reclaimed after 5 minutes (a duplicate push is possible, but only for the request that was in flight: earlier requests' jobs are already completed) |
+| `failed` with `transient:Deferred` | the run hit its request cap (60) or its 100 s limit; retried by the next run |
+| `dead` with `permanent:HTTP_400`, token `last_error` = `PUSH_TOO_MANY_EXPERIENCE_IDS` | that token belongs to another Expo project (for example a build with a different `projectId`); the token is invalidated, other users are not affected. Reinstall the right build |
+| Creating an announcement fails with `announcement_rate_limited` | an organizer may create at most 10 announcements per community per hour |
 | Nothing arrives on an emulator | the emulator needs Google Play services; use a real phone |
 
 ## 10. Known limits
 
-- Delivery is at-least-once. Expo has no idempotency key. If a run dies after Expo accepted a message but before the job is marked, the retry may push twice. The app can ignore a notification whose `data.notificationId` it has already shown.
+- Delivery is at-least-once. Expo has no idempotency key. If a run dies after Expo accepted a request but before its jobs are marked (jobs are marked right after each request), the retry may push those up to 100 messages twice. The app can ignore a notification whose `data.notificationId` it has already shown.
 - Only **tickets** are checked (Expo accepted the message). **Receipts** (the later FCM outcome, about 15 minutes after sending, kept 24 h) are not read: ticket ids are not stored. A device that became unregistered is therefore noticed at its next send, not by receipt. A migration would be needed to change that (see the M3 note in `docs/API_CONTRACT.md`).
+- Tokens: `register_push_token` cannot tell which Expo project a token belongs to; each account keeps at most 10 tokens (least recently seen dropped). How Expo answers a request that holds only another project's token is not verified; see the M3-B3 notes in `docs/API_CONTRACT.md`.
+- The cron call waits up to 120 s for the function (migration `20261116000200_dispatch_timeout.sql`); runs may overlap, which is safe (a job is never claimed twice).
 - `ttl` is derived from the job's expiry only if the claim returns `expires_at`; today it does not, so announcements use 24 h and trainings 1 h.
 
 ## 11. Only a real device can verify

@@ -274,7 +274,7 @@ describe('purge_old_notification_data', () => {
     const ghost = '00000000-0000-0000-0000-00000000dead';
     await admin.query(
       `insert into public.notifications (user_id, community_id, kind, title, body, deep_link, related_session_id, dedupe_key)
-       values ($1, $2, 'training_created', 't', 'b', '/trainings/x', $3, 'k')`,
+       values ($1, $2, 'training_created', 't', 'b', '/trainings/' || $3::uuid::text, $3, 'k')`,
       [ghost, p.communityId, session.id],
     );
     expect(await asService((db) => rpc<number>(db, 'purge_old_notification_data'))).toBe(1);
@@ -424,7 +424,7 @@ describe('notification preferences', () => {
     const session = await createTraining(p.organizerId, p.communityId);
     await admin.query(
       `insert into public.notifications (user_id, community_id, kind, title, body, deep_link, related_session_id, dedupe_key)
-       values ($1, $2, 'training_reminder', 'Tomorrow', 'b', '/trainings/x', $3, 'reminder-test')`,
+       values ($1, $2, 'training_reminder', 'Tomorrow', 'b', '/trainings/' || $3::uuid::text, $3, 'reminder-test')`,
       [user, p.communityId, session.id],
     );
     await admin.query(

@@ -334,7 +334,7 @@ describe('QA text and payload fuzzing (server)', () => {
 
   // DEFECT Q4-5 (low): invisible-only titles pass validation and render as an empty heading in
   // the feed, the notification center and the push banner.
-  it.fails('DEFECT Q4-5: a title of only zero-width or no-break spaces is rejected', async () => {
+  it('Q4-5 (fixed): a title of only zero-width or no-break spaces is rejected', async () => {
     const { a } = await twoCommunities();
     for (const t of ['​​', '  ', '⠀']) {
       await expect(create(a, t), JSON.stringify(t)).rejects.toMatchObject({ message: 'validation_failed:title' });
@@ -342,7 +342,7 @@ describe('QA text and payload fuzzing (server)', () => {
   });
 
   // DEFECT Q4-5 (same cause): control and bidi-override characters are stored and pushed.
-  it.fails('DEFECT Q4-5: control characters and bidi overrides are rejected or stripped', async () => {
+  it('Q4-5 (fixed): control characters and bidi overrides are rejected or stripped', async () => {
     const { a } = await twoCommunities();
     const row = await create(a, 'Pay now‮ fdp.exe\u0007');
     expect(row.title).not.toMatch(/[\u0000-\u0008\u000b\u000c\u000e-\u001f‪-‮⁦-⁩]/);
@@ -351,7 +351,7 @@ describe('QA text and payload fuzzing (server)', () => {
   // DEFECT Q4-6 (low, defense in depth): the table check for deep_link accepts a protocol-relative
   // URL and parent-directory segments. Only definer functions write the column and they build
   // fixed routes, and the app allowlists links, so this is not reachable today.
-  it.fails('DEFECT Q4-6: notifications.deep_link only accepts the documented routes', async () => {
+  it('Q4-6 (fixed): notifications.deep_link only accepts the documented routes', async () => {
     const { a } = await twoCommunities();
     const s = await createTraining(a.organizerId, a.communityId);
     for (const link of ['//evil.example/x', '/trainings/../../admin', '/x?next=//evil.example']) {
@@ -414,36 +414,40 @@ describe('QA token ownership (bearer-token risk, documented)', () => {
 });
 
 describe('QA abuse and growth (observations)', () => {
-  it('O-1: nothing limits announcement volume; each one fans out per member and per push job', async () => {
+  it('O-1 (fixed in M3-B3): announcement volume is capped at 10 per organizer and community per hour', async () => {
     const a = await createPack(3);
-    for (let i = 0; i < 25; i += 1) await createAnnouncement(a.organizerId, a.communityId, { title: `Spam ${i}` });
-    expect(await countRows('notifications', "kind = 'announcement_published'")).toBe(25 * 3);
-    expect(await countRows('notification_delivery_jobs')).toBe(25 * 3);
+    for (let i = 0; i < 10; i += 1) await createAnnouncement(a.organizerId, a.communityId, { title: `Spam ${i}` });
+    await expect(createAnnouncement(a.organizerId, a.communityId, { title: 'Spam 10' })).rejects.toMatchObject({
+      message: 'announcement_rate_limited',
+    });
+    expect(await countRows('notifications', "kind = 'announcement_published'")).toBe(10 * 3);
+    expect(await countRows('notification_delivery_jobs')).toBe(10 * 3);
   });
 
-  it('O-2: the purge never removes in-app notifications, so the table grows without bound', async () => {
+  it('O-2 (fixed in M3-B3): the purge removes read notifications after 90 days and unread ones after 180', async () => {
     const a = await createPack(2);
     await createAnnouncement(a.organizerId, a.communityId);
     await admin.query("update public.notifications set created_at = now() - interval '400 days'");
     await asService((db) => rpc(db, 'purge_old_notification_data'));
-    expect(await countRows('notifications')).toBe(2);
+    expect(await countRows('notifications')).toBe(0);
+    expect(await countRows('notification_delivery_jobs')).toBe(0);
   });
 
-  it('O-3: the push badge count includes hidden notifications of a community the user left', async () => {
+  it('O-3 (fixed in M3-B3): the push badge ignores notifications of a community the user left', async () => {
     const a = await createPack(2);
     await createAnnouncement(a.organizerId, a.communityId, { title: 'one' });
     await admin.query("update public.memberships set status = 'removed' where user_id = $1", [a.memberIds[0]]);
     const row = (await claimJobs('w')).find((j) => j.user_id === a.memberIds[0])!;
-    expect(row.unread_count).toBe(1);
+    expect(row.unread_count).toBe(0);
     expect(await selectAs(a.memberIds[0], 'select id from public.notifications')).toEqual([]);
   });
 
-  it('read-state asymmetry: mark_all_notifications_read leaves announcements unread (feeds Q4-4)', async () => {
+  it('read state (Q4-4 fixed): mark_all_notifications_read also marks the referenced announcements read', async () => {
     const a = await createPack(2);
     await createAnnouncement(a.organizerId, a.communityId);
     const m = a.memberIds[0];
     expect(await asUser(m, (db) => rpc(db, 'mark_all_notifications_read', [a.communityId]))).toBe(1);
-    expect(await asUser(m, (db) => rpc(db, 'unread_announcement_count', [a.communityId]))).toBe(1);
+    expect(await asUser(m, (db) => rpc(db, 'unread_announcement_count', [a.communityId]))).toBe(0);
   });
 });
 
