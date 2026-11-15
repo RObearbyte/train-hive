@@ -17,7 +17,8 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 - [x] M1-A2 (L, mobile) Trainings list / details / RSVP with optimistic update + Realtime, Home tab
 - [x] M1-A3 (M, mobile) Create / edit / cancel training, invitations management, Profile tab
 - [x] M1-Q1 (backend half; mobile half pending) (M, qa) Independent review, extra security / concurrency / timezone tests, validation run, `docs/QA_REPORT.md`
-- [ ] M1-L1 (S, lead) Fix QA defects, README + `docs/SUPABASE_SETUP.md` step-by-step guide
+- [x] M1-B3 (backend) QA defects Q1-1..Q1-6 fixed, strict deadline < start
+- [x] M1-L1 (lead) README + SUPABASE_SETUP guide
 
 ## Milestone 2 — Attendance Management
 - [ ] M2-B1 (M, backend) attendance_records, audit log, record / finalize / correct RPCs, `completed` transition + tests
@@ -44,3 +45,4 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 ## Log
 - 2026-11-14: Foundation complete. Backend choice: embedded Postgres for tests now, hosted Supabase project later (owner will follow the step-by-step guide). Target: Android first.
 - 2026-11-14 (later): Usage limit hit mid-wave 2. M1-B2 (trainings/RSVP/finalization backend) and M1-A1 (app foundation + onboarding) are PARTIALLY written and committed as work in progress; neither was finished, reviewed, or validated. On resume: run `npm run typecheck`, `npm run lint`, `npm test` first, then complete M1-B2 and M1-A1 against the task descriptions in docs/API_CONTRACT.md and docs/TEAM.md before moving on. Lead rulings to apply in M1-B2: null in p_input clears a field; frozen fields compared by instant; future-checks only on changed timestamps; char_length after trim; validation field = column name.
+- 2026-11-15: Fable usage limit reached (resets 2026-11-19 08:00 Europe/Bucharest). Remaining work moves to Opus/Sonnet agents (spawn new agents with `model` set; resuming old agents would retry Fable). Pending: M1-Q1 part 2 (mobile QA review, appends Part 2 to docs/QA_REPORT.md), then Milestones 2-4.

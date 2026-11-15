@@ -174,16 +174,17 @@ describe('QA jsonb type confusion', () => {
 });
 
 describe('QA deadline rules at the edges', () => {
-  it('the default deadline is exactly start - 2h, and an explicit deadline may equal the start', async () => {
+  it('the default deadline is exactly start - 2h, and an explicit deadline must be before the start', async () => {
     const { communityId, organizerId } = await createPack();
     const start = hoursFromNow(30);
 
     const byDefault = await createTraining(organizerId, communityId, { starts_at: start, ends_at: null, rsvp_deadline: null });
-    const atStart = await createTraining(organizerId, communityId, { starts_at: start, ends_at: null, rsvp_deadline: start });
 
     expect(byDefault.starts_at.getTime() - byDefault.rsvp_deadline.getTime()).toBe(2 * 3_600_000);
-    // OBSERVATION Q1-O2: the spec says "deadline before start"; the contract allows equality.
-    expect(atStart.rsvp_deadline).toEqual(atStart.starts_at);
+    // Q1-O2 resolved (M1-B3): the rule is strict, a deadline equal to the start is rejected.
+    await expect(
+      createTraining(organizerId, communityId, { starts_at: start, ends_at: null, rsvp_deadline: start }),
+    ).rejects.toMatchObject({ code: 'P0001', message: 'validation_failed:rsvp_deadline' });
   });
 
   // OBSERVATION Q1-O3: a training that starts in less than two hours cannot be created without
@@ -290,7 +291,7 @@ describe('QA time zones', () => {
 
   // DEFECT Q1-5 (low): the zone is validated against pg_timezone_names, which also lists names
   // that are not IANA zone identifiers a client can display with Intl / date-fns-tz.
-  it.fails('DEFECT Q1-5: only IANA zone identifiers are accepted as a session time zone', async () => {
+  it('DEFECT Q1-5: only IANA zone identifiers are accepted as a session time zone', async () => {
     const { communityId, organizerId } = await createPack();
     const { rows } = await admin.query<{ name: string }>(
       "select name from pg_timezone_names where name in ('Factory', 'posixrules', 'localtime', 'posix/Europe/Bucharest', 'right/Europe/Bucharest')",

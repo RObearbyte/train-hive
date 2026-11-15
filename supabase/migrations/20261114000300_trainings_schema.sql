@@ -28,7 +28,9 @@ insert into public.activity_types (key, label, sort_order) values
 create table public.training_sessions (
   id uuid primary key default gen_random_uuid(),
   community_id uuid not null references public.communities (id) on delete cascade,
-  organizer_id uuid not null references public.profiles (id),
+  -- Always set on creation. Becomes null when the organizer's account is deleted, so the
+  -- sessions they created survive.
+  organizer_id uuid references public.profiles (id) on delete set null,
   title text not null,
   description text,
   activity_type text not null default 'other' references public.activity_types (key),
@@ -65,7 +67,7 @@ create table public.training_sessions (
       and (map_url is null or char_length(map_url) between 1 and 2048)
       and (meeting_instructions is null or char_length(meeting_instructions) between 1 and 1000)
     ),
-  constraint training_sessions_rsvp_deadline_check check (rsvp_deadline <= starts_at),
+  constraint training_sessions_rsvp_deadline_check check (rsvp_deadline < starts_at),
   constraint training_sessions_ends_at_check check (ends_at is null or ends_at > starts_at),
   constraint training_sessions_min_participants_check check (min_participants >= 1),
   constraint training_sessions_max_participants_check

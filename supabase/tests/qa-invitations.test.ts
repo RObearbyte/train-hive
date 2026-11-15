@@ -149,7 +149,7 @@ describe('QA invitation edges', () => {
 
   // DEFECT Q1-6 (low): expiry is compared with now() (transaction start). A redemption that
   // waits for the invitation row lock can complete after the code has expired.
-  it.fails('DEFECT Q1-6: a redemption that waited past the expiry is refused', async () => {
+  it('DEFECT Q1-6: a redemption that waited past the expiry is refused', async () => {
     const { communityId } = await createCommunity();
     const invitation = await insertInvitation(communityId, 'MEMBER22');
     await admin.query("update public.invitation_codes set expires_at = clock_timestamp() + interval '400 milliseconds' where id = $1", [invitation.id]);

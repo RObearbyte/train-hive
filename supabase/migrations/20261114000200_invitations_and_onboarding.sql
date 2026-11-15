@@ -20,6 +20,26 @@ as $$
   select upper(regexp_replace(coalesce(p_code, ''), '[\s‐-―-]', '', 'g'));
 $$;
 
+-- A time zone the clients can display: listed by this Postgres build AND either `UTC` or a
+-- strict IANA `Area/Location` identifier. pg_timezone_names alone also lists names such as
+-- `Factory`, `posixrules`, `localtime`, abbreviations (`EST`) and the `posix/` and `right/`
+-- trees, which Intl / date-fns on a device may not accept.
+create function private.is_valid_timezone(p_timezone text) returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select p_timezone is not null
+    and (
+      p_timezone = 'UTC'
+      or (
+        p_timezone ~ '^[A-Z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)+$'
+        and p_timezone !~ '^(posix|right)/'
+      )
+    )
+    and exists (select 1 from pg_catalog.pg_timezone_names tz where tz.name = p_timezone);
+$$;
+
 -- Returns the cleaned display name (whitespace runs collapsed, trimmed), or null when the
 -- result is not 2-40 characters long.
 create function private.clean_display_name(p_display_name text) returns text
@@ -141,7 +161,7 @@ $$;
 create function private.check_invitation(p_invitation public.invitation_codes, p_user_id uuid)
 returns text
 language plpgsql
-stable
+volatile
 set search_path = ''
 as $$
 declare
@@ -153,7 +173,8 @@ begin
   if p_invitation.revoked_at is not null then
     return 'revoked';
   end if;
-  if p_invitation.expires_at is not null and p_invitation.expires_at <= now() then
+  -- clock_timestamp(): the real time, after any wait for the invitation row lock.
+  if p_invitation.expires_at is not null and p_invitation.expires_at <= clock_timestamp() then
     return 'expired';
   end if;
 
@@ -402,9 +423,7 @@ begin
   if char_length(v_name) not between 1 and 80 then
     raise exception using errcode = 'P0001', message = 'validation_failed:name';
   end if;
-  if p_timezone is null
-     or not exists (select 1 from pg_catalog.pg_timezone_names tz where tz.name = p_timezone)
-  then
+  if not private.is_valid_timezone(p_timezone) then
     raise exception using errcode = 'P0001', message = 'validation_failed:timezone';
   end if;
 

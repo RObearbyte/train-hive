@@ -72,12 +72,19 @@ describe('admin_create_community', () => {
     ]);
   });
 
-  it.each(['Mars/Phobos', '', 'europe/bucharest ', null])('rejects the timezone %j', async (timezone) => {
+  it.each(['Mars/Phobos', '', 'europe/bucharest ', null, 'EST', 'Factory', 'posix/Europe/Bucharest', 'UTC+3'])('rejects the timezone %j', async (timezone) => {
     await expect(
       asService((db) => rpc(db, 'admin_create_community', ['Wolf Pack', timezone])),
     ).rejects.toMatchObject(raised('validation_failed:timezone'));
     expect(await countRows('communities')).toBe(0);
     expect(await countRows('invitation_codes')).toBe(0);
+  });
+
+  it.each(['UTC', 'America/New_York'])('accepts the timezone %j', async (timezone) => {
+    const result = await asService((db) =>
+      rpc<{ community_id: string }>(db, 'admin_create_community', ['Wolf Pack', timezone]),
+    );
+    expect(await countRows('communities', 'id = $1 and timezone = $2', [result.community_id, timezone])).toBe(1);
   });
 
   it.each(['', '   ', null, 'x'.repeat(81)])('rejects the name %j', async (name) => {

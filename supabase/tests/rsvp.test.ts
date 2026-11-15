@@ -467,6 +467,75 @@ describe('going_count safety nets', () => {
     expect(await consistentGoingCount(session.id)).toBe(0);
   });
 
+  it('deleting an organizer account keeps their sessions, with organizer_id cleared', async () => {
+    const { communityId, organizerId, memberIds } = await createPack(1);
+    const coOrganizer = await addMember(communityId, { role: 'organizer' });
+    const session = await createTraining(organizerId, communityId, { min_participants: 1 });
+    await setRsvp(memberIds[0], session.id, 'going');
+    await cancelTraining(organizerId, session.id);
+
+    await admin.query('delete from auth.users where id = $1', [organizerId]);
+
+    expect(await getSession(session.id)).toMatchObject({
+      organizer_id: null,
+      cancelled_by: null,
+      status: 'cancelled',
+      cancel_reason: 'organizer',
+      going_count: 1,
+    });
+    // New sessions always get an organizer.
+    expect((await createTraining(coOrganizer, communityId)).organizer_id).toBe(coOrganizer);
+  });
+
+  it('removal after the deadline leaves the count at the deadline for the finalizer', async () => {
+    const { communityId, organizerId, memberIds } = await createPack(2);
+    const due = await createTraining(organizerId, communityId, { min_participants: 2 });
+    const open = await createTraining(organizerId, communityId, { min_participants: 2 });
+    for (const session of [due, open]) {
+      for (const id of memberIds) await setRsvp(id, session.id, 'going');
+    }
+    await makeDue(due.id);
+
+    await admin.query("update public.memberships set status = 'removed' where user_id = $1", [memberIds[0]]);
+
+    expect(await getSession(due.id)).toMatchObject({ status: 'scheduled', going_count: 2 });
+    expect((await rsvpOf(due.id, memberIds[0])).response).toBe('going');
+    expect(await consistentGoingCount(open.id)).toBe(1);
+    expect(await finalize()).toBe(1);
+    expect(await getSession(due.id)).toMatchObject({ status: 'confirmed', going_count: 2 });
+  });
+
+  it('deleting a membership row behaves like removal', async () => {
+    const { communityId, organizerId, memberIds } = await createPack(2);
+    const open = await createTraining(organizerId, communityId, { min_participants: 1 });
+    const confirmed = await createTraining(organizerId, communityId, { min_participants: 1 });
+    for (const session of [open, confirmed]) {
+      for (const id of memberIds) await setRsvp(id, session.id, 'going');
+    }
+    await makeDue(confirmed.id);
+    await finalize();
+
+    await admin.query('delete from public.memberships where user_id = $1', [memberIds[0]]);
+
+    expect(await consistentGoingCount(open.id)).toBe(1);
+    expect((await rsvpOf(open.id, memberIds[0])).response).toBe('no_response');
+    expect(await getSession(confirmed.id)).toMatchObject({ status: 'confirmed', going_count: 2 });
+    await expect(setRsvp(memberIds[0], open.id, 'going')).rejects.toMatchObject(raised('not_a_member'));
+  });
+
+  it('deleting a user uncounts their going RSVP on decided sessions too, without changing the status', async () => {
+    const { communityId, organizerId, memberIds } = await createPack(2);
+    const session = await createTraining(organizerId, communityId, { min_participants: 2 });
+    for (const id of memberIds) await setRsvp(id, session.id, 'going');
+    await makeDue(session.id);
+    await finalize();
+
+    await admin.query('delete from auth.users where id = $1', [memberIds[0]]);
+
+    expect(await consistentGoingCount(session.id)).toBe(1);
+    expect((await getSession(session.id)).status).toBe('confirmed');
+  });
+
   it('deleting a user uncounts their going RSVP on scheduled sessions', async () => {
     const { communityId, organizerId, memberIds } = await createPack(2);
     const session = await createTraining(organizerId, communityId, { min_participants: 1 });

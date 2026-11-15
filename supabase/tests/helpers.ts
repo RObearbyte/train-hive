@@ -229,7 +229,7 @@ export async function countRows(table: string, where = 'true', params: unknown[]
 export interface Session {
   id: string;
   community_id: string;
-  organizer_id: string;
+  organizer_id: string | null;
   title: string;
   description: string | null;
   activity_type: string;

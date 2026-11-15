@@ -61,7 +61,7 @@ describe('QA deletion and removal paths', () => {
 
   // DEFECT Q1-2 (low): training_sessions.organizer_id references profiles with no ON DELETE
   // action, so the account of anyone who ever created a training cannot be deleted.
-  it.fails('DEFECT Q1-2: the account of a user who created a training can be deleted', async () => {
+  it('DEFECT Q1-2: the account of a user who created a training can be deleted', async () => {
     const { communityId, organizerId } = await createPack();
     await createTraining(organizerId, communityId);
 
@@ -74,7 +74,7 @@ describe('QA deletion and removal paths', () => {
   // DEFECT Q1-3 (low): between the deadline and the finalizer run (up to a minute with pg_cron,
   // longer if the job is late) removing a member still changes going_count, so the decision is
   // not taken from the count at the deadline.
-  it.fails('DEFECT Q1-3: the decision uses the count at the deadline, even if a member is removed before the finalizer runs', async () => {
+  it('DEFECT Q1-3: the decision uses the count at the deadline, even if a member is removed before the finalizer runs', async () => {
     const { communityId, organizerId, memberIds } = await createPack(2);
     const session = await createTraining(organizerId, communityId, { min_participants: 2 });
     for (const id of memberIds) await setRsvp(id, session.id, 'going');
@@ -90,7 +90,7 @@ describe('QA deletion and removal paths', () => {
 
   // DEFECT Q1-4 (low): the safety nets cover "membership set to removed" and "RSVP row deleted",
   // but not every path. Two paths leave going_count different from the real state.
-  it.fails('DEFECT Q1-4a: deleting a user keeps going_count equal to the going rows on decided sessions too', async () => {
+  it('DEFECT Q1-4a: deleting a user keeps going_count equal to the going rows on decided sessions too', async () => {
     const { communityId, organizerId, memberIds } = await createPack(2);
     const session = await createTraining(organizerId, communityId, { min_participants: 2 });
     for (const id of memberIds) await setRsvp(id, session.id, 'going');
@@ -104,7 +104,7 @@ describe('QA deletion and removal paths', () => {
     expect((await getSession(session.id)).going_count).toBe(await realGoingCount(session.id));
   });
 
-  it.fails('DEFECT Q1-4b: deleting a membership row does not leave a non-member counted as going', async () => {
+  it('DEFECT Q1-4b: deleting a membership row does not leave a non-member counted as going', async () => {
     const { communityId, organizerId, memberIds } = await createPack(1);
     const session = await createTraining(organizerId, communityId, { min_participants: 1 });
     await setRsvp(memberIds[0], session.id, 'going');

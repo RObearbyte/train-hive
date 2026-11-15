@@ -3,13 +3,17 @@
 --
 -- Invariants enforced here:
 --   * going_count always equals the number of `going` RSVP rows of the session. It changes
---     only under a FOR UPDATE lock on the session row (set_rsvp), plus two safety-net triggers
---     for paths that bypass set_rsvp (member removed, RSVP row deleted by a cascade).
+--     only under a lock on the session row: in set_rsvp, and in the safety-net triggers for
+--     paths that bypass set_rsvp (membership removed or deleted, RSVP row deleted by a cascade).
 --   * The confirm / cancel decision is taken once, by finalize_due_sessions, from the count at
---     the deadline. Once the deadline has passed, RSVPs are closed and the deadline and the
---     participant limits are frozen, so nothing can change or escape the decision.
---   * Lock order is always membership row -> session row, so set_rsvp and member removal
---     cannot deadlock.
+--     the deadline. Once the deadline has passed, RSVPs are closed, the deadline and the
+--     participant limits are frozen, and removing a member no longer releases their RSVP.
+--     (Only the physical deletion of a user, which deletes the RSVP row itself, still lowers
+--     the count: the count never claims a row that does not exist. It never changes a status.)
+--   * Lock order is always profile row -> membership row -> session row, so set_rsvp, member
+--     removal and user deletion cannot deadlock.
+--   * Checks against a deadline made after a lock wait use clock_timestamp(), the real time,
+--     not now(), which is the transaction start.
 
 -- Input parsing helpers (schema private) ------------------------------------------------------
 
@@ -189,8 +193,7 @@ begin
   r.rsvp_deadline := private.input_timestamptz(p_input, 'rsvp_deadline');
 
   r.timezone := coalesce(private.input_text(p_input, 'timezone', 64, false, false), p_default_timezone);
-  if r.timezone <> all (p_known_timezones)
-     and not exists (select 1 from pg_catalog.pg_timezone_names tz where tz.name = r.timezone) then
+  if r.timezone <> all (p_known_timezones) and not private.is_valid_timezone(r.timezone) then
     perform private.fail_validation('timezone');
   end if;
 
@@ -255,10 +258,11 @@ begin
   v_in := private.parse_training_input(p_input, v_timezone, array[v_timezone]);
   v_in.rsvp_deadline := coalesce(v_in.rsvp_deadline, v_in.starts_at - interval '2 hours');
 
-  if v_in.starts_at <= now() then
+  if v_in.starts_at <= clock_timestamp() then
     perform private.fail_validation('starts_at');
   end if;
-  if v_in.rsvp_deadline <= now() or v_in.rsvp_deadline > v_in.starts_at then
+  -- The deadline must be in the future and strictly before the start.
+  if v_in.rsvp_deadline <= clock_timestamp() or v_in.rsvp_deadline >= v_in.starts_at then
     perform private.fail_validation('rsvp_deadline');
   end if;
 
@@ -333,10 +337,10 @@ begin
 
   if v_open then
     v_in.rsvp_deadline := coalesce(v_in.rsvp_deadline, v_in.starts_at - interval '2 hours');
-    if v_in.starts_at <= now() then
+    if v_in.starts_at <= clock_timestamp() then
       perform private.fail_validation('starts_at');
     end if;
-    if v_in.rsvp_deadline <= now() or v_in.rsvp_deadline > v_in.starts_at then
+    if v_in.rsvp_deadline <= clock_timestamp() or v_in.rsvp_deadline >= v_in.starts_at then
       perform private.fail_validation('rsvp_deadline');
     end if;
     if v_in.max_participants is not null and v_in.max_participants < v_session.going_count then
@@ -358,10 +362,11 @@ begin
     if v_in.max_participants is distinct from v_session.max_participants then
       perform private.fail_validation('max_participants');
     end if;
-    -- The start may move, but only to a future time (and never before the frozen deadline).
+    -- The start may move, but only to a future time (and never to or before the frozen
+    -- deadline).
     if date_trunc('milliseconds', v_in.starts_at)
          is distinct from date_trunc('milliseconds', v_session.starts_at)
-       and (v_in.starts_at <= now() or v_in.starts_at < v_session.rsvp_deadline) then
+       and (v_in.starts_at <= clock_timestamp() or v_in.starts_at <= v_session.rsvp_deadline) then
       perform private.fail_validation('starts_at');
     end if;
   end if;
@@ -475,6 +480,14 @@ begin
     raise exception using errcode = 'P0001', message = 'not_found';
   end if;
 
+  -- Lock order profile -> membership -> session. The profile lock comes first because the
+  -- RSVP insert below key-share-locks the profile anyway (foreign key), and deleting a user
+  -- locks the profile before the membership: taking it here keeps both paths in one order.
+  perform 1 from public.profiles p where p.id = v_uid for key share;
+  if not found then
+    raise exception using errcode = 'P0001', message = 'not_a_member';
+  end if;
+
   -- Share-lock the caller's membership: a concurrent removal waits for this transaction and
   -- then sees (and releases) the RSVP written below; if the removal got there first, this
   -- statement waits for it and then no longer finds an active membership.
@@ -583,22 +596,35 @@ $$;
 -- Safety nets for going_count ----------------------------------------------------------------
 
 -- When a membership goes from active to removed, the member's `going` RSVPs on sessions that
--- are still `scheduled` are cleared and the counts adjusted. Decided sessions keep their
--- history. Lock order matches set_rsvp: the membership row is already locked by the UPDATE
--- that fired this trigger, then the sessions.
+-- are still open (`scheduled` and before their RSVP deadline) are cleared and the counts
+-- adjusted. Deleting the membership row behaves the same. Sessions that are decided, or whose
+-- deadline has passed and are waiting for the finalizer, are left alone: the count at the
+-- deadline stands. Lock order matches set_rsvp: the membership row is already locked by the
+-- statement that fired this trigger, then the sessions.
 create function private.release_rsvps_of_removed_member() returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
+  v_community_id uuid;
+  v_user_id uuid;
   v_session_id uuid;
 begin
+  if tg_op = 'DELETE' then
+    v_community_id := old.community_id;
+    v_user_id := old.user_id;
+  else
+    v_community_id := new.community_id;
+    v_user_id := new.user_id;
+  end if;
+
   for v_session_id in
     select s.id
     from public.training_sessions s
-    where s.community_id = new.community_id
+    where s.community_id = v_community_id
       and s.status = 'scheduled'
+      and s.rsvp_deadline > clock_timestamp()
     order by s.id
     for update
   loop
@@ -607,7 +633,7 @@ begin
         responded_at = now(),
         updated_at = now()
     where session_id = v_session_id
-      and user_id = new.user_id
+      and user_id = v_user_id
       and response = 'going';
 
     if found then
@@ -626,8 +652,15 @@ create trigger memberships_release_rsvps_on_removal
   when (old.status = 'active' and new.status = 'removed')
   execute function private.release_rsvps_of_removed_member();
 
+create trigger memberships_release_rsvps_on_delete
+  after delete on public.memberships
+  for each row
+  when (old.status = 'active')
+  execute function private.release_rsvps_of_removed_member();
+
 -- RSVP rows are never deleted by the app, but a cascade (a deleted profile / auth user) can
--- remove them. Keep the count of still-scheduled sessions correct in that case.
+-- remove them. A deleted `going` row is always uncounted, whatever the session's status, so
+-- going_count never claims a participant whose row is gone. The status is never touched.
 create function private.uncount_deleted_rsvp() returns trigger
 language plpgsql
 security definer
@@ -636,8 +669,7 @@ as $$
 begin
   update public.training_sessions
   set going_count = going_count - 1
-  where id = old.session_id
-    and status = 'scheduled';
+  where id = old.session_id;
   return null;
 end;
 $$;

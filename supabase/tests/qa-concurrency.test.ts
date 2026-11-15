@@ -402,7 +402,7 @@ describe('QA randomized invariants and deadlock probe', () => {
   // DEFECT Q1-1 (low): deleting a user deadlocks with that user's first RSVP to a session.
   // set_rsvp locks membership -> session -> (FK check) profile; the delete cascade locks
   // profile -> membership. One of the two transactions is aborted with 40P01.
-  it.fails('DEFECT Q1-1: deleting a user while their first RSVP is in flight does not deadlock', async () => {
+  it('DEFECT Q1-1: deleting a user while their first RSVP is in flight does not deadlock', async () => {
     const { communityId, organizerId, memberIds } = await createPack(1);
     const session = await createTraining(organizerId, communityId, { min_participants: 1 });
     const user = memberIds[0];

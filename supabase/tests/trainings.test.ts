@@ -232,14 +232,58 @@ describe('create_training', () => {
       longitude: 180,
       min_participants: 1,
       max_participants: 1,
-      rsvp_deadline: startsAt,
+      rsvp_deadline: new Date(new Date(startsAt).getTime() - 1).toISOString(),
       starts_at: startsAt,
       map_url: 'HTTP://maps.example.com',
     });
 
     expect(session).toMatchObject({ latitude: -90, longitude: 180, min_participants: 1, max_participants: 1 });
-    expect(session.rsvp_deadline).toEqual(session.starts_at);
+    expect(session.starts_at.getTime() - session.rsvp_deadline.getTime()).toBe(1);
   });
+
+  it('requires the deadline to be strictly before the start (RPCs and table check)', async () => {
+    const { communityId, organizerId } = await createPack();
+    const startsAt = hoursFromNow(72);
+
+    await expect(
+      createTraining(organizerId, communityId, { starts_at: startsAt, rsvp_deadline: startsAt }),
+    ).rejects.toMatchObject(raised('validation_failed:rsvp_deadline'));
+
+    const session = await createTraining(organizerId, communityId);
+    await expect(
+      updateTraining(organizerId, session.id, formOf(session, { rsvp_deadline: session.starts_at.toISOString() })),
+    ).rejects.toMatchObject(raised('validation_failed:rsvp_deadline'));
+    await expect(
+      admin.query('update public.training_sessions set rsvp_deadline = starts_at where id = $1', [session.id]),
+    ).rejects.toMatchObject({ code: '23514', constraint: 'training_sessions_rsvp_deadline_check' });
+    expect(await getSession(session.id)).toEqual(session);
+  });
+
+  it.each(['UTC', 'Etc/UTC', 'Etc/GMT+3', 'America/Argentina/Buenos_Aires', 'Asia/Kolkata'])(
+    'accepts the IANA time zone %s',
+    async (timezone) => {
+      const { communityId, organizerId } = await createPack();
+
+      const session = await createTraining(organizerId, communityId, { timezone });
+
+      expect(session.timezone).toBe(timezone);
+    },
+  );
+
+  it.each(['EST', 'EET', 'GMT', 'utc', 'Factory', 'posix/Europe/Bucharest', 'right/Europe/Bucharest', 'UTC+3', 'europe/bucharest'])(
+    'rejects %s, which is not a strict IANA Area/Location zone',
+    async (timezone) => {
+      const { communityId, organizerId } = await createPack();
+      const session = await createTraining(organizerId, communityId);
+
+      await expect(createTraining(organizerId, communityId, { timezone })).rejects.toMatchObject(
+        raised('validation_failed:timezone'),
+      );
+      await expect(
+        updateTraining(organizerId, session.id, formOf(session, { timezone })),
+      ).rejects.toMatchObject(raised('validation_failed:timezone'));
+    },
+  );
 
   it.each(INVALID_FIELDS)('rejects %s that is %s', async (field, _label, overrides) => {
     const { communityId, organizerId } = await createPack();
