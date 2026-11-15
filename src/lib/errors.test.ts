@@ -22,6 +22,8 @@ describe('contract coverage', () => {
   it('lists every code in docs/API_CONTRACT.md', () => {
     expect([...BACKEND_ERROR_CODES].sort()).toEqual(
       [
+        'attendee_has_going_rsvp',
+        'attendee_not_a_member',
         'exhausted',
         'expired',
         'forbidden',
@@ -29,13 +31,16 @@ describe('contract coverage', () => {
         'invalid_display_name',
         'not_a_member',
         'not_authenticated',
+        'no_going_rsvp',
         'not_found',
         'rate_limited',
         'revoked',
         'rsvp_closed',
         'session_full',
         'session_not_cancellable',
+        'session_not_confirmed',
         'session_not_editable',
+        'session_not_ended',
         'validation_failed',
       ].sort(),
     );

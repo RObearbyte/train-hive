@@ -1,5 +1,6 @@
 import { Pressable, View } from 'react-native';
 
+import { NeedsAttendanceCue } from '@/features/attendance/components/AttendanceEntryPoint';
 import { RsvpControl } from '@/features/rsvp/components/RsvpControl';
 import type { RsvpResponse, TrainingSession } from '@/lib/database.types';
 import { formatDateTimeRange, formatSessionWhen, isValidTimeZone } from '@/lib/datetime';
@@ -25,6 +26,8 @@ export interface TrainingCardProps {
   showRsvp?: boolean;
   /** Larger "when" line for the featured card on Home. */
   featured?: boolean;
+  /** Organizer cue: confirmed, over, attendance not finalized. Display only. */
+  needsAttendance?: boolean;
 }
 
 /**
@@ -39,6 +42,7 @@ export function TrainingCard({
   onPress,
   showRsvp = true,
   featured = false,
+  needsAttendance = false,
 }: TrainingCardProps) {
   const { spacing, radii } = useTheme();
   const activity = useActivityLabel();
@@ -66,7 +70,7 @@ export function TrainingCard({
           participation,
           statusLabel: `${badgeLabel ?? statusMeta[status].label}${isProvisional(status) ? ', not final' : ''}`,
           myRsvp: myRsvpText(myResponse),
-        })}
+        }) + (needsAttendance ? '. Needs attendance' : '')}
         style={({ pressed }) => ({
           gap: spacing.md,
           opacity: pressed ? 0.7 : 1,
@@ -120,6 +124,7 @@ export function TrainingCard({
               Not final yet
             </Text>
           ) : null}
+          {needsAttendance ? <NeedsAttendanceCue /> : null}
         </View>
 
         {/* Am I going (as text when there is no control below) */}

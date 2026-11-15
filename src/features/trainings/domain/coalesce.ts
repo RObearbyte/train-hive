@@ -71,7 +71,7 @@ export function createCoalescer<K>(
 }
 
 /** What a Realtime change can make stale. */
-export type RealtimeTopic = 'sessions' | 'rsvps' | 'membership';
+export type RealtimeTopic = 'sessions' | 'rsvps' | 'membership' | 'attendance';
 
 /** Which topics a change to a table invalidates; unknown tables invalidate nothing. */
 export function topicsForTable(table: string): RealtimeTopic[] {
@@ -83,6 +83,9 @@ export function topicsForTable(table: string): RealtimeTopic[] {
       return ['rsvps', 'sessions'];
     case 'memberships':
       return ['membership'];
+    case 'attendance_records':
+      // Organizers see every row of the community, members only their own (RLS).
+      return ['attendance'];
     default:
       return [];
   }

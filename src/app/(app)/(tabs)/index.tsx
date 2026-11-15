@@ -2,6 +2,8 @@ import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { NeedsAttendanceCue } from '@/features/attendance/components/AttendanceEntryPoint';
+import { needsAttendance } from '@/features/attendance/domain/sheet';
 import { TrainingCard } from '@/features/trainings/components/TrainingCard';
 import { statusBadgeLabel } from '@/features/trainings/domain/presentation';
 import { deriveDisplayStatus, participationSummary } from '@/features/trainings/domain/status';
@@ -24,6 +26,7 @@ import {
 } from '@/ui';
 
 const THEN_COUNT = 3;
+const ATTENDANCE_COUNT = 3;
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -35,6 +38,38 @@ export default function HomeScreen() {
   const next = trainings.next;
   const then = trainings.upcoming.filter((session) => session.id !== next?.id).slice(0, THEN_COUNT);
   const hasUpcoming = next !== null || then.length > 0;
+  // Organizers: confirmed trainings that are over and still need their attendance recorded.
+  const toRecord = isOrganizer
+    ? trainings.past.filter((session) => needsAttendance(session, now))
+    : [];
+
+  const attendanceSection =
+    toRecord.length > 0 ? (
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="heading">Needs attendance</Text>
+        <Card>
+          {toRecord.slice(0, ATTENDANCE_COUNT).map((session, index) => {
+            const zone = isValidTimeZone(session.timezone) ? session.timezone : 'UTC';
+            return (
+              <View key={session.id}>
+                {index > 0 ? <Divider /> : null}
+                <ListItem
+                  title={formatSessionWhen(session.starts_at, zone, now)}
+                  subtitle={`${session.title} · ${session.location_name}`}
+                  trailing={<NeedsAttendanceCue />}
+                  onPress={() => router.push(`/trainings/${session.id}/attendance`)}
+                />
+              </View>
+            );
+          })}
+        </Card>
+        {toRecord.length > ATTENDANCE_COUNT ? (
+          <Text variant="caption" color="textMuted">
+            {toRecord.length - ATTENDANCE_COUNT} more in the Past list.
+          </Text>
+        ) : null}
+      </View>
+    ) : null;
 
   let body;
   if (trainings.error && !hasUpcoming) {
@@ -131,6 +166,7 @@ export default function HomeScreen() {
         <Text variant="title">{community?.name ?? 'Home'}</Text>
         {profile ? <Text color="textMuted">Hi, {profile.display_name}</Text> : null}
       </View>
+      {attendanceSection}
       {body}
     </Screen>
   );

@@ -10,6 +10,7 @@ import {
 import { reportError } from '@/lib/logger';
 import { getSupabase } from '@/lib/supabase';
 
+import { invalidateAttendanceUnlessPending } from '@/features/attendance/domain/sheetCache';
 import { invalidateUnlessRsvpPending } from '@/features/rsvp/domain/rsvpCache';
 import { rsvpKeys, trainingKeys } from '../api/keys';
 import {
@@ -19,7 +20,7 @@ import {
   type RealtimeTopic,
 } from '../domain/coalesce';
 
-const ALL_TOPICS: RealtimeTopic[] = ['sessions', 'rsvps', 'membership'];
+const ALL_TOPICS: RealtimeTopic[] = ['sessions', 'rsvps', 'membership', 'attendance'];
 
 function invalidateTopics(queryClient: QueryClient, topics: RealtimeTopic[]): void {
   for (const topic of topics) {
@@ -29,6 +30,9 @@ function invalidateTopics(queryClient: QueryClient, topics: RealtimeTopic[]): vo
     } else if (topic === 'rsvps') {
       invalidateUnlessRsvpPending(queryClient, { queryKey: rsvpKeys.all });
       invalidateUnlessRsvpPending(queryClient, { queryKey: trainingKeys.allParticipants() });
+    } else if (topic === 'attendance') {
+      // Sheets, my history and my own record. Skipped while a row change is being saved.
+      invalidateAttendanceUnlessPending(queryClient);
     } else {
       void queryClient.invalidateQueries({ queryKey: membershipKeys.all });
     }
@@ -38,7 +42,8 @@ function invalidateTopics(queryClient: QueryClient, topics: RealtimeTopic[]): vo
 /**
  * Live updates for the signed-in member's community. Mount once, inside `(app)`.
  *
- * One channel listens for changes to the community's sessions and RSVPs and
+ * One channel listens for changes to the community's sessions, RSVPs and
+ * attendance records (organizers get every row, members only their own, by RLS) and
  * to my own membership. An event never touches the cache: it only marks the
  * affected queries stale, coalesced so a burst causes one refetch. While an RSVP change is
  * being saved, session and answer invalidations are skipped (the change refetches when it
@@ -98,6 +103,16 @@ export function useTrainingsRealtime(): void {
           filter: `community_id=eq.${communityId}`,
         },
         onChange('training_rsvps'),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'attendance_records',
+          filter: `community_id=eq.${communityId}`,
+        },
+        onChange('attendance_records'),
       )
       .on(
         'postgres_changes',

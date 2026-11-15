@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { needsAttendance } from '@/features/attendance/domain/sheet';
 import { TrainingCard } from '@/features/trainings/components/TrainingCard';
 import { useCommunityTrainings } from '@/features/trainings/hooks/useTrainings';
 import { userMessage } from '@/lib/errors';
@@ -118,6 +119,7 @@ export default function TrainingsScreen() {
             myResponse={trainings.myResponse(item.id)}
             now={now}
             showRsvp={section === 'upcoming'}
+            needsAttendance={isOrganizer && needsAttendance(item, now)}
             onPress={() => router.push(`/trainings/${item.id}`)}
           />
         )}

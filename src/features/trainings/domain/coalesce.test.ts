@@ -117,6 +117,7 @@ describe('topicsForTable', () => {
     expect(topicsForTable('training_sessions')).toEqual(['sessions']);
     expect(topicsForTable('training_rsvps')).toEqual(['rsvps', 'sessions']);
     expect(topicsForTable('memberships')).toEqual(['membership']);
+    expect(topicsForTable('attendance_records')).toEqual(['attendance']);
   });
 
   it('ignores tables it does not know', () => {

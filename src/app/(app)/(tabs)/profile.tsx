@@ -118,6 +118,13 @@ export default function ProfileScreen() {
           />
           <Divider />
           <ListItem title="Member since" subtitle={formatLongDate(membership.joined_at, zone)} />
+          <Divider />
+          <ListItem
+            title="My attendance"
+            subtitle="Trainings you attended, by month"
+            leading={<Icon name="check-circle" size={22} color="primary" />}
+            onPress={() => router.push('/attendance-history')}
+          />
           {isOrganizer ? (
             <>
               <Divider />

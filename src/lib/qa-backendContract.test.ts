@@ -178,6 +178,10 @@ describe('QA contract: RPCs called by the app', () => {
         'update_training',
         'cancel_training',
         'set_rsvp',
+        'get_attendance_sheet',
+        'record_attendance',
+        'add_walk_in_attendee',
+        'finalize_attendance',
       ]),
     );
   });

@@ -3,6 +3,10 @@ import { useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import {
+  AttendanceEntryPoint,
+  MyAttendanceOutcome,
+} from '@/features/attendance/components/AttendanceEntryPoint';
 import { RsvpControl } from '@/features/rsvp/components/RsvpControl';
 import { OrganizerActions } from '@/features/trainings/components/OrganizerActions';
 import { buildMapsLink, type MapsPlatform } from '@/features/trainings/domain/maps';
@@ -194,6 +198,10 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
         </View>
         <Banner tone={bannerTone(status)} message={statusExplanation(status, summary, deadlineText)} />
       </View>
+
+      {/* Organizers: record or correct attendance (the server authorizes it again). */}
+      {isOrganizer ? <AttendanceEntryPoint session={session} now={now} /> : null}
+      <MyAttendanceOutcome session={session} myResponse={myResponse} />
 
       {/* When and where */}
       <Card style={{ gap: spacing.lg }}>

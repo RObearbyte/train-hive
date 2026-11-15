@@ -24,6 +24,11 @@ export const BACKEND_ERROR_CODES = [
   'session_not_cancellable',
   'rsvp_closed',
   'session_full',
+  'session_not_confirmed',
+  'session_not_ended',
+  'attendee_not_a_member',
+  'no_going_rsvp',
+  'attendee_has_going_rsvp',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -177,6 +182,13 @@ const MESSAGES: Record<AppErrorCode, string> = {
   session_not_cancellable: 'This training is already completed and cannot be cancelled.',
   rsvp_closed: 'Responses are closed for this training.',
   session_full: 'This training is full. No spots are left.',
+  session_not_confirmed:
+    'Attendance can only be taken for a confirmed training. This one is not confirmed (it is still open or was cancelled).',
+  session_not_ended: 'This training has not ended yet. Attendance can be recorded once it is over.',
+  attendee_not_a_member: 'That person is no longer an active member of this community.',
+  no_going_rsvp: 'That member did not say they were going. Add them as a walk-in instead.',
+  attendee_has_going_rsvp:
+    'That member said they were going, so they are already on the list. Mark them Present there.',
   network_error: 'No connection. Check your internet and try again.',
   unknown: 'Something went wrong. Please try again.',
 };
@@ -202,6 +214,9 @@ const FIELD_LABELS: Record<string, string> = {
   expires_at: 'expiry date',
   max_redemptions: 'maximum uses',
   name: 'name',
+  reason: 'reason (200 characters at most)',
+  user_id: 'member',
+  status: 'attendance status',
 };
 
 /**
