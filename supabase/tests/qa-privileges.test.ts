@@ -20,19 +20,32 @@ const denied = { code: INSUFFICIENT_PRIVILEGE };
 
 /** Every function in `public`, and the single API role that may execute it. */
 const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
+  add_walk_in_attendee: 'authenticated',
   admin_create_community: 'service_role',
   cancel_training: 'authenticated',
   create_invitation: 'authenticated',
   create_training: 'authenticated',
+  finalize_attendance: 'authenticated',
   finalize_due_sessions: 'service_role',
+  get_attendance_sheet: 'authenticated',
   is_active_member: 'authenticated',
   is_organizer: 'authenticated',
   preview_invitation: 'authenticated',
+  record_attendance: 'authenticated',
   redeem_invitation: 'authenticated',
   revoke_invitation: 'authenticated',
   set_rsvp: 'authenticated',
   update_display_name: 'authenticated',
   update_training: 'authenticated',
+};
+
+/**
+ * M2 exception to "no user id parameter": organizer RPCs that act ON a member (whose attendance
+ * is being recorded) take that member's id. The caller is still auth.uid(); see the test below.
+ */
+const TARGET_USER_ARGS: Record<string, string[]> = {
+  add_walk_in_attendee: ['p_user_id'],
+  record_attendance: ['p_user_id'],
 };
 
 interface FunctionRow {
@@ -134,9 +147,28 @@ describe('QA function privileges', () => {
   it('no public function accepts a user id: the caller is always auth.uid()', async () => {
     const suspicious = (await functions())
       .filter((f) => f.schema === 'public')
-      .filter((f) => (f.arg_names ?? []).some((arg) => /user|uid|profile|member|organizer_id|role/i.test(arg)))
+      .filter((f) =>
+        (f.arg_names ?? []).some(
+          (arg) =>
+            /user|uid|profile|member|organizer_id|role/i.test(arg) &&
+            !TARGET_USER_ARGS[f.name]?.includes(arg),
+        ),
+      )
       .map((f) => `${f.name}(${f.args})`);
     expect(suspicious).toEqual([]);
+  });
+
+  it('functions that name a target member still take the caller from auth.uid() and require an organizer', async () => {
+    const all = (await functions()).filter((f) => f.schema === 'public');
+    for (const name of Object.keys(TARGET_USER_ARGS)) {
+      const fn = all.find((f) => f.name === name);
+      expect(fn, name).toBeDefined();
+      expect(fn!.source, name).toMatch(/v_uid uuid := auth\.uid\(\);/);
+      // The organizer check lives in private.authorize_attendance (pinned in attendance tests).
+      expect(fn!.source, name).toContain('private.authorize_attendance(p_session_id)');
+      // The target id is never used as the actor of a write.
+      expect(fn!.source, name).not.toMatch(/recorded_by\s*=\s*p_user_id|changed_by\s*=\s*p_user_id/);
+    }
   });
 
   it('service_role cannot call the user RPCs (they would run with no caller identity)', async () => {
@@ -152,6 +184,10 @@ describe('QA function privileges', () => {
       ['select public.preview_invitation($1)', ['AAAAAAAA']],
       ['select public.update_display_name($1)', ['Ana']],
       ['select public.is_organizer($1)', [communityId]],
+      ['select public.record_attendance($1, $2, $3)', [session.id, organizerId, 'present']],
+      ['select public.add_walk_in_attendee($1, $2)', [session.id, organizerId]],
+      ['select public.finalize_attendance($1)', [session.id]],
+      ['select public.get_attendance_sheet($1)', [session.id]],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);

@@ -251,6 +251,8 @@ export interface Session {
   decided_at: Date | null;
   cancelled_at: Date | null;
   cancelled_by: string | null;
+  attendance_finalized_at: Date | null;
+  attendance_finalized_by: string | null;
   created_at: Date;
   updated_at: Date;
 }

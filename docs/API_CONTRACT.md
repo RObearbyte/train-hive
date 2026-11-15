@@ -98,3 +98,73 @@ Helper functions (stable, security definer): `is_active_member(community_id uuid
 - Upcoming / past sessions: `training_sessions` by `community_id`, ordered by `starts_at`.
 - My RSVPs: `training_rsvps` by `user_id`.
 - Participants: `training_rsvps` joined to `profiles(display_name)` for a session.
+
+---
+
+# Milestone 2 — Attendance
+
+RSVP is intention; attendance is what actually happened. Migrations `20261115000100_attendance_schema.sql`, `20261115000200_attendance_rpcs.sql`. Same conventions as above.
+
+## Enum
+
+- `attendance_status`: `present`, `absent`, `unrecorded`. **`unrecorded` is not `absent`**: it means nobody marked the member. A member with no attendance row is treated as `unrecorded` everywhere.
+
+## Tables
+
+| Table | Columns | Who can select |
+|---|---|---|
+| `attendance_records` | `id`, `session_id`, `community_id`, `user_id → profiles` (cascade), `status attendance_status` (default `unrecorded`), `recorded_by? → profiles` (set null; the organizer who created the row), `recorded_at`, `updated_at` (last status change), `had_rsvp_going boolean` (the member's RSVP was `going` when the row was created), `is_walk_in boolean`; unique `(session_id, user_id)`; composite FK `(session_id, community_id) → training_sessions(id, community_id)`; check `had_rsvp_going <> is_walk_in` (every row is either a going RSVP or a walk-in) | the member themself (while an active member), and active organizers of that community |
+| `attendance_audit_log` | `id`, `session_id`, `community_id`, `user_id → profiles` (cascade), `changed_by? → profiles` (set null), `changed_at`, `old_status`, `new_status` (both `attendance_status`, never equal; `old_status = 'unrecorded'` when there was no row), `reason text?` (1–200 chars), `action` in `record` / `correct` / `walk_in_add`; same composite FK | active organizers of that community |
+
+`training_sessions` gains `attendance_finalized_at timestamptz?` and `attendance_finalized_by uuid? → profiles` (set null). Check: `status = 'completed'` iff `attendance_finalized_at is not null`.
+
+Why members see only their own records: an RSVP is a public intention the participant list needs; attendance (especially `absent`) is a personal record only the member and the organizers need.
+
+Realtime publication `supabase_realtime` adds `attendance_records` (events pass RLS). The audit log is not published. The `completed` transition arrives through the `training_sessions` row.
+
+## Lifecycle
+
+- Attendance can be taken once a session is `confirmed` **and has ended**: `coalesce(ends_at, starts_at) <= clock_timestamp()` on the server.
+- **Nothing auto-completes.** A confirmed session that has ended stays `confirmed` until an organizer calls `finalize_attendance`, which moves it to `completed`. `finalize_due_sessions()` never touches `confirmed` or `completed` sessions.
+- `completed` sessions accept corrections (audited). `update_training` → `session_not_editable`, `cancel_training` → `session_not_cancellable`.
+- `scheduled` and `cancelled` sessions never take attendance (`session_not_confirmed`). Cancelling a confirmed session is still allowed while it is not completed; any attendance rows it already had stay but the session is `cancelled`. **Attendance statistics must only count sessions with `status = 'completed'`.**
+- Removed members: their records and audit rows stay; existing records can still be corrected; no new record can be created for them (`attendee_not_a_member`). Deleting a user's account deletes their records and audit rows; rows they authored keep `recorded_by` / `changed_by` / `attendance_finalized_by` = null.
+
+## RPCs (all `authenticated`, organizer of the session's community only)
+
+Common errors for all four: `not_authenticated`, `not_found` (unknown session), `forbidden` (caller is not an active organizer of the session's community — members, outsiders, organizers of other communities).
+
+`record_attendance(p_session_id uuid, p_user_id uuid, p_status attendance_status, p_reason text default null) → attendance_records`
+- `p_user_id` is the attendee (the caller is `auth.uid()`). Sets the member's status, creating the row if needed.
+- Session checks: `session_not_confirmed` (status is not `confirmed` / `completed`), `session_not_ended`.
+- A new row needs an active member (`attendee_not_a_member`) with a `going` RSVP (`no_going_rsvp`; members without one are added with `add_walk_in_attendee`). A new row snapshots `had_rsvp_going = true`.
+- Same status as now (a missing row counts as `unrecorded`): no change, no audit row, returns the row (creates an `unrecorded` row if none existed).
+- A real change writes one audit row: `record` for the first mark of that member while the session is `confirmed`; `correct` for every later change and for every change once the session is `completed`. `unrecorded` may be set to clear a mark.
+- `p_reason`: optional, trimmed, blank = null, > 200 chars → `validation_failed:reason`. Also `validation_failed:user_id`, `validation_failed:status` for nulls.
+
+`add_walk_in_attendee(p_session_id uuid, p_user_id uuid) → attendance_records`
+- Same session checks. If the member already has a row (any status, walk-in or not), returns it unchanged (idempotent, no audit row).
+- Otherwise: active member required (`attendee_not_a_member`); a member with a `going` RSVP is refused (`attendee_has_going_rsvp`, use `record_attendance`). Creates `present`, `is_walk_in = true`, `had_rsvp_going = false`; audit `walk_in_add` (`unrecorded → present`).
+
+`finalize_attendance(p_session_id uuid) → training_sessions`
+- `completed` already: returns the row unchanged (idempotent; the first finalization's time and organizer stand).
+- Errors: `session_not_confirmed` (scheduled / cancelled), `session_not_ended`.
+- Creates an `unrecorded` row (`had_rsvp_going = true`, no audit row) for every **active** member with a `going` RSVP and no row, so history lists them. Never converts `unrecorded` to `absent`. Sets `status = 'completed'`, `attendance_finalized_at`, `attendance_finalized_by`.
+
+`get_attendance_sheet(p_session_id uuid) → jsonb` — read-only, any session status
+```
+{ session_id, status, ended: boolean, attendance_finalized_at, attendance_finalized_by,
+  entries: [ { user_id, display_name, membership_status ('active' | 'removed' | null),
+               rsvp_response (no_response when none), attendance_status (unrecorded when no row),
+               has_record, is_walk_in, had_rsvp_going (null when no row), updated_at (null when no row) } ] }
+```
+- Entries: every active member with a `going` RSVP, plus everyone who has a record (including removed members). Ordered by display name. Members get `forbidden`.
+
+New error codes: `session_not_confirmed`, `session_not_ended`, `attendee_not_a_member`, `no_going_rsvp`, `attendee_has_going_rsvp`, `validation_failed:reason`, `validation_failed:user_id`, `validation_failed:status`.
+
+Concurrency: every attendance writer locks the session row (`FOR UPDATE`) after key-share locks on the caller's and attendee's profiles and a share lock on the attendee's membership (Milestone 1 lock order), so concurrent marks produce one row per member and one audit row per real change, and account deletion or member removal cannot deadlock with them.
+
+## Reads (plain selects under RLS)
+
+- My attendance history: `attendance_records` where `user_id = auth.uid()`, joined to `training_sessions` (filter `status = 'completed'` for statistics).
+- Organizer: the sheet RPC above; the audit trail of a session: `attendance_audit_log` by `session_id`, ordered by `changed_at`, joined to `profiles` for `changed_by` names.

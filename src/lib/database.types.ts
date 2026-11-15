@@ -11,6 +11,9 @@
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
+/** `attendance_audit_log.action` (a text column with a check constraint, not an enum). */
+export type AttendanceAuditAction = 'record' | 'correct' | 'walk_in_add';
+
 export type Database = {
   public: {
     Tables: {
@@ -231,7 +234,7 @@ export type Database = {
         Row: {
           id: string;
           community_id: string;
-          organizer_id: string;
+          organizer_id: string | null;
           title: string;
           description: string | null;
           activity_type: string;
@@ -253,13 +256,17 @@ export type Database = {
           decided_at: string | null;
           cancelled_at: string | null;
           cancelled_by: string | null;
+          // M2. The server always returns both. Optional only until the session fixtures in
+          // src/**/*.test.ts (mobile / QA lane) include them; then make them required.
+          attendance_finalized_at?: string | null;
+          attendance_finalized_by?: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           community_id: string;
-          organizer_id: string;
+          organizer_id?: string | null;
           title: string;
           description?: string | null;
           activity_type?: string;
@@ -281,13 +288,15 @@ export type Database = {
           decided_at?: string | null;
           cancelled_at?: string | null;
           cancelled_by?: string | null;
+          attendance_finalized_at?: string | null;
+          attendance_finalized_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           community_id?: string;
-          organizer_id?: string;
+          organizer_id?: string | null;
           title?: string;
           description?: string | null;
           activity_type?: string;
@@ -309,6 +318,8 @@ export type Database = {
           decided_at?: string | null;
           cancelled_at?: string | null;
           cancelled_by?: string | null;
+          attendance_finalized_at?: string | null;
+          attendance_finalized_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -340,6 +351,149 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'activity_types';
             referencedColumns: ['key'];
+          },
+          {
+            foreignKeyName: 'training_sessions_attendance_finalized_by_fkey';
+            columns: ['attendance_finalized_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      attendance_records: {
+        Row: {
+          id: string;
+          session_id: string;
+          community_id: string;
+          user_id: string;
+          status: Database['public']['Enums']['attendance_status'];
+          recorded_by: string | null;
+          recorded_at: string;
+          updated_at: string;
+          had_rsvp_going: boolean;
+          is_walk_in: boolean;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          community_id: string;
+          user_id: string;
+          status?: Database['public']['Enums']['attendance_status'];
+          recorded_by?: string | null;
+          recorded_at?: string;
+          updated_at?: string;
+          had_rsvp_going: boolean;
+          is_walk_in?: boolean;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          community_id?: string;
+          user_id?: string;
+          status?: Database['public']['Enums']['attendance_status'];
+          recorded_by?: string | null;
+          recorded_at?: string;
+          updated_at?: string;
+          had_rsvp_going?: boolean;
+          is_walk_in?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'attendance_records_session_fkey';
+            columns: ['session_id', 'community_id'];
+            isOneToOne: false;
+            referencedRelation: 'training_sessions';
+            referencedColumns: ['id', 'community_id'];
+          },
+          {
+            foreignKeyName: 'attendance_records_community_id_fkey';
+            columns: ['community_id'];
+            isOneToOne: false;
+            referencedRelation: 'communities';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'attendance_records_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'attendance_records_recorded_by_fkey';
+            columns: ['recorded_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      attendance_audit_log: {
+        Row: {
+          id: string;
+          session_id: string;
+          community_id: string;
+          user_id: string;
+          changed_by: string | null;
+          changed_at: string;
+          old_status: Database['public']['Enums']['attendance_status'];
+          new_status: Database['public']['Enums']['attendance_status'];
+          reason: string | null;
+          action: AttendanceAuditAction;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          community_id: string;
+          user_id: string;
+          changed_by?: string | null;
+          changed_at?: string;
+          old_status: Database['public']['Enums']['attendance_status'];
+          new_status: Database['public']['Enums']['attendance_status'];
+          reason?: string | null;
+          action: AttendanceAuditAction;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          community_id?: string;
+          user_id?: string;
+          changed_by?: string | null;
+          changed_at?: string;
+          old_status?: Database['public']['Enums']['attendance_status'];
+          new_status?: Database['public']['Enums']['attendance_status'];
+          reason?: string | null;
+          action?: AttendanceAuditAction;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'attendance_audit_log_session_fkey';
+            columns: ['session_id', 'community_id'];
+            isOneToOne: false;
+            referencedRelation: 'training_sessions';
+            referencedColumns: ['id', 'community_id'];
+          },
+          {
+            foreignKeyName: 'attendance_audit_log_community_id_fkey';
+            columns: ['community_id'];
+            isOneToOne: false;
+            referencedRelation: 'communities';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'attendance_audit_log_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'attendance_audit_log_changed_by_fkey';
+            columns: ['changed_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
           },
         ];
       };
@@ -461,6 +615,31 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      /** Organizer only. `p_user_id` is the attendee, not the caller. */
+      record_attendance: {
+        Args: {
+          p_session_id: string;
+          p_user_id: string;
+          p_status: Database['public']['Enums']['attendance_status'];
+          p_reason?: string | null;
+        };
+        Returns: Database['public']['Tables']['attendance_records']['Row'];
+      };
+      /** Organizer only. `p_user_id` is the attendee, not the caller. */
+      add_walk_in_attendee: {
+        Args: { p_session_id: string; p_user_id: string };
+        Returns: Database['public']['Tables']['attendance_records']['Row'];
+      };
+      /** Organizer only. */
+      finalize_attendance: {
+        Args: { p_session_id: string };
+        Returns: Database['public']['Tables']['training_sessions']['Row'];
+      };
+      /** Organizer only. Returns an `AttendanceSheet`. */
+      get_attendance_sheet: {
+        Args: { p_session_id: string };
+        Returns: Json;
+      };
     };
     Enums: {
       membership_role: 'organizer' | 'member';
@@ -468,6 +647,7 @@ export type Database = {
       session_status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed';
       cancel_reason: 'insufficient_participation' | 'organizer';
       rsvp_response: 'going' | 'not_going' | 'no_response';
+      attendance_status: 'present' | 'absent' | 'unrecorded';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -496,12 +676,15 @@ export type InvitationRedemption = Tables<'invitation_redemptions'>;
 export type ActivityType = Tables<'activity_types'>;
 export type TrainingSession = Tables<'training_sessions'>;
 export type TrainingRsvp = Tables<'training_rsvps'>;
+export type AttendanceRecord = Tables<'attendance_records'>;
+export type AttendanceAuditEntry = Tables<'attendance_audit_log'>;
 
 export type MembershipRole = Enums<'membership_role'>;
 export type MembershipStatus = Enums<'membership_status'>;
 export type SessionStatus = Enums<'session_status'>;
 export type CancelReason = Enums<'cancel_reason'>;
 export type RsvpResponse = Enums<'rsvp_response'>;
+export type AttendanceStatus = Enums<'attendance_status'>;
 
 /** `{ ok: false, error }` branch shared by the invitation RPCs. `error` is a contract code. */
 export type RpcFailure = { ok: false; error: string };
@@ -530,6 +713,34 @@ export type SetRsvpResult = {
   response: RsvpResponse;
   going_count: number;
   status: SessionStatus;
+};
+
+/** One line of `get_attendance_sheet`. */
+export type AttendanceSheetEntry = {
+  user_id: string;
+  display_name: string;
+  /** null when the membership row no longer exists. */
+  membership_status: MembershipStatus | null;
+  rsvp_response: RsvpResponse;
+  /** `unrecorded` when the member has no record yet. */
+  attendance_status: AttendanceStatus;
+  has_record: boolean;
+  is_walk_in: boolean;
+  /** null when the member has no record yet. */
+  had_rsvp_going: boolean | null;
+  /** Last status change; null when the member has no record yet. */
+  updated_at: string | null;
+};
+
+/** Result of `get_attendance_sheet`. Entries are ordered by display name. */
+export type AttendanceSheet = {
+  session_id: string;
+  status: SessionStatus;
+  /** Server-side: the session's end (or start, without an end) has passed. */
+  ended: boolean;
+  attendance_finalized_at: string | null;
+  attendance_finalized_by: string | null;
+  entries: AttendanceSheetEntry[];
 };
 
 /**

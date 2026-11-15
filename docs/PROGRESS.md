@@ -21,7 +21,7 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 - [x] M1-L1 (lead) README + SUPABASE_SETUP guide
 
 ## Milestone 2 — Attendance Management
-- [ ] M2-B1 (M, backend) attendance_records, audit log, record / finalize / correct RPCs, `completed` transition + tests
+- [x] M2-B1 (M, backend) attendance_records, audit log, record / finalize / correct RPCs, `completed` transition + tests
 - [ ] M2-A1 (M, mobile) Organizer attendance screen, walk-in attendee, history
 - [ ] M2-Q1 (S, qa) Review + tests
 

@@ -669,7 +669,7 @@ describe('update_training on a frozen session', () => {
     const cancelled = await createTraining(organizerId, communityId);
     await cancelTraining(organizerId, cancelled.id);
     const completed = await createTraining(organizerId, communityId);
-    await admin.query("update public.training_sessions set status = 'completed' where id = $1", [completed.id]);
+    await admin.query("update public.training_sessions set status = 'completed', attendance_finalized_at = now() where id = $1", [completed.id]);
 
     for (const session of [cancelled, completed]) {
       await expect(
@@ -769,7 +769,7 @@ describe('cancel_training', () => {
   it('refuses a completed session', async () => {
     const { communityId, organizerId } = await createPack();
     const session = await createTraining(organizerId, communityId);
-    await admin.query("update public.training_sessions set status = 'completed' where id = $1", [session.id]);
+    await admin.query("update public.training_sessions set status = 'completed', attendance_finalized_at = now() where id = $1", [session.id]);
 
     await expect(cancelTraining(organizerId, session.id)).rejects.toMatchObject(raised('session_not_cancellable'));
     expect((await getSession(session.id)).status).toBe('completed');

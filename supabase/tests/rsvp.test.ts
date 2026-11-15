@@ -161,7 +161,7 @@ describe('set_rsvp', () => {
     await setRsvp(memberIds[0], cancelled.id, 'going');
     await cancelTraining(organizerId, cancelled.id);
     const completed = await createTraining(organizerId, communityId);
-    await admin.query("update public.training_sessions set status = 'completed' where id = $1", [completed.id]);
+    await admin.query("update public.training_sessions set status = 'completed', attendance_finalized_at = now() where id = $1", [completed.id]);
 
     for (const session of [confirmed, cancelled, completed]) {
       await expect(setRsvp(memberIds[1], session.id, 'going')).rejects.toMatchObject(raised('rsvp_closed'));
@@ -314,7 +314,7 @@ describe('finalize_due_sessions', () => {
     await cancelTraining(organizerId, organizerCancelled.id);
     await makeDue(organizerCancelled.id);
     const completed = await createTraining(organizerId, communityId);
-    await admin.query("update public.training_sessions set status = 'completed' where id = $1", [completed.id]);
+    await admin.query("update public.training_sessions set status = 'completed', attendance_finalized_at = now() where id = $1", [completed.id]);
     await makeDue(completed.id);
     const before = [await getSession(notDue.id), await getSession(organizerCancelled.id), await getSession(completed.id)];
 
