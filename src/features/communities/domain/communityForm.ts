@@ -25,13 +25,27 @@ function characterCount(text: string): number {
 }
 
 /**
+ * `Intl` accepts zone names in any letter case ("europe/bucharest"); the server and the picker want the
+ * exact spelling. True when the runtime's own spelling differs from `zone` only by letter case.
+ */
+function isCaseVariant(zone: string): boolean {
+  try {
+    const canonical = new Intl.DateTimeFormat('en-US', { timeZone: zone }).resolvedOptions().timeZone;
+    return canonical !== zone && canonical.toLowerCase() === zone.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * True for `UTC` and for IANA names the runtime knows in `Area/Location`
- * form. Abbreviations ("EST"), `posix/...` and `Factory` are rejected, as the
- * server does.
+ * form, spelled exactly (case-sensitive, like the server). Abbreviations
+ * ("EST"), `posix/...` and `Factory` are rejected, as the server does.
  */
 export function isCommunityTimeZone(zone: unknown): zone is string {
   if (!isValidTimeZone(zone)) return false;
   if (zone === 'UTC') return true;
+  if (isCaseVariant(zone)) return false;
   return AREA_LOCATION.test(zone) && !/^(posix|right)\//i.test(zone) && zone !== 'Factory';
 }
 

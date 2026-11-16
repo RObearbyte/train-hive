@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Share, View } from 'react-native';
+import { AccessibilityInfo, Platform, Share, View } from 'react-native';
 
 import { formatInvitationCode } from '@/features/onboarding/domain/invitationCode';
 import { APP_DOWNLOAD_URL } from '@/lib/appLink';
@@ -80,9 +80,11 @@ export function InvitationCodeActions({
       const saved = await Clipboard.setStringAsync(text);
       if (saved) {
         setCopied(what);
-        AccessibilityInfo.announceForAccessibility(
-          what === 'message' ? 'Message copied' : 'Code copied',
-        );
+        // Announce once: iOS has no live regions, so it is told here; elsewhere the visible
+        // live region below is read by TalkBack (announcing as well made it read twice).
+        if (Platform.OS === 'ios') {
+          AccessibilityInfo.announceForAccessibility(what === 'message' ? 'Message copied' : 'Code copied');
+        }
       } else {
         setProblem(failure);
       }
@@ -160,7 +162,7 @@ export function InvitationCodeActions({
         ) : null}
       </View>
       {copied ? (
-        <Text color="success" accessibilityLiveRegion="polite">
+        <Text color="success" accessibilityLiveRegion={Platform.OS === 'ios' ? 'none' : 'polite'}>
           {copied === 'message' ? 'Message copied' : 'Code copied'}
         </Text>
       ) : null}

@@ -11,15 +11,29 @@ import { isValidTimeZone } from '@/lib/datetime';
 export const FALLBACK_COMMUNITY_NAME = 'our community';
 const MAX_NAME_LENGTH = 60;
 
-// Control characters, bidi overrides/isolates, zero-width and BOM characters.
-const HIDDEN_CHARS = /[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁠-⁩﻿]/g;
+// Control characters become a space (they may stand for a line break).
+const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
+// Invisible format characters are dropped without a trace: zero-width space, LRM/RLM, bidi
+// embeddings/overrides/isolates, Arabic letter mark, word joiner and invisible operators, BOM.
+// The zero-width joiner (U+200D) and non-joiner (U+200C) stay: emoji sequences and Persian words need them.
+const INVISIBLE_CHARS =
+  /[\u{200B}\u{200E}\u{200F}\u{202A}-\u{202E}\u{2060}-\u{2069}\u{61C}\u{180E}\u{FEFF}]/gu;
+const JOINERS = /[\u{200C}\u{200D}]/gu;
+const EDGE_JOINERS_AND_SPACE = /^[\s\u{200C}\u{200D}]+|[\s\u{200C}\u{200D}]+$/gu;
 
 /** Community name safe to put in a message: no control characters, one line, trimmed, at most 60 characters. */
 export function sanitizeCommunityName(name: string | null | undefined): string {
-  const cleaned = (name ?? '').replace(HIDDEN_CHARS, ' ').replace(/\s+/g, ' ').trim();
-  if (cleaned === '') return FALLBACK_COMMUNITY_NAME;
+  const cleaned = (name ?? '')
+    .replace(CONTROL_CHARS, ' ')
+    .replace(INVISIBLE_CHARS, '')
+    .replace(/\s+/g, ' ')
+    .replace(EDGE_JOINERS_AND_SPACE, '');
+  // Nothing visible left (only joiners and spaces): use the neutral wording.
+  if (cleaned.replace(JOINERS, '').trim() === '') return FALLBACK_COMMUNITY_NAME;
   const chars = Array.from(cleaned); // by code point: never cuts an emoji in half
-  return chars.length > MAX_NAME_LENGTH ? `${chars.slice(0, MAX_NAME_LENGTH - 1).join('').trimEnd()}…` : cleaned;
+  return chars.length > MAX_NAME_LENGTH
+    ? `${chars.slice(0, MAX_NAME_LENGTH - 1).join('').trimEnd()}…`
+    : cleaned;
 }
 
 export interface InvitationMessageInput {
@@ -36,16 +50,17 @@ export interface InvitationMessageInput {
   appLink: string | null;
   /** Display only; the server decides whether a code works. */
   now: Date;
-  /** The community's IANA time zone (an unknown zone falls back to UTC). */
+  /** The community's IANA time zone (an unknown zone falls back to UTC); the expiry is shown in it. */
   timeZone: string;
 }
 
-function expiryDate(expiresAt: string | null, timeZone: string): string | null {
+/** "22 Nov 2026, 14:30" in the community zone: a code stops at a time of day, not at the end of a date. */
+function expiryMoment(expiresAt: string | null, timeZone: string): string | null {
   if (expiresAt === null) return null;
   const instant = new Date(expiresAt);
   if (Number.isNaN(instant.getTime())) return null;
   const zone = isValidTimeZone(timeZone) ? timeZone : 'UTC';
-  return format(new TZDate(instant.getTime(), zone), 'd MMM yyyy');
+  return format(new TZDate(instant.getTime(), zone), 'd MMM yyyy, HH:mm');
 }
 
 function usesPhrase(maxRedemptions: number | null, remainingUses: number | null | undefined): string | null {
@@ -60,16 +75,18 @@ function usesPhrase(maxRedemptions: number | null, remainingUses: number | null 
 export function buildInvitationMessage(input: InvitationMessageInput): string {
   const name = sanitizeCommunityName(input.communityName);
   const code = formatInvitationCode(input.code);
-  const date = expiryDate(input.expiresAt, input.timeZone);
+  const moment = expiryMoment(input.expiresAt, input.timeZone);
   const uses = usesPhrase(input.maxRedemptions, input.remainingUses);
 
   const conditions: string[] = [];
-  if (date) conditions.push(`works until ${date}`);
+  if (moment) conditions.push(`works until ${moment}`);
   if (uses) conditions.push(uses);
 
-  const lines = [`Hi! 🐻 You're invited to join ${name} on TrainHive.`];
+  const lines = [`Hi! \u{1F43B} You're invited to join ${name} on TrainHive.`];
   lines.push(input.appLink ? `1. Get the app: ${input.appLink}` : '1. Ask me where to get the app');
-  lines.push(`2. Open it, tap "Join a community" and enter your code: ${code}`);
+  lines.push(
+    `2. Open TrainHive and enter your code under "Join a community": ${code} (already using TrainHive? Profile → Join another community)`,
+  );
   if (conditions.length > 0) {
     lines.push(`(The code ${conditions.join(' and ')}.)`);
   }

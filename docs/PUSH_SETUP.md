@@ -122,7 +122,7 @@ Supabase dashboard > **Edge Functions** > `dispatch-notifications` > **Logs** (o
 
 ## 10. Known limits
 
-- Delivery is at-least-once. Expo has no idempotency key. If a run dies after Expo accepted a request but before its jobs are marked (jobs are marked right after each request), the retry may push those up to 100 messages twice. The app can ignore a notification whose `data.notificationId` it has already shown.
+- Delivery is at-least-once. Expo has no idempotency key. If a run dies after Expo accepted a request but before its jobs are marked (jobs are marked right after each request), the retry may push those up to 100 messages twice. The app can ignore a notification whose `data.notificationId` it has already shown. Every message `data` is `{ deepLink, notificationId, kind, communityId }` (`communityId` since C3, from `claim_notification_jobs.community_id`).
 - Only **tickets** are checked (Expo accepted the message). **Receipts** (the later FCM outcome, about 15 minutes after sending, kept 24 h) are not read: ticket ids are not stored. A device that became unregistered is therefore noticed at its next send, not by receipt. A migration would be needed to change that (see the M3 note in `docs/API_CONTRACT.md`).
 - Tokens: `register_push_token` cannot tell which Expo project a token belongs to; each account keeps at most 10 tokens (least recently seen dropped). How Expo answers a request that holds only another project's token is not verified; see the M3-B3 notes in `docs/API_CONTRACT.md`.
 - The cron call waits up to 120 s for the function (migration `20261116000200_dispatch_timeout.sql`); runs may overlap, which is safe (a job is never claimed twice).
@@ -133,6 +133,7 @@ Supabase dashboard > **Edge Functions** > `dispatch-notifications` > **Logs** (o
 - [ ] The app obtains an Expo push token and `register_push_token` stores it.
 - [ ] A notification appears with the app in the background, and with the app killed.
 - [ ] Tapping it opens the right screen from `data.deepLink` (`/trainings/<id>`, `/announcements/<id>`).
+- [ ] A notification of another community carries `data.communityId` and the tap switches to that community first.
 - [ ] The `default` Android channel exists, sound and importance are right.
 - [ ] A phone whose app was uninstalled leads to `DeviceNotRegistered` and an invalidated token.
 - [ ] Turning push or a category off in preferences stops delivery (job `skipped`).

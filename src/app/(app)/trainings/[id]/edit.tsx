@@ -1,6 +1,7 @@
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { View } from 'react-native';
 
+import { isOrganizerOf } from '@/features/community/domain/sessionAccess';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { EditTrainingForm } from '@/features/trainings/components/TrainingForm';
 import { isEditable } from '@/features/trainings/domain/schema';
@@ -13,15 +14,17 @@ import { Button, EmptyState, ErrorState, LoadingState, Screen } from '@/ui';
 export default function EditTrainingScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { isOrganizer, isLoading: membershipLoading } = useCurrentMembership();
+  const { isOrganizer: isOrganizerHere, communities, isLoading: membershipLoading } = useCurrentMembership();
   const training = useTraining(id);
   const session = training.data;
+  // Rights follow the training's own community, not the active one (the active one only until it loads).
+  const isOrganizer = session ? isOrganizerOf(communities, session.community_id) : isOrganizerHere;
 
   // Back to the details screen when it is underneath, otherwise (opened by a
   // link) it replaces this screen. Plain back() could land on a tab instead.
   const toDetails = () => router.dismissTo(`/trainings/${id}`);
 
-  if (!membershipLoading && !isOrganizer) return <Redirect href={`/trainings/${id}`} />;
+  if (!membershipLoading && !isOrganizer && (session || !training.isPending)) return <Redirect href={`/trainings/${id}`} />;
 
   if (session && isOrganizer && isEditable(session.status) && isValidTimeZone(session.timezone)) {
     return <EditTrainingForm session={session} onSaved={toDetails} onClose={toDetails} />;

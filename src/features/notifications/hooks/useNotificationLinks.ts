@@ -1,10 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router, type Href } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import { isRunningInExpoGo } from 'expo';
 
-import { communityToSwitchTo } from '@/features/community/domain/activeCommunity';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { invalidateUnlessRsvpPending } from '@/features/rsvp/domain/rsvpCache';
 import { trainingKeys } from '@/features/trainings/api/keys';
@@ -20,7 +19,13 @@ import {
   type NotificationTap,
 } from '../api/pushNative';
 import { targetFromPushData } from '../domain/deepLink';
-import { createNavigationQueue } from '../domain/navigationQueue';
+import {
+  initialNavState,
+  step,
+  type NavCommand,
+  type NavContext,
+  type NavEvent,
+} from '../domain/notificationNavigation';
 
 function go(href: string): void {
   // `href` comes from the deep-link allowlist (`targetFromPushData`), never from raw push data.
@@ -40,30 +45,81 @@ const pushUsable =
  *   training and RSVP queries (the banner itself is shown by the foreground
  *   handler).
  * - A tap, from the background or from a cold start, navigates to the
- *   notification's validated deep link. Taps are queued until this hook
- *   mounts with a membership, i.e. after the app gate has resolved, and each
- *   notification is handled once per session. Only allowlisted internal
- *   routes are ever opened (see `targetFromPushData`).
+ *   notification's validated deep link, switching to the notification's
+ *   community first when it is another one of mine. The decisions live in the
+ *   pure state machine `notificationNavigation`; this hook only feeds it the
+ *   tap, the server's answer and the current memberships, and carries out the
+ *   commands it returns. Only allowlisted internal routes are ever opened (see
+ *   `targetFromPushData`).
  */
 export function useNotificationLinks(): void {
   const queryClient = useQueryClient();
-  const { community, communities, activeCommunityId, selectCommunity } = useCurrentMembership();
-  // A tap on a notification of another community switches first; navigation waits until it is active.
-  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
-  const ready = community !== null && (switchingTo === null || community.id === switchingTo);
-  // Latest values for the tap handler, which is registered once.
-  const latest = useRef({ communities, activeCommunityId, selectCommunity });
+  const { communities, activeCommunityId, selectCommunity } = useCurrentMembership();
+
+  const select = useRef(selectCommunity);
   useEffect(() => {
-    latest.current = { communities, activeCommunityId, selectCommunity };
+    select.current = selectCommunity;
   });
-  // Arrived: stop waiting (state adjusted during render, as in useAppGate).
-  if (switchingTo !== null && community?.id === switchingTo) setSwitchingTo(null);
-  const [queue] = useState(() => createNavigationQueue(go));
+
+  const machine = useRef(initialNavState());
+  // Answers that arrive later (the community lookup) go back in through here.
+  const later = useRef<(event: NavEvent) => void>(() => undefined);
+  // Runs the machine on one input and carries out what it answers.
+  const send = useCallback(
+    (event: NavEvent) => {
+      const result = step(machine.current, event);
+      machine.current = result.state;
+      for (const command of result.commands) run(command);
+
+      function run(command: NavCommand): void {
+        switch (command.type) {
+          case 'lookup':
+            // The payload has no community id: ask the server which community the notification is for.
+            fetchNotificationCommunityId(command.notificationId)
+              .then((communityId) => later.current({ type: 'community-found', seq: command.seq, communityId }))
+              .catch((error: unknown) => {
+                // Could not tell: open it in the current community rather than lose the tap.
+                reportError('push.community', error);
+                later.current({ type: 'community-found', seq: command.seq, communityId: null });
+              });
+            return;
+          case 'switch':
+            select.current(command.communityId);
+            return;
+          case 'navigate':
+            go(command.href);
+            if (command.notificationId !== null) {
+              // Opening it counts as having seen it.
+              markNotificationRead(command.notificationId)
+                .then(() => queryClient.invalidateQueries({ queryKey: activityKeys.all }))
+                .catch((error: unknown) => reportError('push.markRead', error));
+            }
+            return;
+        }
+      }
+    },
+    [queryClient],
+  );
 
   useEffect(() => {
-    queue.setReady(ready);
-    return () => queue.setReady(false);
-  }, [queue, ready]);
+    later.current = send;
+  }, [send]);
+
+  // The memberships, as explicit input: every change is judged again by the machine.
+  const memberKey = communities.map((item) => item.community_id).join(',');
+  const context = useMemo<NavContext>(
+    () => ({
+      ready: communities.length > 0 && activeCommunityId !== null,
+      activeId: activeCommunityId,
+      memberIds: communities.map((item) => item.community_id),
+    }),
+    // `memberKey` stands for the list of ids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [memberKey, activeCommunityId],
+  );
+  useEffect(() => {
+    send({ type: 'context', context });
+  }, [send, context]);
 
   useEffect(() => {
     if (!pushUsable) return;
@@ -74,36 +130,7 @@ export function useNotificationLinks(): void {
         reportError('push.link', new Error('Ignored a notification without a valid link.'));
         return;
       }
-      const open = () => {
-        const accepted = queue.offer({ id: notificationId ?? tap.identifier, href });
-        if (accepted && notificationId !== null) {
-          // Opening it counts as having seen it.
-          markNotificationRead(notificationId)
-            .then(() => queryClient.invalidateQueries({ queryKey: activityKeys.all }))
-            .catch((error: unknown) => reportError('push.markRead', error));
-        }
-      };
-      if (notificationId === null) {
-        open();
-        return;
-      }
-      // The payload has no community id: ask the server which community the notification is for.
-      fetchNotificationCommunityId(notificationId)
-        .then((targetId) => {
-          const { communities: mine, activeCommunityId: active, selectCommunity: select } = latest.current;
-          const target = communityToSwitchTo(targetId, mine, active);
-          if (target !== null) {
-            queue.setReady(false);
-            setSwitchingTo(target);
-            select(target);
-          }
-          open();
-        })
-        .catch((error: unknown) => {
-          // Could not tell: open it in the current community rather than lose the tap.
-          reportError('push.community', error);
-          open();
-        });
+      send({ type: 'tap', tap: { id: notificationId ?? tap.identifier, href, notificationId } });
     };
 
     readLaunchTap()
@@ -123,6 +150,7 @@ export function useNotificationLinks(): void {
     return () => {
       stopTap();
       stopReceived();
+      send({ type: 'reset' });
     };
-  }, [queue, queryClient]);
+  }, [send, queryClient]);
 }

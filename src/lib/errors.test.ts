@@ -45,6 +45,7 @@ describe('contract coverage', () => {
         'session_not_confirmed',
         'session_not_editable',
         'session_not_ended',
+        'stale_data',
         'validation_failed',
       ].sort(),
     );
@@ -218,6 +219,13 @@ describe('network failures', () => {
 });
 
 describe('userMessage', () => {
+  it('words stale_data for the settings conflict', () => {
+    expect(userMessage('stale_data')).toBe(
+      'Someone else changed these community settings while you were editing. Review the latest values and try again.',
+    );
+    expect(toAppError(pgError('stale_data')).code).toBe('stale_data');
+  });
+
   it('falls back to the generic text for unknown codes', () => {
     expect(userMessage('definitely_not_a_code')).toBe(GENERIC);
     expect(userMessage('')).toBe(GENERIC);

@@ -152,7 +152,8 @@ export interface ExpoMessage {
   to: string;
   title: string;
   body: string;
-  data: { deepLink: string; notificationId: string; kind: string };
+  /** communityId (C3): the community of the notification, so a tap can switch to it without a lookup. */
+  data: { deepLink: string; notificationId: string; kind: string; communityId: string };
   sound: 'default';
   channelId: 'default';
   priority: 'high';
@@ -178,7 +179,12 @@ export function buildMessage(job: ClaimedJob, token: string, nowMs: number): Exp
     to: token,
     title: job.title,
     body: job.body,
-    data: { deepLink: job.deep_link, notificationId: job.notification_id, kind: job.kind },
+    data: {
+      deepLink: job.deep_link,
+      notificationId: job.notification_id,
+      kind: job.kind,
+      communityId: job.community_id,
+    },
     sound: 'default',
     channelId: 'default',
     priority: 'high',

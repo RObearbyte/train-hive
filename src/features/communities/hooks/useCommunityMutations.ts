@@ -10,6 +10,7 @@ import { reportError } from '@/lib/logger';
 import {
   createCommunityWithCode,
   previewCreatorCode,
+  fetchCommunity,
   updateCommunity,
   type CreateCommunityInput,
   type CreatedCommunity,
@@ -44,13 +45,26 @@ export function useCreateCommunity() {
 /** Saves name and time zone, then refetches the memberships so every screen shows the server's values. */
 export function useUpdateCommunity(communityId: string) {
   const queryClient = useQueryClient();
-  return useMutation<Community, AppError, { name: string; timezone: string }>({
-    mutationFn: ({ name, timezone }) => updateCommunity(communityId, name, timezone),
+  return useMutation<Community, AppError, {
+    name: string;
+    timezone: string;
+    expectedUpdatedAt: string | null;
+  }>({
+    mutationFn: ({ name, timezone, expectedUpdatedAt }) =>
+      updateCommunity(communityId, name, timezone, expectedUpdatedAt),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: membershipKeys.all });
       // Statistics buckets follow the community's current zone.
       await queryClient.invalidateQueries({ queryKey: statisticsKeys.all });
     },
     onError: (error) => reportError('communities.update', error),
+  });
+}
+
+/** Reads the community row straight from the server (used to resolve an edit conflict). */
+export function useFetchLatestCommunity(communityId: string) {
+  return useMutation<Community, AppError, void>({
+    mutationFn: () => fetchCommunity(communityId),
+    onError: (error) => reportError('communities.fetchLatest', error),
   });
 }

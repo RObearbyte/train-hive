@@ -11,7 +11,7 @@ import {
 } from './communityForm';
 import { isCreatorCodeProblem, mapCreatorError } from './creatorErrors';
 import { createRequestIdTracker } from './requestId';
-import { buildSwitcherItems, canSwitchCommunity } from './switcher';
+import { buildSwitcherItems, canSwitchCommunity, communityTitle } from './switcher';
 import {
   FALLBACK_TIME_ZONES,
   defaultTimeZone,
@@ -225,5 +225,25 @@ describe('switcher view model', () => {
   it('survives a time zone name the runtime does not know', () => {
     const items = buildSwitcherItems([{ ...list[0], timezone: 'Mars/Base' }], 'a', now);
     expect(items[0].timezoneLabel).toBe('Mars/Base');
+  });
+});
+
+describe('communityTitle (Home header)', () => {
+  const list = [
+    { community_id: 'a', name: 'Alpha' },
+    { community_id: 'b', name: 'Beta' },
+  ];
+
+  it('prefers the loaded name, then the name from the list, never a placeholder', () => {
+    expect(communityTitle(list, 'b', 'Beta (loaded)')).toBe('Beta (loaded)');
+    expect(communityTitle(list, 'b', null)).toBe('Beta'); // detail of an uncached community still loading
+    expect(communityTitle(list, 'b', undefined)).toBe('Beta');
+    expect(communityTitle(list, 'b', '  ')).toBe('Beta');
+  });
+
+  it('is null (skeleton) when nothing is known', () => {
+    expect(communityTitle(list, null, null)).toBeNull();
+    expect(communityTitle(list, 'zzz', null)).toBeNull();
+    expect(communityTitle([], 'a', null)).toBeNull();
   });
 });

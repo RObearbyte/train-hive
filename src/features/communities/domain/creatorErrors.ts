@@ -44,6 +44,9 @@ export function mapCreatorError(error: { code: string; field?: string | undefine
       codeProblem: false,
     };
   }
+  if (code === 'stale_data') {
+    return { target: 'banner', message: userMessage('stale_data'), tone: 'warning', codeProblem: false };
+  }
   if (code === 'validation_failed') {
     if (field === 'name') {
       return {

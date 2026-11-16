@@ -136,11 +136,11 @@ describe('time zones offered by the app against the server', () => {
 });
 
 describe('invitation message against real rows and Postgres dates', () => {
-  it('shows the expiry date Postgres computes in the community zone, for zones on both sides of the date line and across DST', async () => {
+  it('shows the expiry date and time Postgres computes in the community zone, for zones on both sides of the date line and across DST', async () => {
     const instants = ['2026-11-20T23:30:00Z', '2026-03-29T00:59:59Z', '2026-03-29T01:00:00Z', '2026-10-25T00:30:00Z', '2026-12-31T22:30:00Z', '2028-02-29T23:59:59Z', '2026-06-30T21:59:59Z'];
     const zones = ['Europe/Bucharest', 'America/New_York', 'Pacific/Kiritimati', 'Etc/GMT+12', 'Asia/Kathmandu', 'Australia/Lord_Howe', 'Pacific/Chatham', 'UTC'];
     const rows = await admin.query<{ iso: string; zone: string; expected: string }>(
-      `select i as iso, z as zone, to_char(i::timestamptz at time zone z, 'FMDD Mon YYYY') as expected
+      `select i as iso, z as zone, to_char(i::timestamptz at time zone z, 'FMDD Mon YYYY, HH24:MI') as expected
        from unnest($1::text[]) as i, unnest($2::text[]) as z`,
       [instants, zones],
     );
@@ -172,7 +172,7 @@ describe('invitation message against real rows and Postgres dates', () => {
     });
     expect(message).toContain('join Făget Trail \u{1F43B} on TrainHive.');
     expect(message).toContain('KMNP-3456');
-    expect(message).toContain('(The code works until 17 May 2030 and works for up to 3 people.)');
+    expect(message).toContain('(The code works until 17 May 2030, 15:00 and works for up to 3 people.)');
     expect(message).toContain('1. Get the app: https://example.com/app');
   });
 });

@@ -44,3 +44,18 @@ export function buildSwitcherItems(
     };
   });
 }
+
+/**
+ * The name shown at the top of Home: the loaded community's name, else the
+ * name from the list of my communities (known before the detail loads, so an
+ * uncached community never shows a placeholder), else null (show a skeleton).
+ */
+export function communityTitle(
+  communities: readonly Pick<MyCommunity, 'community_id' | 'name'>[],
+  activeId: string | null,
+  loadedName: string | null | undefined,
+): string | null {
+  if (typeof loadedName === 'string' && loadedName.trim() !== '') return loadedName;
+  if (activeId === null) return null;
+  return communities.find((item) => item.community_id === activeId)?.name ?? null;
+}

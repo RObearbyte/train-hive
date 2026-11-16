@@ -18,7 +18,7 @@ describe('buildInvitationMessage', () => {
       [
         "Hi! 🐻 You're invited to join Făget Trail Pack on TrainHive.",
         '1. Get the app: https://example.com/app',
-        '2. Open it, tap "Join a community" and enter your code: ABCD-EFGH',
+        '2. Open TrainHive and enter your code under "Join a community": ABCD-EFGH (already using TrainHive? Profile → Join another community)',
         'One Pack. Stronger together.',
       ].join('\n'),
     );
@@ -26,7 +26,7 @@ describe('buildInvitationMessage', () => {
 
   it('expiry and 1 use', () => {
     const text = buildInvitationMessage({ ...base, expiresAt: '2026-11-22T12:00:00Z', maxRedemptions: 1 });
-    expect(text).toContain('(The code works until 22 Nov 2026 and can be used 1 time.)');
+    expect(text).toContain('(The code works until 22 Nov 2026, 14:00 and can be used 1 time.)');
   });
 
   it('N uses, no expiry', () => {
@@ -37,7 +37,7 @@ describe('buildInvitationMessage', () => {
 
   it('expiry only', () => {
     expect(buildInvitationMessage({ ...base, expiresAt: '2026-11-22T12:00:00Z' })).toContain(
-      '(The code works until 22 Nov 2026.)',
+      '(The code works until 22 Nov 2026, 14:00.)',
     );
   });
 
@@ -55,16 +55,16 @@ describe('buildInvitationMessage', () => {
 
   it('formats the date in the community time zone across a day boundary', () => {
     const expiresAt = '2026-11-22T23:30:00Z'; // 23 Nov 01:30 in Bucharest, 22 Nov in New York
-    expect(buildInvitationMessage({ ...base, expiresAt })).toContain('until 23 Nov 2026');
+    expect(buildInvitationMessage({ ...base, expiresAt })).toContain('until 23 Nov 2026, 01:30');
     expect(buildInvitationMessage({ ...base, expiresAt, timeZone: 'America/New_York' })).toContain(
-      'until 22 Nov 2026',
+      'until 22 Nov 2026, 18:30',
     );
   });
 
   it('falls back to UTC for an unknown zone and omits an unreadable expiry', () => {
     expect(
       buildInvitationMessage({ ...base, expiresAt: '2026-11-22T23:30:00Z', timeZone: 'Nope/Zone' }),
-    ).toContain('until 22 Nov 2026');
+    ).toContain('until 22 Nov 2026, 23:30');
     expect(buildInvitationMessage({ ...base, expiresAt: 'garbage' })).not.toContain('(The code');
   });
 
@@ -75,7 +75,7 @@ describe('buildInvitationMessage', () => {
   });
 
   it('is plain text on one code path for any code input', () => {
-    expect(buildInvitationMessage({ ...base, code: ' ab-cd efgh ' })).toContain('code: ABCD-EFGH');
+    expect(buildInvitationMessage({ ...base, code: ' ab-cd efgh ' })).toContain('"Join a community": ABCD-EFGH');
   });
 });
 
@@ -105,5 +105,47 @@ describe('community name safety', () => {
     for (const empty of ['', '  \n\u0000 ', null, undefined]) {
       expect(sanitizeCommunityName(empty)).toBe('our community');
     }
+  });
+});
+
+describe('invisible characters in the community name', () => {
+  const family = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}';
+
+  it('keeps ZWJ and ZWNJ inside visible text', () => {
+    expect(sanitizeCommunityName(`Run ${family} Club`)).toBe(`Run ${family} Club`);
+    expect(sanitizeCommunityName('\u{645}\u{6CC}\u{200C}\u{62E}\u{648}\u{627}\u{647}\u{645}')).toBe(
+      '\u{645}\u{6CC}\u{200C}\u{62E}\u{648}\u{627}\u{647}\u{645}',
+    );
+  });
+
+  it('drops zero-width space, BOM, word joiner and bidi controls without leaving a gap', () => {
+    expect(sanitizeCommunityName('Fit\u{200B}ness\u{FEFF} Club\u{2060}')).toBe('Fitness Club');
+    expect(sanitizeCommunityName('\u{202E}Bears\u{2066}\u{2069}\u{200F}')).toBe('Bears');
+  });
+
+  it('falls back when only invisible characters (including joiners) remain', () => {
+    for (const hidden of ['\u{200B}', '\u{200D}', '\u{200C}\u{200D}', ' \u{202E}\u{200D} ', '\u{2060}\u{FEFF}']) {
+      expect(sanitizeCommunityName(hidden), JSON.stringify(hidden)).toBe('our community');
+    }
+  });
+
+  it('trims joiners at the edges', () => {
+    expect(sanitizeCommunityName('\u{200D}Bears\u{200C}')).toBe('Bears');
+  });
+});
+
+describe('expiry shows the time of day in the community zone', () => {
+  it('names date and time, in the zone of the community', () => {
+    const text = buildInvitationMessage({ ...base, expiresAt: '2026-11-22T12:30:00Z' });
+    expect(text).toContain('works until 22 Nov 2026, 14:30');
+    expect(buildInvitationMessage({ ...base, expiresAt: '2026-11-22T12:30:00Z', timeZone: 'Asia/Tokyo' })).toContain(
+      'works until 22 Nov 2026, 21:30',
+    );
+  });
+});
+
+describe('who the message is for', () => {
+  it('tells people who already use the app where to enter the code', () => {
+    expect(buildInvitationMessage(base)).toContain('Profile \u{2192} Join another community');
   });
 });

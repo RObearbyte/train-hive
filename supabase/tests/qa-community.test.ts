@@ -156,7 +156,7 @@ describe('authorization matrix (organizer of A, member of B, removed from C, hol
     const usersOnly = [
       'public.preview_creator_code(text)',
       'public.create_community_with_code(text, text, text, text, uuid)',
-      'public.update_community(uuid, text, text)',
+      'public.update_community(uuid, text, text, timestamptz)',
       'public.list_my_communities()',
     ];
     for (const fn of serviceOnly) {
@@ -505,13 +505,13 @@ describe('validation of names, display names and zones (server side, fuzzed)', (
 
   // DEFECT Q6-2: the server's list of "invisible" characters is a hand-made list. Characters
   // that render as nothing but are not on it make a community whose name is blank for everyone.
-  it.fails('DEFECT Q6-2: a name of Arabic letter mark only (U+061C) is rejected', async () => {
+  it('FIXED Q6-2 (C3): a name of Arabic letter mark only (U+061C) is rejected', async () => {
     expect(await cleanName('؜؜')).toBe('rejected');
   });
-  it.fails('DEFECT Q6-2: a name of variation selectors supplement only (U+E0100) is rejected', async () => {
+  it('FIXED Q6-2 (C3): a name of variation selectors supplement only (U+E0100) is rejected', async () => {
     expect(await cleanName('\u{E0100}')).toBe('rejected');
   });
-  it.fails('DEFECT Q6-2: a name of musical format controls only (U+1D173) is rejected', async () => {
+  it('FIXED Q6-2 (C3): a name of musical format controls only (U+1D173) is rejected', async () => {
     expect(await cleanName('\u{1D173}\u{1D174}')).toBe('rejected');
   });
 
@@ -545,16 +545,16 @@ describe('validation of names, display names and zones (server side, fuzzed)', (
   // and bidi overrides, unlike clean_required_text, which the contract says the community name
   // follows. Display names appear in participant lists and attendance sheets of every
   // community the user belongs to.
-  it.fails('DEFECT Q6-1: a display name of two zero-width spaces is rejected', async () => {
+  it('FIXED Q6-1 (C3): a display name of two zero-width spaces is rejected', async () => {
     expect(await cleanDisplay('​​')).toBeNull();
   });
-  it.fails('DEFECT Q6-1: a display name of two Hangul fillers (invisible in every locale) is rejected', async () => {
+  it('FIXED Q6-1 (C3): a display name of two Hangul fillers (invisible in every locale) is rejected', async () => {
     expect(await cleanDisplay('ㅤㅤ')).toBeNull();
   });
-  it.fails('DEFECT Q6-1: a right-to-left override inside a display name is stripped (name spoofing)', async () => {
+  it('FIXED Q6-1 (C3): a right-to-left override inside a display name is stripped (name spoofing)', async () => {
     expect(await cleanDisplay('Olga‮ (organizer)')).not.toContain('‮');
   });
-  it.fails('DEFECT Q6-1: control characters in a display name are stripped', async () => {
+  it('FIXED Q6-1 (C3): control characters in a display name are stripped', async () => {
     expect(await cleanDisplay('Ana\u0007\u0008Runner')).toBe('AnaRunner');
   });
 
@@ -627,19 +627,20 @@ describe('error behaviour for a token whose user no longer exists', () => {
   // DEFECT Q6-3: a still-valid JWT of a deleted account (possible on a hosted project: tokens
   // live up to an hour after the user row is gone) reaches the foreign keys and surfaces the raw
   // Postgres error with table and constraint names instead of the documented not_authenticated.
-  it.fails('DEFECT Q6-3: preview_creator_code answers not_authenticated for a user that does not exist', async () => {
+  it('FIXED Q6-3 (C3): preview_creator_code answers not_authenticated for a user that does not exist', async () => {
     const ghost = randomUUID();
     const result = await asUser(ghost, (db) => rpc<CreatorResult>(db, 'preview_creator_code', ['AAAAAAAA']));
     expect(result).toEqual({ ok: false, error: 'not_authenticated' });
   });
-  it.fails('DEFECT Q6-3: create_community_with_code answers not_authenticated for a user that does not exist', async () => {
+  it('FIXED Q6-3 (C3): create_community_with_code answers not_authenticated for a user that does not exist', async () => {
     const { code } = await issueCode();
     const result = await createWithCode(randomUUID(), code);
     expect(result).toEqual({ ok: false, error: 'not_authenticated' });
   });
+  // C3: this test asserted the raw 23503 of the old behaviour; now the documented answer.
   it('the failure leaves nothing behind (no community, no use consumed)', async () => {
     const { code } = await issueCode();
-    await expect(createWithCode(randomUUID(), code)).rejects.toMatchObject({ code: '23503' });
+    expect(await createWithCode(randomUUID(), code)).toEqual({ ok: false, error: 'not_authenticated' });
     expect(await countRows('communities')).toBe(0);
     expect((await codeRow(code)).use_count).toBe(0);
   });

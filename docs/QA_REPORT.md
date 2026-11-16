@@ -941,3 +941,13 @@ Setup: the hosted project (migrations through `20261119000100` pushed). Two phon
 97. Display names (Q6-1): in the create form or the join screen enter a name made of two zero-width spaces (paste U+200B twice) or one containing a right-to-left override. Expected after the fix: refused or cleaned. Today: accepted and shown in participant lists.
 98. Expo Go on Android: steps 85 to 96 produce no red screen; the zone picker opens and closes with the back button; the switcher sheet closes with the back button and with a tap outside; TalkBack reads each switcher row as "name, role, zone and time, current community".
 99. Cleanup: `delete from public.communities where name in (...)` for the test communities, and `update public.community_creator_codes set revoked_at = now() where revoked_at is null;` for unused codes.
+
+---
+
+## Resolution status of C-Q1 defects (lead, 2026-11-16)
+
+Fixed and verified by tests (full suite: 103 files, 2003 tests, all passing; typecheck and lint clean): Q6-1, Q6-2, Q6-3 (backend, `20261120000100_c_qa_fixes.sql`); Q6-4, Q6-5, Q6-6, Q6-7, Q6-8, Q6-9, Q6-10 (mobile). Also fixed: the attendance screen's organizer flag (same flaw class as Q6-10), the community-settings lost-update problem (`update_community` takes `p_expected_updated_at`; the app sends it and handles `stale_data`), the push payload now carries `communityId`, failed-attempt rows are purged daily.
+
+Owner decisions applied: D1 one global display name (kept; app tells users), D2 community names need not be unique, D3 "Create a community" stays visible (creator codes gate it), D4 the invitation message shows the expiry time, D5 daily cleanup of failed attempts, no per-code cap.
+
+Still unverified (needs a hosted Supabase project, an Android device, Expo/Firebase): everything listed under each section's "cannot be verified" list, notably Realtime, pg_cron/pg_net scheduling, push delivery, rendering of the new screens, and Hermes behaviour of `Intl.supportedValuesOf`.

@@ -7,7 +7,7 @@ import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { useNow } from '@/lib/useNow';
 import { Button, Divider, Icon, ListItem, Text, useTheme } from '@/ui';
 
-import { buildSwitcherItems, canSwitchCommunity } from '../domain/switcher';
+import { buildSwitcherItems, canSwitchCommunity, communityTitle } from '../domain/switcher';
 
 /**
  * The community name at the top of Home. With several communities it is a
@@ -16,10 +16,21 @@ import { buildSwitcherItems, canSwitchCommunity } from '../domain/switcher';
  */
 export function CommunityTitle() {
   const { spacing } = useTheme();
-  const { community, communities } = useCurrentMembership();
+  const { community, communities, activeCommunityId } = useCurrentMembership();
+  const { colors, radii } = useTheme();
   const [open, setOpen] = useState(false);
-  const name = community?.name ?? 'Home';
+  // The name from the list is known before the community itself has loaded.
+  const name = communityTitle(communities, activeCommunityId, community?.name);
 
+  if (name === null) {
+    return (
+      <View
+        accessible
+        accessibilityLabel="Loading community name"
+        style={{ height: 32, width: 180, borderRadius: radii.sm, backgroundColor: colors.border }}
+      />
+    );
+  }
   if (!canSwitchCommunity(communities)) return <Text variant="title">{name}</Text>;
 
   return (

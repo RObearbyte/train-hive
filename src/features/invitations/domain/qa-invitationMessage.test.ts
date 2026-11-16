@@ -52,7 +52,9 @@ describe('the message never takes a shape the name did not choose', () => {
       expect(lines[0].startsWith("Hi! \u{1F43B} You're invited to join ")).toBe(true);
       expect(lines[0].endsWith(' on TrainHive.')).toBe(true);
       expect(lines[1]).toBe('1. Ask me where to get the app');
-      expect(lines[2]).toBe('2. Open it, tap "Join a community" and enter your code: ABCD-2345');
+      expect(lines[2]).toBe(
+        '2. Open TrainHive and enter your code under "Join a community": ABCD-2345 (already using TrainHive? Profile → Join another community)',
+      );
       // No other line break of any kind, no control or bidi character survives.
       expect(message.replace(/\n/g, '')).not.toMatch(/[\r\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u2028\u2029]/);
       expect(message).not.toMatch(/[‎‏‪-‮⁦-⁩]/);
@@ -84,14 +86,14 @@ describe('wording for every combination of expiry, uses and link', () => {
   const expiry = '2026-11-20T09:00:00Z'; // 11:00 in Bucharest
   const cases: [string, Partial<InvitationMessageInput>, string | null][] = [
     ['never expires, unlimited', {}, null],
-    ['expiry only', { expiresAt: expiry }, '(The code works until 20 Nov 2026.)'],
+    ['expiry only', { expiresAt: expiry }, '(The code works until 20 Nov 2026, 11:00.)'],
     ['one use only', { maxRedemptions: 1 }, '(The code can be used 1 time.)'],
-    ['expiry and one use', { expiresAt: expiry, maxRedemptions: 1 }, '(The code works until 20 Nov 2026 and can be used 1 time.)'],
+    ['expiry and one use', { expiresAt: expiry, maxRedemptions: 1 }, '(The code works until 20 Nov 2026, 11:00 and can be used 1 time.)'],
     ['several uses', { maxRedemptions: 5 }, '(The code works for up to 5 people.)'],
     ['some already used', { maxRedemptions: 5, remainingUses: 2 }, '(The code can be used 2 more times.)'],
     ['one use left of several', { maxRedemptions: 5, remainingUses: 1 }, '(The code can be used 1 more time.)'],
     ['used 0 of 5', { maxRedemptions: 5, remainingUses: 5 }, '(The code works for up to 5 people.)'],
-    ['expiry and several uses', { expiresAt: expiry, maxRedemptions: 5 }, '(The code works until 20 Nov 2026 and works for up to 5 people.)'],
+    ['expiry and several uses', { expiresAt: expiry, maxRedemptions: 5 }, '(The code works until 20 Nov 2026, 11:00 and works for up to 5 people.)'],
   ];
   for (const [label, input, conditions] of cases) {
     it(label, () => {
@@ -112,7 +114,7 @@ describe('wording for every combination of expiry, uses and link', () => {
 describe('expiry date in the community time zone', () => {
   const dateOf = (expiresAt: string, timeZone: string) => {
     const message = buildInvitationMessage({ ...base, expiresAt, timeZone });
-    return /works until (.+?)\.\)/.exec(message)?.[1] ?? null;
+    return /works until ([^,]+),/.exec(message)?.[1] ?? null;
   };
 
   it('uses the zone of the community, not the device, across the date line, DST changes and year ends', () => {
@@ -142,7 +144,7 @@ describe('expiry date in the community time zone', () => {
   // i.e. at the same time of day as now. "works until 20 Nov 2026" reads as "through the end of
   // that day", but the code stops at 11:00. Someone who opens the message that afternoon is
   // refused with "expired". The message needs the time, or an honest "for 7 days".
-  it.fails('DEFECT Q6-5: the expiry line names the time of day when the code stops, not only the date', () => {
+  it('FIXED Q6-5: the expiry line names the time of day when the code stops, not only the date', () => {
     const message = buildInvitationMessage({ ...base, expiresAt: '2026-11-20T09:00:00Z' });
     expect(message).toMatch(/11:00|11 am|11 AM/);
   });
@@ -154,14 +156,14 @@ describe('community name inside the message', () => {
   // (clean_required_text: "the zero-width joiner is part of emoji sequences"). A community called
   // "Run Family <man ZWJ woman ZWJ girl>" is sent as three separate people, and Persian or
   // other scripts that use ZWNJ inside a word are split by a visible space.
-  it.fails('DEFECT Q6-4: keeps an emoji ZWJ sequence in the community name', () => {
+  it('FIXED Q6-4: keeps an emoji ZWJ sequence in the community name', () => {
     const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
     expect(sanitizeCommunityName(`Run ${family} Club`)).toBe(`Run ${family} Club`);
   });
-  it.fails('DEFECT Q6-4: keeps a zero-width non-joiner inside a Persian word', () => {
+  it('FIXED Q6-4: keeps a zero-width non-joiner inside a Persian word', () => {
     expect(sanitizeCommunityName('می‌خواهم')).toBe('می‌خواهم');
   });
-  it.fails('DEFECT Q6-4: does not insert a visible space where the name had a zero-width space', () => {
+  it('FIXED Q6-4: does not insert a visible space where the name had a zero-width space', () => {
     expect(sanitizeCommunityName('Fit​ness Club')).toBe('Fitness Club');
   });
 
@@ -194,9 +196,9 @@ describe('who the message is for', () => {
   // DEFECT Q6-6 (low, wording): the owner's scenario includes inviting someone who ALREADY uses
   // TrainHive (a second community). Step 2 says: tap "Join a community". Signed in, that button
   // does not exist: the entry is Profile -> "Join another community" (or the Home switcher).
-  it.fails('DEFECT Q6-6: the message also tells people who already have the app where to enter the code', () => {
+  it('FIXED Q6-6: the message also tells people who already have the app where to enter the code', () => {
     const message = buildInvitationMessage({ ...base });
-    expect(message).toMatch(/Join another community|Profile/);
+    expect(message).toContain('Profile → Join another community');
   });
 });
 
@@ -205,8 +207,8 @@ describe('EXPO_PUBLIC_APP_DOWNLOAD_URL', () => {
     const accepted: [string, string][] = [
       ['https://play.google.com/store/apps/details?id=com.trainhive', 'https://play.google.com/store/apps/details?id=com.trainhive'],
       ['  http://example.com/app.apk\n', 'http://example.com/app.apk'],
-      ['HTTPS://EXAMPLE.COM/x', 'HTTPS://EXAMPLE.COM/x'],
-      ['https://example.com/' + 'a'.repeat(5000), 'https://example.com/' + 'a'.repeat(5000)],
+      ['HTTPS://EXAMPLE.COM/x', 'https://example.com/x'],
+      ['https://example.com/' + 'a'.repeat(2000), 'https://example.com/' + 'a'.repeat(2000)],
     ];
     for (const [input, expected] of accepted) expect(parseAppDownloadUrl(input)).toBe(expected);
     const rejected = [
@@ -219,7 +221,7 @@ describe('EXPO_PUBLIC_APP_DOWNLOAD_URL', () => {
   });
 
   it('a very long link is carried whole into the message without breaking its shape', () => {
-    const link = 'https://example.com/' + 'a'.repeat(5000);
+    const link = 'https://example.com/' + 'a'.repeat(2000);
     const message = buildInvitationMessage({ ...base, appLink: parseAppDownloadUrl(link) });
     expect(message.split('\n')).toHaveLength(4);
     expect(message).toContain(link);
@@ -230,7 +232,7 @@ describe('EXPO_PUBLIC_APP_DOWNLOAD_URL', () => {
   // that URL would escape (line breaks other than \s, bidi controls, zero-width characters) go
   // into the message. Credentials in the link are shared too. Returning `url.href` (and refusing
   // userinfo) fixes all of it.
-  it.fails('DEFECT Q6-7: malformed-but-parsable links and hidden characters are not passed through verbatim', () => {
+  it('FIXED Q6-7: malformed-but-parsable links and hidden characters are not passed through verbatim', () => {
     expect(parseAppDownloadUrl('http:example.com')).not.toBe('http:example.com');
     expect(parseAppDownloadUrl('https:/example.com')).not.toBe('https:/example.com');
     expect(parseAppDownloadUrl('https://example.com/\u0085x')).toBeNull(); // NEL is a line break in many renderers

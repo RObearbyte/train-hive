@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import { CommunityTitle } from '@/features/communities/components/CommunitySwitcher';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { useRemovalNotice } from '@/features/community/hooks/useRemovalNotice';
 import { NeedsAttendanceCue } from '@/features/attendance/components/AttendanceEntryPoint';
 import { needsAttendance } from '@/features/attendance/domain/sheet';
 import { PushPromptCard } from '@/features/notifications/components/PushPromptCard';
@@ -37,6 +38,7 @@ export default function HomeScreen() {
   const now = useNow();
   const { profile, isOrganizer } = useCurrentMembership();
   const trainings = useCommunityTrainings(now);
+  const removal = useRemovalNotice();
 
   const next = trainings.next;
   const then = trainings.upcoming.filter((session) => session.id !== next?.id).slice(0, THEN_COUNT);
@@ -174,6 +176,13 @@ export default function HomeScreen() {
         <CommunityTitle />
         {profile ? <Text color="textMuted">Hi, {profile.display_name}</Text> : null}
       </View>
+      {removal.message ? (
+        <Banner
+          tone="info"
+          message={removal.message}
+          action={{ label: 'Dismiss', onPress: removal.dismiss }}
+        />
+      ) : null}
       {attendanceSection}
       {body}
       <RecentAnnouncements />

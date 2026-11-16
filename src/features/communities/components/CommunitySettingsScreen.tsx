@@ -19,7 +19,8 @@ import {
   type CommunitySettingsFormValues,
 } from '../domain/communityForm';
 import { mapCreatorError } from '../domain/creatorErrors';
-import { useUpdateCommunity } from '../hooks/useCommunityMutations';
+import { baselineFrom, hasSettingsChanges, resolveConflict } from '../domain/settingsBaseline';
+import { useFetchLatestCommunity, useUpdateCommunity } from '../hooks/useCommunityMutations';
 import { TimeZoneField } from './TimeZoneField';
 
 function goBack(router: ReturnType<typeof useRouter>) {
@@ -65,36 +66,67 @@ function SettingsForm({ community }: { community: Community }) {
   const router = useRouter();
   const { spacing } = useTheme();
   const update = useUpdateCommunity(community.id);
+  const fetchLatest = useFetchLatestCommunity(community.id);
   const [saved, setSaved] = useState(false);
+  // The row the form was loaded from; its updated_at is sent with every save.
+  const [baseline, setBaseline] = useState(() => baselineFrom(community));
+  // Set after a stale_data answer: the latest saved values, shown next to what the user typed.
+  const [latest, setLatest] = useState<Community | null>(null);
 
-  const { control, handleSubmit, setError } = useForm<
+  const { control, handleSubmit, setError, reset, getValues } = useForm<
     CommunitySettingsFormInput,
     unknown,
     CommunitySettingsFormValues
   >({
     resolver: zodResolver(communitySettingsFormSchema),
-    defaultValues: { name: community.name, timezone: community.timezone },
+    defaultValues: { name: baseline.name, timezone: baseline.timezone },
   });
 
   const busy = update.isPending;
 
   const submit = handleSubmit((values) => {
     if (busy) return;
-    if (values.name === community.name && values.timezone === community.timezone) {
+    if (!hasSettingsChanges(values, baseline)) {
       goBack(router);
       return;
     }
     setSaved(false);
-    update.mutate(values, {
-      onSuccess: () => setSaved(true),
-      onError: (error) => {
-        const view = mapCreatorError(error);
-        if (view.target === 'name' || view.target === 'timezone') {
-          setError(view.target, { message: view.message });
-        }
+    setLatest(null);
+    update.mutate(
+      { ...values, expectedUpdatedAt: baseline.updatedAt },
+      {
+        onSuccess: (row) => {
+          // The returned row is the new baseline.
+          setBaseline(baselineFrom(row));
+          setSaved(true);
+        },
+        onError: (error) => {
+          if (error.code === 'stale_data') {
+            // Keep the typed values; move the baseline to the latest row so the next save is deliberate.
+            fetchLatest.mutate(undefined, {
+              onSuccess: (row) => {
+                setLatest(row);
+                setBaseline(resolveConflict(row, getValues()).baseline);
+              },
+            });
+            return;
+          }
+          const view = mapCreatorError(error);
+          if (view.target === 'name' || view.target === 'timezone') {
+            setError(view.target, { message: view.message });
+          }
+        },
       },
-    });
+    );
   });
+
+  const loadLatest = () => {
+    if (!latest) return;
+    reset({ name: latest.name, timezone: latest.timezone });
+    setBaseline(baselineFrom(latest));
+    setLatest(null);
+    update.reset();
+  };
 
   const view = update.error ? mapCreatorError(update.error) : null;
   const banner = view && view.target === 'banner' ? view : null;
@@ -114,9 +146,21 @@ function SettingsForm({ community }: { community: Community }) {
       <Text variant="title">Community settings</Text>
 
       {banner ? <Banner tone={banner.tone} message={banner.message} /> : null}
-      {saved && !update.isPending && !update.isError ? (
-        <Banner tone="success" message="Saved." />
+      {latest ? (
+        <View style={{ gap: spacing.sm }}>
+          <Text variant="body">
+            {`Latest saved: "${latest.name}", ${latest.timezone}. You typed: "${getValues('name')}", ${getValues('timezone')}.`}
+          </Text>
+          <Button label="Load latest" variant="secondary" onPress={loadLatest} disabled={busy} />
+        </View>
       ) : null}
+      {update.error?.code === 'stale_data' && !latest && fetchLatest.isPending ? (
+        <Banner tone="warning" message="Loading the latest values." />
+      ) : null}
+      {update.error?.code === 'stale_data' && fetchLatest.isError ? (
+        <Banner tone="error" message={userMessage(fetchLatest.error.code, fetchLatest.error.field)} />
+      ) : null}
+      {saved && !update.isPending && !update.isError ? <Banner tone="success" message="Saved." /> : null}
 
       <Controller
         control={control}

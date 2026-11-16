@@ -50,6 +50,7 @@ Option B — no CLI: open **SQL Editor**, and for each file in `supabase/migrati
 
 1. **Project Settings → API** (or **API Keys**). Copy the **Project URL** and the **anon / publishable** key.
 2. In the project folder, copy `.env.example` to `.env.local` and fill in both values.
+3. Optional, same file: `EXPO_PUBLIC_APP_DOWNLOAD_URL` is the link where people download the app (your Play Store listing or an APK download page, `http` or `https`). It is put into the invitation message organizers copy or share. Leave it empty until you have one: the message then says "Ask me where to get the app". For an EAS build, set the same variable in the build profile (`eas.json` `env`) or as an EAS environment variable, because `.env.local` is not uploaded with the build. `EXPO_PUBLIC_` values are baked into the app and visible to anyone who has it, so put only a public link here.
 
 Never put the `service_role` / secret key in `.env.local` or anywhere in the app. `.env.local` is gitignored.
 

@@ -32,18 +32,27 @@ export type Database = {
           name: string;
           timezone: string;
           created_at: string;
+          /**
+           * C3: millisecond precision, bumped by every change through update_community. Always
+           * present (not null in SQL); typed optional like the other columns added with
+           * `alter table` (attendance_finalized_by) because qa-backendContract.test.ts only
+           * parses `create table`.
+           */
+          updated_at?: string;
         };
         Insert: {
           id?: string;
           name: string;
           timezone: string;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
           name?: string;
           timezone?: string;
           created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -916,7 +925,8 @@ export type Database = {
       };
       /** Organizer of the community only. */
       update_community: {
-        Args: { p_community_id: string; p_name: string; p_timezone: string };
+        /** C3: pass the row's updated_at as p_expected_updated_at to get stale_data instead of overwriting a newer save. */
+        Args: { p_community_id: string; p_name: string; p_timezone: string; p_expected_updated_at?: string | null };
         Returns: Database['public']['Tables']['communities']['Row'];
       };
       /** Returns `MyCommunity[]`: the caller's active memberships, oldest first. */

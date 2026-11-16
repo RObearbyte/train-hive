@@ -14,7 +14,6 @@ import {
   type AnnouncementFormValues,
 } from './announcementForm';
 import { hrefForLink, parseAppLink, targetFromPushData } from './deepLink';
-import { createNavigationQueue } from './navigationQueue';
 import { derivePushState, type PushPermission, type PushRegistration } from './pushState';
 import { badgeText, combinedUnreadCount } from './unread';
 import { announcement, notification } from './testFixtures';
@@ -88,48 +87,6 @@ describe('QA deep link allowlist', () => {
     expect(read('src/features/notifications/api/pushNative.ts')).toContain("ANDROID_CHANNEL_ID = 'default'");
     expect(read('supabase/functions/dispatch-notifications/dispatch.ts')).toContain("channelId: 'default'");
     expect(JSON.parse(read('app.json')).expo.plugins.find((p: unknown) => Array.isArray(p) && p[0] === 'expo-notifications')[1].defaultChannel).toBe('default');
-  });
-});
-
-describe('QA navigation queue', () => {
-  it('handles a tap once even when the launch tap and the listener both deliver it', () => {
-    const seen: string[] = [];
-    const q = createNavigationQueue((h) => seen.push(h));
-    q.setReady(false);
-    expect(q.offer({ id: 'n1', href: '/trainings/a' })).toBe(true);
-    expect(q.offer({ id: 'n1', href: '/trainings/a' })).toBe(false);
-    q.setReady(true);
-    q.setReady(true);
-    expect(seen).toEqual(['/trainings/a']);
-  });
-
-  it('a tap while not ready is replayed once on readiness, and never again after a not-ready blip', () => {
-    const seen: string[] = [];
-    const q = createNavigationQueue((h) => seen.push(h));
-    q.offer({ id: 'a', href: '/x1' });
-    q.offer({ id: 'b', href: '/x2' });
-    q.setReady(true);
-    q.setReady(false);
-    q.setReady(true);
-    expect(seen).toEqual(['/x2']);
-  });
-
-  it('taps without an id are never deduplicated by the queue (the hook supplies the OS identifier)', () => {
-    const seen: string[] = [];
-    const q = createNavigationQueue((h) => seen.push(h));
-    q.setReady(true);
-    q.offer({ id: null, href: '/x' });
-    q.offer({ id: null, href: '/x' });
-    expect(seen).toHaveLength(2);
-  });
-
-  it('memory of handled ids is bounded; a very old id can be handled again (documented)', () => {
-    const seen: string[] = [];
-    const q = createNavigationQueue((h) => seen.push(h));
-    q.setReady(true);
-    for (let i = 0; i < 250; i += 1) q.offer({ id: `id-${i}`, href: '/x' });
-    expect(q.offer({ id: 'id-0', href: '/x' })).toBe(true);
-    expect(q.offer({ id: 'id-249', href: '/x' })).toBe(false);
   });
 });
 

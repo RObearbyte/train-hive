@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 
+import { isOrganizerOf, roleInCommunity } from '@/features/community/domain/sessionAccess';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import {
   AttendanceEntryPoint,
@@ -145,8 +146,10 @@ function Participants({ sessionId }: { sessionId: string }) {
 function TrainingDetails({ session, now }: { session: TrainingSession; now: Date }) {
   const router = useRouter();
   const { spacing } = useTheme();
-  const { community, isOrganizer } = useCurrentMembership();
-  const myResponse = useMyResponse(session.id, community?.id ?? null);
+  // Rights follow the training's own community, not the active one.
+  const { communities } = useCurrentMembership();
+  const isOrganizer = isOrganizerOf(communities, session.community_id);
+  const myResponse = useMyResponse(session.id, session.community_id);
   const organizer = useOrganizerName(session.id, session.organizer_id);
   const activity = useActivityLabel();
   const [mapsFailed, setMapsFailed] = useState(false);
@@ -300,6 +303,7 @@ export default function TrainingDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const now = useNow();
   const training = useTraining(id);
+  const { communities } = useCurrentMembership();
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -310,7 +314,8 @@ export default function TrainingDetailsScreen() {
   };
 
   let body;
-  if (training.data) {
+  // A training of a community I am not an active member of is not mine to see.
+  if (training.data && roleInCommunity(communities, training.data.community_id) !== null) {
     body = <TrainingDetails session={training.data} now={now} />;
   } else if (training.isPending) {
     body = <LoadingState message="Loading training" style={{ flex: 1 }} />;

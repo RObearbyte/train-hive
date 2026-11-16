@@ -69,19 +69,36 @@ export async function createCommunityWithCode(input: CreateCommunityInput): Prom
 }
 
 /**
- * Organizer only. Throws AppError: `forbidden`, `validation_failed` (field
- * `name` / `timezone`), `not_authenticated`, `network_error`.
+ * Organizer only. `expectedUpdatedAt` is the `updated_at` of the row the form
+ * was loaded from; when the row changed since, the server answers
+ * `stale_data` and changes nothing. Throws AppError: `stale_data`,
+ * `forbidden`, `validation_failed` (field `name` / `timezone`),
+ * `not_authenticated`, `network_error`.
  */
 export async function updateCommunity(
   communityId: string,
   name: string,
   timezone: string,
+  expectedUpdatedAt: string | null,
 ): Promise<Community> {
   const { data, error } = await getSupabase().rpc('update_community', {
     p_community_id: communityId,
     p_name: name,
     p_timezone: timezone,
+    p_expected_updated_at: expectedUpdatedAt,
   });
   if (error) throw toAppError(error);
+  return data;
+}
+
+/** The current community row (readable by its members). Throws AppError; `not_found` when it is gone. */
+export async function fetchCommunity(communityId: string): Promise<Community> {
+  const { data, error } = await getSupabase()
+    .from('communities')
+    .select('*')
+    .eq('id', communityId)
+    .maybeSingle();
+  if (error) throw toAppError(error);
+  if (!data) throw appErrorFromResult('not_found');
   return data;
 }

@@ -145,13 +145,19 @@ describe('dispatchNotifications: happy paths', () => {
     expect(message).toMatchObject({
       to: tokenA,
       title: 'New training: Morning run',
-      data: { deepLink: `/trainings/${p.session.id}`, notificationId: job.notification_id, kind: 'training_created' },
+      data: {
+        deepLink: `/trainings/${p.session.id}`,
+        notificationId: job.notification_id,
+        kind: 'training_created',
+        communityId: p.communityId,
+      },
       sound: 'default',
       channelId: 'default',
       priority: 'high',
       badge: 1,
     });
-    expect(Object.keys(message.data).sort()).toEqual(['deepLink', 'kind', 'notificationId']);
+    // C3: communityId lets the app switch community on a tap without a lookup.
+    expect(Object.keys(message.data).sort()).toEqual(['communityId', 'deepLink', 'kind', 'notificationId']);
     expect(message.ttl).toBeGreaterThan(0);
     expect(job).toMatchObject({ status: 'sent', attempts: 1 });
     expect(job.sent_at).toBeInstanceOf(Date);
@@ -503,7 +509,7 @@ describe('dispatchNotifications: concurrency and crashes', () => {
 
     expect(expo.calls[0].messages[0]).toMatchObject({
       title: expect.stringContaining('Hello team'),
-      data: { deepLink: `/announcements/${announcement.id}`, kind: 'announcement_published' },
+      data: { deepLink: `/announcements/${announcement.id}`, kind: 'announcement_published', communityId: p.communityId },
     });
     expect(expo.calls[0].messages[0].ttl).toBe(86_400);
   });

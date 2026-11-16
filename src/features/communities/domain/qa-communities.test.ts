@@ -115,7 +115,7 @@ describe('community form against the server rules it mirrors', () => {
   // client accepts "europe/bucharest" while the server pattern needs a capital first letter and
   // exact names (validation_failed:timezone). The picker only offers canonical names, so this is
   // unreachable today; the client rule should simply be the server rule.
-  it.fails('DEFECT Q6-8: the client rejects a zone name the server would reject (lower case)', () => {
+  it('FIXED Q6-8: the client rejects a zone name the server would reject (lower case)', () => {
     expect(isCommunityTimeZone('europe/bucharest')).toBe(false);
     expect(isCommunityTimeZone('EUROPE/BUCHAREST')).toBe(false);
   });

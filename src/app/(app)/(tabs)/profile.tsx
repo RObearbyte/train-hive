@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { YourCommunities } from '@/features/communities/components/YourCommunities';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { NotificationSettings } from '@/features/notifications/components/NotificationSettings';
 import { DisplayNameForm } from '@/features/profile/components/DisplayNameForm';
@@ -151,6 +152,7 @@ export default function ProfileScreen() {
       <View style={{ gap: spacing.sm }}>
         <Text variant="heading">Your communities</Text>
         <Card>
+          <YourCommunities />
           <ListItem
             title="Join another community"
             subtitle="With an invitation code. Your name is shared across communities."

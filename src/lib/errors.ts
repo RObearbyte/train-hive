@@ -33,6 +33,7 @@ export const BACKEND_ERROR_CODES = [
   'attendee_has_going_rsvp',
   'announcement_not_editable',
   'announcement_not_cancellable',
+  'stale_data',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -201,6 +202,8 @@ const MESSAGES: Record<AppErrorCode, string> = {
     'This announcement was already published or cancelled, so it can no longer be changed.',
   announcement_not_cancellable:
     'This announcement was already published, so it can no longer be cancelled.',
+  stale_data:
+    'Someone else changed these community settings while you were editing. Review the latest values and try again.',
   network_error: 'No connection. Check your internet and try again.',
   unknown: 'Something went wrong. Please try again.',
 };

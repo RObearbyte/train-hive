@@ -190,7 +190,7 @@ const sixthCommunityIsRefused = async (): Promise<boolean> => {
 };
 
 const CREATE = 'public.create_community_with_code(text, text, text, text, uuid)';
-const UPDATE = 'public.update_community(uuid, text, text)';
+const UPDATE = 'public.update_community(uuid, text, text, timestamptz)';
 
 describe('creator code mutation checks', () => {
   it('skipping the code row lock is noticed', async () => {

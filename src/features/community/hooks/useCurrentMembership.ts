@@ -12,6 +12,7 @@ import {
   resolveActiveCommunityId,
 } from '../domain/activeCommunity';
 import type { MembershipState } from '../domain/gate';
+import { roleInCommunity } from '../domain/sessionAccess';
 import { useActiveCommunityStore } from './ActiveCommunityProvider';
 import { useSession } from './SessionProvider';
 
@@ -91,7 +92,8 @@ export function useCurrentMembership(): CurrentMembershipResult {
     community: data?.community ?? null,
     membership: data?.membership ?? null,
     profile: data?.profile ?? null,
-    isOrganizer: data?.membership.role === 'organizer',
+    // The list knows the role before the detail has loaded, so organizer sections do not flicker on a switch.
+    isOrganizer: (data?.membership.role ?? roleInCommunity(communities, activeCommunityId)) === 'organizer',
     communities,
     activeCommunityId,
     selectCommunity: select,
