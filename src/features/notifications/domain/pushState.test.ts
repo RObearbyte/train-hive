@@ -70,6 +70,9 @@ describe('shouldOfferPrompt', () => {
 
 describe('pushStateView', () => {
   it('gives every state an action that matches what can be done', () => {
+    expect(pushStateView('unsupported_platform').title).toBe('Push notifications are available in the mobile app');
+    expect(pushStateView('unsupported_platform').description).toMatch(/still appear here/);
+    expect(pushStateView('unsupported_platform').action).toBeNull();
     expect(pushStateView('can_enable').action).toBe('enable');
     expect(pushStateView('denied_blocked').action).toBe('open_settings');
     expect(pushStateView('registration_failed').action).toBe('retry');

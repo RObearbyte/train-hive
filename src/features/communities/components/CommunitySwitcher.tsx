@@ -1,8 +1,9 @@
 import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { ResponsiveModal } from '@/features/shell/components/ResponsiveModal';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { useNow } from '@/lib/useNow';
 import { Button, Divider, Icon, ListItem, Text, useTheme } from '@/ui';
@@ -69,7 +70,6 @@ export function CommunitySwitcherSheet({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const { colors, radii, spacing } = useTheme();
   const now = useNow(30_000);
   const { communities, activeCommunityId, selectCommunity } = useCurrentMembership();
   const items = buildSwitcherItems(communities, activeCommunityId, now);
@@ -80,66 +80,44 @@ export function CommunitySwitcherSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.fill} accessibilityViewIsModal>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          onPress={onClose}
-          style={[StyleSheet.absoluteFill, { backgroundColor: colors.hero, opacity: 0.55 }]}
-        />
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderTopLeftRadius: radii.xl,
-            borderTopRightRadius: radii.xl,
-            padding: spacing.lg,
-            gap: spacing.md,
-            maxHeight: '80%',
-          }}
-        >
-          <Text variant="heading">Your communities</Text>
-          <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
-            {items.map((item, index) => (
-              <View key={item.id}>
-                {index > 0 ? <Divider /> : null}
-                <ListItem
-                  title={item.name}
-                  subtitle={`${item.roleLabel} · ${item.timezoneLabel}`}
-                  accessibilityLabel={item.accessibilityLabel}
-                  showChevron={false}
-                  trailing={
-                    item.isActive ? <Icon name="check" size={22} color="primary" /> : undefined
-                  }
-                  onPress={() => {
-                    if (!item.isActive) selectCommunity(item.id);
-                    onClose();
-                  }}
-                />
-              </View>
-            ))}
-          </ScrollView>
-          <Divider />
-          <Button
-            label="Join another community"
-            variant="secondary"
-            icon="plus"
-            fullWidth
-            onPress={() => open(FLOW_ROUTES.signedIn.joinCode)}
-          />
-          <Button
-            label="Have a creator code?"
-            variant="ghost"
-            size="sm"
-            fullWidth
-            onPress={() => open(FLOW_ROUTES.signedIn.createCode)}
-          />
-        </View>
-      </View>
-    </Modal>
+    <ResponsiveModal visible={visible} onClose={onClose} variant="sheet">
+      <Text variant="heading">Your communities</Text>
+      <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
+        {items.map((item, index) => (
+          <View key={item.id}>
+            {index > 0 ? <Divider /> : null}
+            <ListItem
+              title={item.name}
+              subtitle={`${item.roleLabel} · ${item.timezoneLabel}`}
+              accessibilityLabel={item.accessibilityLabel}
+              showChevron={false}
+              trailing={
+                item.isActive ? <Icon name="check" size={22} color="primary" /> : undefined
+              }
+              onPress={() => {
+                if (!item.isActive) selectCommunity(item.id);
+                onClose();
+              }}
+            />
+          </View>
+        ))}
+      </ScrollView>
+      <Divider />
+      <Button
+        label="Join another community"
+        variant="secondary"
+        icon="plus"
+        fullWidth
+        onPress={() => open(FLOW_ROUTES.signedIn.joinCode)}
+      />
+      <Button
+        label="Have a creator code?"
+        variant="ghost"
+        size="sm"
+        fullWidth
+        onPress={() => open(FLOW_ROUTES.signedIn.createCode)}
+      />
+    </ResponsiveModal>
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, justifyContent: 'flex-end' },
-});

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>%WEB_TITLE%</title>
+    <!-- Join links carry the invitation code in the URL fragment; never send the address on to other sites. -->
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <!-- Description, theme-color and the favicon link are added by Expo from app.json (web.description, web.themeColor, web.favicon). -->
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+      }
+      /* Disable body scrolling: screens scroll inside their own ScrollView. */
+      body {
+        overflow: hidden;
+        background: #f5f7f8;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #0d1a2b;
+        }
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <!-- Keyboard focus and hover affordances for everything pressable. -->
+    <style id="trainhive-web">
+      :focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+      }
+      [role='button']:not([aria-disabled='true']),
+      [role='link'],
+      [role='tab'] {
+        cursor: pointer;
+      }
+      [role='button']:not([aria-disabled='true']):hover,
+      [role='tab']:hover {
+        filter: brightness(0.95);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        [role='button'],
+        [role='tab'] {
+          transition: filter 80ms ease-out;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>TrainHive needs JavaScript to run. Please enable it in your browser.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router/js-tabs';
 
+import { useLayout } from '@/features/shell/hooks/useLayout';
 import { badgeText } from '@/features/notifications/domain/unread';
 import { useActivity } from '@/features/notifications/hooks/useActivity';
 import { Icon, useTheme, type IconName } from '@/ui';
@@ -14,6 +15,8 @@ function tabIcon(name: IconName) {
 
 export default function TabsLayout() {
   const { colors, typography } = useTheme();
+  // On wide screens the sidebar (see (app)/_layout) replaces the bottom tab bar.
+  const { sidebar } = useLayout();
   // Display only: announcements and notifications the server says are unread.
   const unread = badgeText(useActivity().unreadCount);
   return (
@@ -22,7 +25,9 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        tabBarStyle: sidebar
+          ? { display: 'none' }
+          : { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarLabelStyle: { fontSize: typography.caption.fontSize, fontWeight: '600' },
         tabBarBadgeStyle: { backgroundColor: colors.accent, color: colors.onAccent },
         sceneStyle: { backgroundColor: colors.background },

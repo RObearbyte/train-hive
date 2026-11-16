@@ -22,7 +22,14 @@
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "bundler": "metro",
+      "favicon": "./assets/images/favicon.png",
+      "name": "TrainHive",
+      "shortName": "TrainHive",
+      "lang": "en",
+      "description": "TrainHive: see what is planned, say if you are in, and know for sure when a training is on.",
+      "themeColor": "#14263D",
+      "backgroundColor": "#14263D"
     },
     "plugins": [
       "expo-router",

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Modal, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 
+import { ResponsiveModal } from '@/features/shell/components/ResponsiveModal';
 import { useNow } from '@/lib/useNow';
 import { Button, Card, EmptyState, Icon, ListItem, Screen, Text, TextField, useTheme } from '@/ui';
 
@@ -74,7 +75,7 @@ export function TimeZoneField({ value, onChange, error, disabled = false, note }
         </Text>
       ) : null}
 
-      <Modal visible={open} animationType="slide" onRequestClose={close}>
+      <ResponsiveModal visible={open} onClose={close} variant="page" safeArea={false}>
         <Screen>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text variant="title">Time zone</Text>
@@ -118,7 +119,7 @@ export function TimeZoneField({ value, onChange, error, disabled = false, note }
             )}
           />
         </Screen>
-      </Modal>
+      </ResponsiveModal>
     </View>
   );
 }

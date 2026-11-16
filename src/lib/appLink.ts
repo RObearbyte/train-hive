@@ -31,3 +31,25 @@ export function parseAppDownloadUrl(value: string | undefined): string | null {
 export const APP_DOWNLOAD_URL: string | null = parseAppDownloadUrl(
   process.env.EXPO_PUBLIC_APP_DOWNLOAD_URL,
 );
+
+/**
+ * The address of the web app (`EXPO_PUBLIC_WEB_APP_URL`), used to build the
+ * `<web-app>/join#code=...` link in the invitation message. Same strict
+ * rules as `parseAppDownloadUrl`, plus: no query string or fragment (the link
+ * adds its own), and the result has no trailing slash, so
+ * `https://app.example.com/` and `https://app.example.com` both give
+ * `https://app.example.com`. A sub-path (`https://example.com/trainhive/`)
+ * is kept.
+ */
+export function parseWebAppUrl(value: string | undefined): string | null {
+  const href = parseAppDownloadUrl(value);
+  if (href === null) return null;
+  const url = new URL(href);
+  if (url.search !== '' || url.hash !== '') return null;
+  // `?` or `#` with nothing after them still parse as empty search / hash.
+  if (/[?#]/.test(href)) return null;
+  const path = url.pathname.replace(/\/+$/, '');
+  return `${url.origin}${path}`;
+}
+
+export const WEB_APP_URL: string | null = parseWebAppUrl(process.env.EXPO_PUBLIC_WEB_APP_URL);

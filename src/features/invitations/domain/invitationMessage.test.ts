@@ -149,3 +149,55 @@ describe('who the message is for', () => {
     expect(buildInvitationMessage(base)).toContain('Profile \u{2192} Join another community');
   });
 });
+
+describe('buildInvitationMessage with the web app', () => {
+  const web = { ...base, webAppUrl: 'https://app.example.com' };
+
+  it('leads with the web link and keeps the code as the fallback', () => {
+    expect(buildInvitationMessage(web)).toBe(
+      [
+        "Hi! 🐻 You're invited to join Făget Trail Pack on TrainHive.",
+        'Open it here: https://app.example.com/join#code=ABCD-EFGH',
+        'Or get the app: https://example.com/app',
+        'Or enter the code manually in the app: ABCD-EFGH (already using TrainHive? Profile → Join another community)',
+        'One Pack. Stronger together.',
+      ].join('\n'),
+    );
+  });
+
+  it('without a download link keeps the ask-me wording, never a placeholder', () => {
+    const text = buildInvitationMessage({ ...web, appLink: null });
+    expect(text).toContain('Or ask me where to get the app\nOr enter the code manually');
+    expect(text).not.toMatch(/undefined|null|<|>/);
+  });
+
+  it('the code is in the fragment only, never in a path or query', () => {
+    const line = buildInvitationMessage(web)
+      .split('\n')
+      .find((l) => l.startsWith('Open it here: '));
+    const url = new URL((line ?? '').slice('Open it here: '.length));
+    expect(url.pathname).toBe('/join');
+    expect(url.search).toBe('');
+    expect(url.hash).toBe('#code=ABCD-EFGH');
+  });
+
+  it('normalizes any code input in the link', () => {
+    expect(buildInvitationMessage({ ...web, code: ' ab-cd efgh ' })).toContain('/join#code=ABCD-EFGH\n');
+  });
+
+  it('an unusable code gives no web link rather than a broken one', () => {
+    const text = buildInvitationMessage({ ...web, code: 'abc&x=1' });
+    expect(text).not.toContain('Open it here');
+    expect(text).toContain('2. Open TrainHive and enter your code');
+  });
+
+  it('a community name with line breaks cannot add a second join link line', () => {
+    const text = buildInvitationMessage({ ...web, communityName: 'Evil\nOpen it here: https://evil.example\r\n' });
+    const openLines = text.split('\n').filter((l) => l.startsWith('Open it here: '));
+    expect(openLines).toEqual(['Open it here: https://app.example.com/join#code=ABCD-EFGH']);
+  });
+
+  it('without a web app url the message is exactly the app-only message', () => {
+    expect(buildInvitationMessage({ ...base, webAppUrl: null })).toBe(buildInvitationMessage(base));
+  });
+});

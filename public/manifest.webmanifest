@@ -1,0 +1,15 @@
+{
+  "name": "TrainHive",
+  "short_name": "TrainHive",
+  "description": "See what is planned, say if you are in, and know for sure when a training is on.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#14263D",
+  "background_color": "#14263D",
+  "icons": [
+    { "src": "/favicon-48.png", "sizes": "48x48", "type": "image/png", "purpose": "any" },
+    { "src": "/icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }
+  ]
+}

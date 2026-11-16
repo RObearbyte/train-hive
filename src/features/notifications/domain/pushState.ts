@@ -76,9 +76,9 @@ export type PushStateView = {
 
 const VIEWS: Record<PushStateKind, PushStateView> = {
   unsupported_platform: {
-    title: 'Push notifications are not available here',
+    title: 'Push notifications are available in the mobile app',
     description:
-      'Push notifications work in the Android and iOS apps. Your notifications are still saved in the Activity tab.',
+      'Announcements and notifications still appear here, in the Activity tab.',
     tone: 'info',
     action: null,
     actionLabel: null,

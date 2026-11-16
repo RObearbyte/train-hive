@@ -9,6 +9,8 @@ import { BackendNotConfigured } from '@/features/community/components/BackendNot
 import { ActiveCommunityProvider } from '@/features/community/hooks/ActiveCommunityProvider';
 import { SessionProvider } from '@/features/community/hooks/SessionProvider';
 import { useAppGate } from '@/features/community/hooks/useAppGate';
+import { capturePendingJoinFromLocation } from '@/features/onboarding/domain/pendingJoin';
+import { useDocumentTitle } from '@/features/shell/hooks/useDocumentTitle';
 import { bindQueryLifecycle, queryClient } from '@/lib/queryClient';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { ErrorState, LoadingState, Screen, useTheme } from '@/ui';
@@ -17,6 +19,8 @@ import { ErrorState, LoadingState, Screen, useTheme } from '@/ui';
 // returning member never sees onboarding flash by.
 void SplashScreen.preventAutoHideAsync();
 bindQueryLifecycle();
+// Web join link (/join#code=...): take the code out of the address bar before anything else runs.
+capturePendingJoinFromLocation();
 
 function useNavigationTheme() {
   const { scheme, colors } = useTheme();
@@ -38,6 +42,7 @@ function useNavigationTheme() {
 function RootNavigator() {
   const { route, errorMessage, retry } = useAppGate();
   const { colors } = useTheme();
+  useDocumentTitle();
 
   useEffect(() => {
     if (route !== 'loading') SplashScreen.hide();
@@ -75,6 +80,8 @@ function RootNavigator() {
       <Stack.Protected guard={route === 'onboarding'} redirectTo="/">
         <Stack.Screen name="(onboarding)" />
       </Stack.Protected>
+      {/* Web join link: open to everyone, it forwards to the right join screen. */}
+      <Stack.Screen name="join" />
     </Stack>
   );
 }

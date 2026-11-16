@@ -6,6 +6,7 @@ import { TZDate } from '@date-fns/tz';
 import { format } from 'date-fns';
 
 import { formatInvitationCode } from '@/features/onboarding/domain/invitationCode';
+import { buildWebJoinLink } from '@/features/onboarding/domain/joinLink';
 import { isValidTimeZone } from '@/lib/datetime';
 
 export const FALLBACK_COMMUNITY_NAME = 'our community';
@@ -48,6 +49,8 @@ export interface InvitationMessageInput {
   remainingUses?: number | null;
   /** Download link, or null when none is configured. */
   appLink: string | null;
+  /** Normalized web app address (`parseWebAppUrl`), or null/undefined when the web app is not configured. */
+  webAppUrl?: string | null;
   /** Display only; the server decides whether a code works. */
   now: Date;
   /** The community's IANA time zone (an unknown zone falls back to UTC); the expiry is shown in it. */
@@ -83,10 +86,18 @@ export function buildInvitationMessage(input: InvitationMessageInput): string {
   if (uses) conditions.push(uses);
 
   const lines = [`Hi! \u{1F43B} You're invited to join ${name} on TrainHive.`];
-  lines.push(input.appLink ? `1. Get the app: ${input.appLink}` : '1. Ask me where to get the app');
-  lines.push(
-    `2. Open TrainHive and enter your code under "Join a community": ${code} (already using TrainHive? Profile → Join another community)`,
-  );
+  const webLink = buildWebJoinLink(input.webAppUrl ?? null, input.code);
+  const joinHelp = '(already using TrainHive? Profile → Join another community)';
+  if (webLink) {
+    // The link opens the web app with the code already filled in; the code stays as the fallback.
+    lines.push(`Open it here: ${webLink}`);
+    lines.push(input.appLink ? `Or get the app: ${input.appLink}` : 'Or ask me where to get the app');
+    const manual = `Or enter the code manually in the app: ${code} ${joinHelp}`;
+    lines.push(manual);
+  } else {
+    lines.push(input.appLink ? `1. Get the app: ${input.appLink}` : '1. Ask me where to get the app');
+    lines.push(`2. Open TrainHive and enter your code under "Join a community": ${code} ${joinHelp}`);
+  }
   if (conditions.length > 0) {
     lines.push(`(The code ${conditions.join(' and ')}.)`);
   }

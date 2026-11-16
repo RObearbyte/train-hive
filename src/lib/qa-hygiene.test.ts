@@ -63,6 +63,7 @@ describe('QA hygiene: colors, secrets, logging', () => {
       'EXPO_PUBLIC_APP_DOWNLOAD_URL',
       'EXPO_PUBLIC_SUPABASE_ANON_KEY',
       'EXPO_PUBLIC_SUPABASE_URL',
+      'EXPO_PUBLIC_WEB_APP_URL',
     ]);
   });
 

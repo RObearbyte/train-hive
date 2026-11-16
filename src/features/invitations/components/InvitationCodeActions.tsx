@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Platform, Share, View } from 'react-native';
 
 import { formatInvitationCode } from '@/features/onboarding/domain/invitationCode';
-import { APP_DOWNLOAD_URL } from '@/lib/appLink';
+import { APP_DOWNLOAD_URL, WEB_APP_URL } from '@/lib/appLink';
 import type { InvitationCode } from '@/lib/database.types';
 import { reportError } from '@/lib/logger';
 import { Banner, Button, Text, useTheme } from '@/ui';
@@ -12,6 +12,12 @@ import { remainingUses } from '../domain/invitation';
 import { buildInvitationMessage } from '../domain/invitationMessage';
 
 const COPIED_NOTICE_MS = 2500;
+
+/** Native always has a share sheet; a browser only when it implements the Web Share API (many desktop browsers do not). */
+function canShare(): boolean {
+  if (Platform.OS !== 'web') return true;
+  return typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+}
 
 function isShareCancelled(error: unknown): boolean {
   // On web, closing the browser's share sheet rejects with AbortError: not a failure.
@@ -56,6 +62,7 @@ export function InvitationCodeActions({
         maxRedemptions: invitation.max_redemptions,
         remainingUses: remainingUses(invitation),
         appLink: APP_DOWNLOAD_URL,
+        webAppUrl: WEB_APP_URL,
         now,
         timeZone: zone,
       }),
@@ -134,14 +141,16 @@ export function InvitationCodeActions({
           icon={copied === 'message' ? 'check' : 'copy'}
           onPress={() => void copy('message')}
         />
-        <Button
-          label="Share"
-          accessibilityLabel={`Share invitation message for code ${formatted}`}
-          variant="secondary"
-          size="sm"
-          icon="share"
-          onPress={() => void share()}
-        />
+        {canShare() ? (
+          <Button
+            label="Share"
+            accessibilityLabel={`Share invitation message for code ${formatted}`}
+            variant="secondary"
+            size="sm"
+            icon="share"
+            onPress={() => void share()}
+          />
+        ) : null}
         <Button
           label={copied === 'code' ? 'Copied' : 'Copy code only'}
           accessibilityLabel={copied === 'code' ? `Code ${formatted} copied` : `Copy code ${formatted} only`}
