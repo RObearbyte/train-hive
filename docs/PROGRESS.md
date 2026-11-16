@@ -39,6 +39,9 @@ Size: S ≈ small agent run, M ≈ medium, L ≈ large (split if it grows).
 ## Wrap-up
 - [ ] W1 (S, lead) Final README, deployment notes, known limitations
 
+## Planned: web version (W1) — requested by the owner 2026-11-16, not started
+Make the web build a first-class way to use TrainHive: responsive desktop layout (sidebar at >= 900px), `/join#code=...` join links (code in the URL fragment, removed from the address bar after reading), invitation message uses `EXPO_PUBLIC_WEB_APP_URL`, web details (clipboard/share, date inputs, no push UI), SPA hosting files + `docs/WEB_DEPLOY.md` (Netlify/Cloudflare drag-and-drop), a browser smoke test against a stub, then a QA review. After W1: APK build (`eas.json`) if still wanted.
+
 ## Not verified yet (needs a hosted Supabase project — see docs/SUPABASE_SETUP.md)
 - Realtime delivery, pg_cron scheduling, anonymous sign-in against a real project, push delivery, running on a device.
 
