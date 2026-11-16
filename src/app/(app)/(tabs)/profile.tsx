@@ -1,9 +1,10 @@
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { NotificationSettings } from '@/features/notifications/components/NotificationSettings';
 import { DisplayNameForm } from '@/features/profile/components/DisplayNameForm';
 import { formatLongDate, isValidTimeZone, zoneCityName } from '@/lib/datetime';
@@ -135,8 +136,34 @@ export default function ProfileScreen() {
                 leading={<Icon name="people" size={22} color="primary" />}
                 onPress={() => router.push('/invitations')}
               />
+              <Divider />
+              <ListItem
+                title="Community settings"
+                subtitle="Change the name and time zone"
+                leading={<Icon name="edit" size={22} color="primary" />}
+                onPress={() => router.push('/community-settings' as Href)}
+              />
             </>
           ) : null}
+        </Card>
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="heading">Your communities</Text>
+        <Card>
+          <ListItem
+            title="Join another community"
+            subtitle="With an invitation code. Your name is shared across communities."
+            leading={<Icon name="plus" size={22} color="primary" />}
+            onPress={() => router.push(FLOW_ROUTES.signedIn.joinCode as Href)}
+          />
+          <Divider />
+          <ListItem
+            title="Create a community"
+            subtitle="Needs a creator code"
+            leading={<Icon name="people" size={22} color="primary" />}
+            onPress={() => router.push(FLOW_ROUTES.signedIn.createCode as Href)}
+          />
         </Card>
       </View>
 

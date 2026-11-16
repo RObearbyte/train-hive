@@ -20,6 +20,7 @@ export const BACKEND_ERROR_CODES = [
   'exhausted',
   'rate_limited',
   'invalid_display_name',
+  'community_limit_reached',
   'session_not_editable',
   'session_not_cancellable',
   'session_has_attendance',
@@ -181,6 +182,8 @@ const MESSAGES: Record<AppErrorCode, string> = {
   exhausted: 'This invitation code has already been used the maximum number of times.',
   rate_limited: 'Too many attempts. Please wait 15 minutes and try again.',
   invalid_display_name: 'Your name must be between 2 and 40 characters.',
+  community_limit_reached:
+    'You have reached the maximum number of communities you can create (5). You can still join more with an invitation code.',
   session_not_editable: 'This training can no longer be edited.',
   session_not_cancellable: 'This training is already completed and cannot be cancelled.',
   session_has_attendance:
@@ -223,6 +226,7 @@ const FIELD_LABELS: Record<string, string> = {
   expires_at: 'expiry date',
   max_redemptions: 'maximum uses',
   name: 'name',
+  request_id: 'request',
   reason: 'reason (200 characters at most)',
   user_id: 'member',
   status: 'attendance status',

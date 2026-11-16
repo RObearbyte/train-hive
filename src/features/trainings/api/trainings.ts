@@ -38,12 +38,15 @@ export async function fetchSession(sessionId: string): Promise<TrainingSession |
   return data;
 }
 
-/** The caller's answers in a community, keyed by session id. */
-export async function fetchMyRsvps(communityId: string, userId: string): Promise<MyRsvps> {
+/**
+ * The caller's answers in every community they belong to, keyed by session id.
+ * Session ids are unique, so one map serves whichever community is active and
+ * switching never needs a different cache entry.
+ */
+export async function fetchMyRsvps(userId: string): Promise<MyRsvps> {
   const { data, error } = await getSupabase()
     .from('training_rsvps')
     .select('session_id, response')
-    .eq('community_id', communityId)
     .eq('user_id', userId);
   if (error) throw toAppError(error);
 

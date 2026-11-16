@@ -54,7 +54,7 @@ export function useCommunityTrainings(now: Date): CommunityTrainings {
 
   const mine = useQuery({
     queryKey: rsvpKeys.mine(userId),
-    queryFn: () => fetchMyRsvps(communityId as string, userId as string),
+    queryFn: () => fetchMyRsvps(userId as string),
     enabled: communityId !== null && userId !== null,
   });
 
@@ -106,7 +106,7 @@ function useMyRsvpsQuery(communityId: string | null) {
   const { userId } = useSession();
   return useQuery({
     queryKey: rsvpKeys.mine(userId),
-    queryFn: () => fetchMyRsvps(communityId as string, userId as string),
+    queryFn: () => fetchMyRsvps(userId as string),
     enabled: communityId !== null && userId !== null,
   });
 }

@@ -5,7 +5,7 @@
  * Cached shapes:
  * - `attendanceKeys.sheet(sessionId)`  -> `AttendanceSheet` (organizer)
  * - `attendanceKeys.audit(sessionId)`  -> `AuditTrailItem[]` (organizer)
- * - `attendanceKeys.mine(userId)`      -> `MyAttendanceItem[]` (my finalized history)
+ * - `attendanceKeys.mine(communityId, userId)` -> `MyAttendanceItem[]` (my finalized history)
  * - `attendanceKeys.myRecord(sessionId, userId)` -> `AttendanceRecord | null`
  */
 export const attendanceKeys = {
@@ -15,7 +15,8 @@ export const attendanceKeys = {
   audit: (sessionId: string) => ['attendance', 'audit', sessionId] as const,
   allMine: () => ['attendance', 'mine'] as const,
   allMyRecords: () => ['attendance', 'my-record'] as const,
-  mine: (userId: string | null) => ['attendance', 'mine', userId] as const,
+  mine: (communityId: string | null, userId: string | null) =>
+    ['attendance', 'mine', communityId, userId] as const,
   myRecord: (sessionId: string, userId: string | null) =>
     ['attendance', 'my-record', sessionId, userId] as const,
 };

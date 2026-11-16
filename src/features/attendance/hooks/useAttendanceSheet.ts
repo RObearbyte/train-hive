@@ -33,11 +33,11 @@ export function useAuditTrail(sessionId: string, enabled: boolean) {
 }
 
 /** My finalized attendance history. */
-export function useMyAttendance(userId: string | null) {
+export function useMyAttendance(communityId: string | null, userId: string | null) {
   return useQuery<MyAttendanceItem[]>({
-    queryKey: attendanceKeys.mine(userId),
-    queryFn: () => fetchMyAttendance(userId as string),
-    enabled: userId !== null,
+    queryKey: attendanceKeys.mine(communityId, userId),
+    queryFn: () => fetchMyAttendance(communityId as string, userId as string),
+    enabled: communityId !== null && userId !== null,
   });
 }
 

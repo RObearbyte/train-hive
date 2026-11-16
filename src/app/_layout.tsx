@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { BackendNotConfigured } from '@/features/community/components/BackendNotConfigured';
+import { ActiveCommunityProvider } from '@/features/community/hooks/ActiveCommunityProvider';
 import { SessionProvider } from '@/features/community/hooks/SessionProvider';
 import { useAppGate } from '@/features/community/hooks/useAppGate';
 import { bindQueryLifecycle, queryClient } from '@/lib/queryClient';
@@ -95,7 +96,9 @@ export default function RootLayout() {
         {isSupabaseConfigured ? (
           <QueryClientProvider client={queryClient}>
             <SessionProvider>
-              <RootNavigator />
+              <ActiveCommunityProvider>
+                <RootNavigator />
+              </ActiveCommunityProvider>
             </SessionProvider>
           </QueryClientProvider>
         ) : (

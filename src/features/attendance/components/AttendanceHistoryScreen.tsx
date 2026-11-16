@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { SectionList, View } from 'react-native';
 
 import { useSession } from '@/features/community/hooks/SessionProvider';
+import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { formatDateTime, isValidTimeZone } from '@/lib/datetime';
 import { toAppError, userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -28,7 +29,8 @@ export function AttendanceHistoryScreen() {
   const router = useRouter();
   const { spacing } = useTheme();
   const { userId } = useSession();
-  const history = useMyAttendance(userId);
+  const { community } = useCurrentMembership();
+  const history = useMyAttendance(community?.id ?? null, userId);
 
   const items = history.data;
   const sections = useMemo(

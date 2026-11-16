@@ -1,8 +1,9 @@
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { BrandHero } from '@/features/onboarding/components/BrandHero';
 import { Button, Text, useTheme } from '@/ui';
 
@@ -24,13 +25,25 @@ export default function WelcomeScreen() {
           See what is planned, say if you are in, and know for sure when a training is on.
         </Text>
         <Button
-          label="I have an invitation code"
+          label="Join a community"
           size="lg"
           fullWidth
-          onPress={() => router.push('/code')}
+          accessibilityHint="Use the invitation code from your organizer"
+          onPress={() => router.push(FLOW_ROUTES.onboarding.joinCode as Href)}
         />
         <Text variant="caption" color="textMuted" align="center">
-          TrainHive is invitation only. Ask your organizer for a code.
+          Ask your organizer for an invitation code.
+        </Text>
+        <Button
+          label="Create a community"
+          variant="secondary"
+          size="sm"
+          fullWidth
+          accessibilityHint="For people with a creator code"
+          onPress={() => router.push(FLOW_ROUTES.onboarding.createCode as Href)}
+        />
+        <Text variant="caption" color="textMuted" align="center">
+          I have a creator code. Creator codes are issued by the TrainHive team.
         </Text>
       </SafeAreaView>
     </View>

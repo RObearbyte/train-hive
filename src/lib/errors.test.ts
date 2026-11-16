@@ -26,6 +26,7 @@ describe('contract coverage', () => {
         'announcement_not_editable',
         'attendee_has_going_rsvp',
         'attendee_not_a_member',
+        'community_limit_reached',
         'exhausted',
         'expired',
         'forbidden',

@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
+import { CommunityTitle } from '@/features/communities/components/CommunitySwitcher';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { NeedsAttendanceCue } from '@/features/attendance/components/AttendanceEntryPoint';
 import { needsAttendance } from '@/features/attendance/domain/sheet';
@@ -34,7 +35,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { spacing } = useTheme();
   const now = useNow();
-  const { community, profile, isOrganizer } = useCurrentMembership();
+  const { profile, isOrganizer } = useCurrentMembership();
   const trainings = useCommunityTrainings(now);
 
   const next = trainings.next;
@@ -170,7 +171,7 @@ export default function HomeScreen() {
       refreshing={trainings.isRefetching}
     >
       <View style={{ gap: spacing.xs }}>
-        <Text variant="title">{community?.name ?? 'Home'}</Text>
+        <CommunityTitle />
         {profile ? <Text color="textMuted">Hi, {profile.display_name}</Text> : null}
       </View>
       {attendanceSection}

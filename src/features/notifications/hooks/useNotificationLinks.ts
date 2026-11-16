@@ -1,16 +1,17 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router, type Href } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { isRunningInExpoGo } from 'expo';
 
+import { communityToSwitchTo } from '@/features/community/domain/activeCommunity';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { invalidateUnlessRsvpPending } from '@/features/rsvp/domain/rsvpCache';
 import { trainingKeys } from '@/features/trainings/api/keys';
 import { reportError } from '@/lib/logger';
 
 import { activityKeys } from '../api/keys';
-import { markNotificationRead } from '../api/notifications';
+import { fetchNotificationCommunityId, markNotificationRead } from '../api/notifications';
 import {
   clearLaunchTap,
   onNotificationReceived,
@@ -46,8 +47,17 @@ const pushUsable =
  */
 export function useNotificationLinks(): void {
   const queryClient = useQueryClient();
-  const { community } = useCurrentMembership();
-  const ready = community !== null;
+  const { community, communities, activeCommunityId, selectCommunity } = useCurrentMembership();
+  // A tap on a notification of another community switches first; navigation waits until it is active.
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  const ready = community !== null && (switchingTo === null || community.id === switchingTo);
+  // Latest values for the tap handler, which is registered once.
+  const latest = useRef({ communities, activeCommunityId, selectCommunity });
+  useEffect(() => {
+    latest.current = { communities, activeCommunityId, selectCommunity };
+  });
+  // Arrived: stop waiting (state adjusted during render, as in useAppGate).
+  if (switchingTo !== null && community?.id === switchingTo) setSwitchingTo(null);
   const [queue] = useState(() => createNavigationQueue(go));
 
   useEffect(() => {
@@ -64,13 +74,36 @@ export function useNotificationLinks(): void {
         reportError('push.link', new Error('Ignored a notification without a valid link.'));
         return;
       }
-      const accepted = queue.offer({ id: notificationId ?? tap.identifier, href });
-      if (accepted && notificationId !== null) {
-        // Opening it counts as having seen it.
-        markNotificationRead(notificationId)
-          .then(() => queryClient.invalidateQueries({ queryKey: activityKeys.all }))
-          .catch((error: unknown) => reportError('push.markRead', error));
+      const open = () => {
+        const accepted = queue.offer({ id: notificationId ?? tap.identifier, href });
+        if (accepted && notificationId !== null) {
+          // Opening it counts as having seen it.
+          markNotificationRead(notificationId)
+            .then(() => queryClient.invalidateQueries({ queryKey: activityKeys.all }))
+            .catch((error: unknown) => reportError('push.markRead', error));
+        }
+      };
+      if (notificationId === null) {
+        open();
+        return;
       }
+      // The payload has no community id: ask the server which community the notification is for.
+      fetchNotificationCommunityId(notificationId)
+        .then((targetId) => {
+          const { communities: mine, activeCommunityId: active, selectCommunity: select } = latest.current;
+          const target = communityToSwitchTo(targetId, mine, active);
+          if (target !== null) {
+            queue.setReady(false);
+            setSwitchingTo(target);
+            select(target);
+          }
+          open();
+        })
+        .catch((error: unknown) => {
+          // Could not tell: open it in the current community rather than lose the tap.
+          reportError('push.community', error);
+          open();
+        });
     };
 
     readLaunchTap()

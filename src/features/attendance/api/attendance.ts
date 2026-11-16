@@ -123,13 +123,17 @@ export const MY_ATTENDANCE_LIMIT = 1000;
  * for sessions that were finalized (`completed`). Rows of confirmed or
  * cancelled sessions are never history.
  */
-export async function fetchMyAttendance(userId: string): Promise<MyAttendanceItem[]> {
+export async function fetchMyAttendance(
+  communityId: string,
+  userId: string,
+): Promise<MyAttendanceItem[]> {
   const { data, error } = await getSupabase()
     .from('attendance_records')
     // The composite foreign key (session_id, community_id) is named explicitly.
     .select(
       'id, status, is_walk_in, session:training_sessions!attendance_records_session_fkey(id, title, starts_at, ends_at, timezone, location_name, status)',
     )
+    .eq('community_id', communityId)
     .eq('user_id', userId)
     .limit(MY_ATTENDANCE_LIMIT);
   if (error) throw toAppError(error);

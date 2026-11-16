@@ -35,3 +35,18 @@ export async function markAllNotificationsRead(communityId: string): Promise<num
   if (error) throw toAppError(error);
   return data;
 }
+
+/**
+ * The community a notification of mine belongs to, read from the server (the
+ * push payload only carries the link and the notification id). Null when the
+ * notification is not visible to me.
+ */
+export async function fetchNotificationCommunityId(id: string): Promise<string | null> {
+  const { data, error } = await getSupabase()
+    .from('notifications')
+    .select('community_id')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw toAppError(error);
+  return data?.community_id ?? null;
+}

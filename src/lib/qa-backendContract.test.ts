@@ -196,6 +196,9 @@ describe('QA contract: RPCs called by the app', () => {
         'get_member_statistics',
         'get_community_statistics',
         'list_member_statistics_summary',
+        'preview_creator_code',
+        'create_community_with_code',
+        'update_community',
       ]),
     );
   });

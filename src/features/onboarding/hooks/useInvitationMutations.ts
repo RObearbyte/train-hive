@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { useActiveCommunityStore } from '@/features/community/hooks/ActiveCommunityProvider';
 import { membershipKeys } from '@/features/community/hooks/useCurrentMembership';
 import type { AppError } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -20,14 +21,19 @@ export function usePreviewInvitation() {
 }
 
 /**
- * Redeems a code. On success the membership query is refetched before the
- * mutation settles, so the button stays busy until the app gate lets the user in.
+ * Redeems a code. On success the joined community becomes the active one and
+ * the membership queries are refetched before the mutation settles, so the
+ * button stays busy until the app shows the community.
  */
 export function useRedeemInvitation() {
   const queryClient = useQueryClient();
+  const { select } = useActiveCommunityStore();
   return useMutation<RedeemedInvitation, AppError, { code: string; displayName: string }>({
     mutationFn: ({ code, displayName }) => redeemInvitation(code, displayName),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: membershipKeys.all }),
+    onSuccess: async (joined) => {
+      select(joined.communityId);
+      await queryClient.invalidateQueries({ queryKey: membershipKeys.all });
+    },
     onError: (error) => reportError('onboarding.redeem', error),
   });
 }
