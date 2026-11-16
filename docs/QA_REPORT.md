@@ -779,3 +779,165 @@ Run 5 (3 days ago): cancelled, too few signed up (Ana was going).
 81. Expo Go on Android: the Statistics tab and a member's screen open without a red error; the filter and charts work.
 82. Pagination (optional, needs more rows): add 25 more finalized sessions for Ana following the script's pattern and open History: 20 rows, "Load more", then the rest; no row twice, newest first.
 83. Cleanup: `delete from public.training_sessions where community_id = (select id from public.communities where name = 'Test Pack') and title like 'Run %';` (RSVPs and attendance cascade) before using the community for real trainings.
+
+
+---
+
+## Community creation, switching and invitation message (C1/C2) (C-Q1)
+
+Scope: `supabase/migrations/20261119000100_creator_codes.sql`; `src/features/communities/`, `src/features/community/` (active community), the onboarding and `(app)/add-community/*` routes, `community-settings`, the Home switcher, the Profile entries, `useNotificationLinks`; `src/features/invitations/domain/invitationMessage.ts`, `src/lib/appLink.ts`, `InvitationCodeActions.tsx`. Reviewed against the owner's product rules and the C1 section of `docs/API_CONTRACT.md`, not against the developers' summaries.
+
+### Verdict
+
+**The authorization model and the creation flow hold; ten defects are open, none critical or high.** Nobody without a platform-issued code can create a community, an invitation code can never create one or make anybody organizer, a creator code can never join an existing community or change a role, and `update_community` follows the membership of the community it acts on, for a user who is organizer of A, member of B and removed from C (`qa-community.test.ts`). The five-community limit, the shared 5-failure limiter and the request id replay held under every attack and under parallel storms (`qa-community-concurrency.test.ts`: no deadlock, no torn row, exactly one community per request id). The generator is unbiased (chi-square over 30,000 codes, every position).
+
+Open defects, all documented as `it.fails` tests so `main` stays green and each turns red when fixed (remove `.fails` then):
+
+- **One medium on the server (Q6-1):** display names accept invisible-only text, control characters and a right-to-left override. Display names are global, so one spoofed name shows in every community the user belongs to.
+- **One medium in the app by reading (Q6-9):** a notification tap for another community can leave the tap undelivered (and deliver it later at an unrelated moment), or leave notification navigation dead for the rest of the session. Not executable here (needs the React hook on a device).
+- **Eight low:** the server's invisible-character list is incomplete for community names (Q6-2); a deleted account's still-valid token gets a raw foreign-key error (Q6-3); the invitation message turns zero-width joiners into spaces and breaks emoji and Persian names (Q6-4); "works until <date>" overstates by up to a day (Q6-5); the message tells existing users to tap a button they do not have (Q6-6); `EXPO_PUBLIC_APP_DOWNLOAD_URL` is returned raw, not normalized (Q6-7); the client zone rule is looser than the server's (Q6-8); the training screen shows organizer controls by the active community instead of the training's (Q6-10).
+
+### Defects
+
+| Id | Sev | Where | Summary | Owner |
+|---|---|---|---|---|
+| Q6-1 | medium | `20261114000200_invitations_and_onboarding.sql:45-56` (`clean_display_name`), used at `20261119000100_creator_codes.sql:290` and by `redeem_invitation` | Display name: no control / bidi / invisible handling. | backend |
+| Q6-2 | low | `20261116000100_m3_qa_fixes.sql:53-61` (`clean_required_text`) | Hand-made invisible list misses U+061C, U+E0100 and others. | backend |
+| Q6-3 | low | `20261119000100_creator_codes.sql:214, 310, 318` | A valid token of a deleted user gets a raw `23503` with table and constraint names. | backend |
+| Q6-4 | low | `invitationMessage.ts:13-19` | `U+200B..U+200F` replaced by a space: ZWJ and ZWNJ destroyed. | mobile |
+| Q6-5 | low | `invitationMessage.ts:43-48, 67` | The expiry line gives a date; the code stops at a time of day. | mobile |
+| Q6-6 | low | `invitationMessage.ts:72` | Step 2 names "Join a community"; signed in, it is "Join another community" under Profile. | mobile |
+| Q6-7 | low | `src/lib/appLink.ts:9-16` | Validates with `new URL` but returns the raw string; credentials and hidden characters pass. | mobile |
+| Q6-8 | low | `communityForm.ts:34-35` | Zone names are accepted case-insensitively on the client, the server wants exact names. | mobile |
+| Q6-9 | medium (by reading) | `useNotificationLinks.ts:52-66, 93-99` | The tap queue is switched off by hand and switched on only by a state change that may never come. | mobile |
+| Q6-10 | low | `src/app/(app)/trainings/[id].tsx:148, 203, 288` | Organizer controls follow the active community, not the training's. | mobile |
+
+**Q6-1 — display name is a spoofing channel.**
+Reproduction: `qa-community.test.ts`, "DEFECT Q6-1" (four tests). `private.clean_display_name(E'​​')` returns the two characters; the same for two U+3164, two U+2800; `'Olga' || U+202E || ' (organizer)'` keeps the override; `'Ana' || U+0007 || U+0008 || 'Runner'` keeps the controls. Probed against the real function: 6,079 of the 6,085 probed whitespace, format, control and default-ignorable code points are accepted as a display name (the community name rejects all but a few hundred, see Q6-2).
+Expected: the same rule as the community name (the contract says "as `redeem_invitation`", and `redeem_invitation` has had this gap since M1): strip control and bidi characters, reject invisible-only. Actual: the name is stored and shown in participant lists, attendance sheets and statistics of every community the user is in. An RLO inside a name reorders the text after it (for example making a member appear as "Olga (organizer)"); an invisible-only name is a blank row.
+Suggested fix: call `private.clean_required_text(p_display_name, 'display_name', 40, false)` inside `clean_display_name` (keep the 2 to 40 length and map its exception to `null`). Also a one-off `update` for existing profiles.
+Note: on the hosted database (locale `en_US.UTF-8`, not the embedded `C`) `\s` also matches NBSP, so `NBSP NBSP` is rejected there and accepted here; the invisible-only cases above are accepted in both.
+
+**Q6-2 — the invisible list is not complete.**
+Reproduction: `qa-community.test.ts`, "DEFECT Q6-2" (three tests): names made only of U+061C (Arabic letter mark), U+E0100 (variation selector supplement) or U+1D173/U+1D174 (musical format controls) are accepted. A probe over every Unicode format, space, default-ignorable and control code point found these further accepted non-combining ones: U+0600-0605, U+06DD, U+070F, U+0890-0891, U+08E2, U+2065, U+FFF0-FFFB, U+110BD, U+110CD, U+13430-1343F, U+1BCA0-1BCA3, U+E0080-E00FF and U+E01F0-E0FFF. Some of these draw a sign (U+0600 series), the others draw nothing.
+Expected: `validation_failed:name`. Actual: a community with a name that is blank for everybody. Same list is used for announcement titles.
+Suggested fix: replace the hand-made class by a test of "has no letter, number, punctuation, symbol or mark" (`[^[:alnum:][:punct:]]` is locale dependent; use an explicit allow-list check on the cleaned text, or add the ranges above).
+
+**Q6-3 — a token of a deleted user.**
+Reproduction: `qa-community.test.ts`, "DEFECT Q6-3". A JWT whose `sub` has no `auth.users` row (possible on a hosted project until the token expires) calls `preview_creator_code` or `create_community_with_code`. Expected: `{ok:false, error:'not_authenticated'}`. Actual: the raw `23503` ("insert or update on table "invitation_attempts" violates foreign key constraint "invitation_attempts_user_id_fkey""). Nothing is left behind (the last test of that group proves the rollback). The app maps it to the generic error, so the user sees nothing odd; the leak is the table and constraint names. `redeem_invitation` has the same behaviour since M1.
+Suggested fix: in the three functions, `if not exists (select 1 from auth.users where id = v_uid) then return not_authenticated`.
+
+**Q6-4 — zero-width joiners are destroyed in the message.**
+Reproduction: `qa-invitationMessage.test.ts`, "DEFECT Q6-4" (three tests). `sanitizeCommunityName('Run <man ZWJ woman ZWJ girl> Club')` returns the three emoji separated by spaces; a Persian word with ZWNJ is split by a space; a ZWSP inside "Fitness" becomes a visible space. The range `U+200B..U+200F` includes ZWJ (U+200D) and ZWNJ (U+200C), which the server keeps on purpose (`clean_required_text`).
+Suggested fix: remove only U+200B, U+200E, U+200F and the bidi ranges, keep U+200C and U+200D, and replace removed characters by nothing, not by a space.
+
+**Q6-5 — "works until 20 Nov 2026".**
+Reproduction: `qa-invitationMessage.test.ts`, "DEFECT Q6-5". The app creates codes that expire 24 hours, 7 or 30 days after creation, i.e. at that time of day. The line gives only the date (computed correctly in the community zone, 56 zone and instant pairs checked against Postgres in `qa-community-app.test.ts`), so a recipient who opens the message that afternoon is refused with "expired". Suggested fix: add the time ("until 20 Nov 2026, 11:00") or say "for 7 days".
+
+**Q6-6 — wording for someone who already has the app.**
+Reproduction: `qa-invitationMessage.test.ts`, "DEFECT Q6-6". The owner's scenario includes inviting a second community to an existing user; the message says tap "Join a community". Signed in there is no such button: Profile has "Join another community" (and the Home switcher "Join another community"). Suggested fix: one extra sentence, "Already use TrainHive? Profile, then Join another community."
+
+**Q6-7 — the download link is validated but not normalized.**
+Reproduction: `qa-invitationMessage.test.ts`, "DEFECT Q6-7". `parseAppDownloadUrl` checks with `new URL` and returns the input string: `http:example.com` and `https:/example.com` are shared as written, NEL, bidi and zero-width characters inside the link go into the message, and `https://user:secret@host/app` publishes its credentials. The value comes from a build variable, so only the owner can hit this. Suggested fix: return `url.href`, refuse `username`/`password`, and refuse any control, bidi or format character.
+The accepted and rejected forms that are right today are pinned (javascript, data, file, blob, intent, market, whitespace, empty, 5 KB link).
+
+**Q6-8 — the client zone rule is not the server's.**
+Reproduction: `qa-communities.test.ts`, "DEFECT Q6-8". `isCommunityTimeZone('europe/bucharest')` is true (the `Intl` constructor ignores case); the server answers `validation_failed:timezone`. Unreachable through the picker (it lists canonical names). Suggested fix: add `/^[A-Z]/` to the client pattern and compare against the runtime's canonical spelling.
+
+**Q6-9 — a notification of another community may never navigate (by reading).**
+`useNotificationLinks.ts:93-99`: the tap handler calls `queue.setReady(false)`, `setSwitchingTo(target)`, `select(target)`, then offers the tap. Readiness is restored only by the effect at `:63-66`, which depends on `ready`. When the target's detail query is already cached (the user was in that community earlier in the session, within the 5-minute cache), the new render has `community.id === switchingTo` at once, so `ready` stays `true` from the old render to the new one, the effect does not run, and the tap stays queued: it is delivered by the next unrelated `false -> true` change, possibly minutes later and on top of whatever the user is doing. Second case, `:53`: if the target disappears from the list before it becomes active (removed in the meantime), `community.id` never equals `switchingTo`, `ready` stays `false` for the rest of the session and no later notification navigates.
+Evidence: `qa-communitySwitchLinks.test.ts` shows the queue half (a tap held after `setReady(false)` waits for an explicit `setReady(true)` and later taps replace it); the hook itself cannot be rendered in the Node test environment. Suggested fix: derive readiness without the manual `setReady(false)` (it is already false while `switchingTo !== community.id`), call `queue.setReady(ready)` from the same effect after `setSwitchingTo`, and clear `switchingTo` when the target is no longer in `communities`.
+
+**Q6-10 — organizer controls by the wrong community.**
+`trainings/[id].tsx:148, 203, 288` read `isOrganizer` of the ACTIVE community. A training of another community can be on screen: a notification tap whose community lookup failed or carried no notification id, a training screen still in the stack when a notification switched communities, a hand-built link. Organizer of A and member of B opening B's training sees "Record attendance" and Edit / Cancel (the server answers `forbidden`); organizer of B and member of A opening B's training sees none. Source check: `qa-communitySwitchLinks.test.ts`, "DEFECT Q6-10". Fix: `session.community_id === community?.id && isOrganizer` (or a membership lookup by the session's community).
+
+### Observations (no defect filed)
+
+- **O1 Guess budget.** The limiter is per account: five wrong codes per 15 minutes, and a fresh anonymous account starts with a clean count (`qa-community.test.ts`: six accounts, 30 guesses, all answered; the sixth guess of each is refused, and a limited account cannot confirm even the real code). There is no per-device or per-network limit in the database. Code space: 30 symbols, 8 characters, 6.6e11 codes (39 bits). Even a million guesses a day (about 200,000 accounts) hits one live code with probability about 1.5e-6 per day; the realistic limit is Supabase's anonymous sign-in rate limit and CAPTCHA (hosted settings, not verified). Failed-attempt rows are only pruned per user after a day, so a rotating attacker grows `invitation_attempts` without bound; a scheduled delete of rows older than a day would fix it.
+- **O2 Replay semantics.** A repeated request id returns the first result and ignores every other argument, including invalid ones; a replay never changes the name, the display name or consumes a use; another user's request id is never a replay and the first user's result is never returned (pinned in `qa-community.test.ts`). A replay after the creator lost the membership names that community anyway (the app then falls back to another community through the list).
+- **O3 Five-community limit.** Counted from creator redemptions: leaving, removal and demotion do not free a slot; only the platform owner deleting a community does (the redemption cascades). Concurrent attempts stop exactly at 5 (developer test) and a refused attempt costs the code nothing.
+- **O4 Display name is global** (decision D1): creating or joining a second community renames the user for the members of the first (`qa-community.test.ts`, last describe).
+- **O5 Look-alike names.** Community names are not unique: anyone with a creator code can name a community "Beta Pack" like an existing one. Separate communities, so harmless to B's data; confusing in an invitation message (name only).
+- **O6 Settings sends both fields.** `update_community` takes name and zone together and has no version check, so an organizer who only renames, from a form opened before another organizer changed the zone, writes the old zone back. Same family as Q2-11.
+- **O7 Home title.** `CommunitySwitcher.tsx:19` shows "Home" while the detail query of a community that was not cached loads (the name is known from the list); organizer-only sections also flicker to the member view for that moment.
+- **O8 Profile "Your communities"** lists no community, only the two entries to add one; with several communities the switcher exists only on Home. Consider listing them there.
+- **O9 Silent switch after removal.** Removed from the active community (realtime or refetch), the app moves to the next community without telling the user.
+- **O10 Announcements of the other communities.** The announcement channel follows the active community only; push notifications for the others still arrive (user-wide channel), and the catch-up refetch on every (re)subscription covers the gap on switching.
+- **O11 Accessibility.** After "Copy message" the app both sets a polite live region and calls `announceForAccessibility` (`InvitationCodeActions.tsx`), which TalkBack on Android may read twice. The switcher rows carry "current community" in the label rather than a selected state; the sheet uses `accessibilityViewIsModal` (iOS only), which is harmless because an Android `Modal` is its own window.
+- **O12 Hosted locale.** The embedded database uses locale `C`; regex classes (`\s`) and `btrim` behave differently under `en_US.UTF-8`. Every whitespace and invisible-character rule was tested here only; see Q6-1's note.
+- **O13 Credentials in the SQL editor path.** The admin functions work as `postgres` (tested as the superuser of the embedded database, `created_by` null). On the hosted project the role is not a superuser; its grants were not exercised (cannot verify).
+
+### Decisions needing the owner's confirmation
+
+| # | Decision shipped | Question |
+|---|---|---|
+| D1 | One display name per person for every community. | Keep (simple), or allow a name per community later? Until then Q6-1 matters more, because one spoofed name is shown everywhere. |
+| D2 | Community names are not unique. | Accept look-alike names (O5), or require unique names per creator? |
+| D3 | Every member sees "Create a community" (Profile, switcher) and learns that creator codes exist. | Keep visible for everyone, or show it only after a code has been entered somewhere? |
+| D4 | The message promises "works until <date>". | Show the time (Q6-5)? |
+| D5 | Guess budget is per account (O1). | Add a per-day cap per code, or shorten the default 14 days? Risk is negligible at 39 bits; this is a policy choice. |
+
+### Evidence map
+
+| Requirement | Evidence |
+|---|---|
+| Nobody creates a community without a platform-issued creator code | `creator-codes.test.ts`; `qa-community.test.ts` (table writes denied to user, anon and service_role; admin functions closed; minting attempts by a user, organizer and anon; privilege matrix incl. PUBLIC) |
+| An invitation code never creates a community or an organizer; a creator code never joins | `qa-community.test.ts` "a creator code never joins an existing community ...", organizer invitation used as creator code in two spellings |
+| Organizers edit name and zone, only for their own community | `qa-community.test.ts` update_community matrix (member of B, removed from C, organizer of another community, outsider, anon, unknown id, demotion); `qa-community-concurrency.test.ts` (rename storm with trainings, joins, removals, statistics; open rename does not block joins; removal wins) |
+| Several communities, switching | `creator-codes-multi-community.test.ts`; `qa-community-app.test.ts` (list vs table read, parser, switcher view model, RSVP map cannot mix); `qa-communities.test.ts` (resolution, stored ids, gate matrix); cache keys: developer `activeCommunity.test.ts` |
+| Request id semantics, limiter, limit | `qa-community.test.ts` (replay matrix, rotating accounts, success does not reset, window, limit bypasses); `qa-community-concurrency.test.ts` (parallel retries with different arguments, 10 accounts on a 2-use code, guess storm) |
+| Validation | `qa-community.test.ts` (23 invisible characters alone, repeated and mixed; ZWJ, RTL, accents, 80 and 40 code point edges, zone matrix of 37 names, 1 MB inputs); `qa-community-app.test.ts` (every real server answer mapped to a friendly place; client vs server on invisible names; picker zones against the server's list and pattern) |
+| Invitation message | `qa-invitationMessage.test.ts` (2000 random names keep four lines, 9 wording combinations x 2 link states, 11 zone / DST cases, extreme dates, link forms); `qa-community-app.test.ts` (dates computed by Postgres for 56 instant / zone pairs; message from a real row) |
+| Hostile notification payload | `qa-communitySwitchLinks.test.ts` (about 40 classic attacks, 3000 random payloads, prototype tricks; switching only to communities of the user is in `qa-communities.test.ts`) |
+
+### What was run (C-Q1)
+
+Windows, embedded Postgres, 2026-11-16, one suite at a time:
+
+- `npm test` -> `Test Files  99 passed (99)`, `Tests  1923 passed | 17 expected fail (1940)` (314 s). The 17 expected failures are the Q6 defects above (9 + 1 + 6 + 1); earlier milestones have none left.
+- `npm run typecheck` -> exit 0, no output.
+- `npm run lint` -> exit 0.
+- `npx expo export --platform web` -> `Exported: dist`, exit 0 (the metro cache was not corrupt).
+- `npx expo-doctor` -> `20/20 checks passed. No issues detected!`
+- Not run: Android bundle, a device, hosted Supabase, Deno. Each new suite was also run alone first (qa-community 27 s, concurrency 10 s, app 13 s).
+
+### Test inventory (C-Q1)
+
+| File | Tests | Covers |
+|---|---|---|
+| `supabase/tests/qa-community.test.ts` | 37 (9 expected fail) | authorization matrix, privileges, replay semantics, limiter, generator, limit, validation fuzz, global display name, ghost token |
+| `supabase/tests/qa-community-concurrency.test.ts` | 8 | rename storm, lock behaviour, parallel retries and races |
+| `supabase/tests/qa-community-app.test.ts` | 8 | app logic against real answers: errors, zones, message dates, list, RSVP map |
+| `src/features/communities/domain/qa-communities.test.ts` | 25 (1 expected fail) | request id tracker, form rules, zones, search, switcher, resolution, gate matrix |
+| `src/features/invitations/domain/qa-invitationMessage.test.ts` | 26 (6 expected fail) | message shape fuzz, wording, dates, name sanitizing, link validation |
+| `src/features/notifications/domain/qa-communitySwitchLinks.test.ts` | 8 (1 expected fail) | hostile payloads, queue mechanism, organizer-rights source check |
+
+### Not verifiable here
+
+1. Anything on a device: Expo Go on Android, the Modal sheets (switcher, zone picker) and their focus and back-button behaviour, TalkBack reading of the switcher rows and the copy confirmation, largest font, dark theme, `Share.share`, `expo-clipboard` on Android 13+ (which shows its own toast).
+2. The React hooks and screens (the Node environment cannot render React Native): the gate, `useNotificationLinks` (Q6-9), the double-submit guard, the keyboard handling of the create form.
+3. Hermes: `Intl.supportedValuesOf`, `Intl.DateTimeFormat` with `hourCycle`, the `URL` polyfill, and its zone list (the tests use Node's ICU); whether Hermes lists `Asia/Kolkata` or `Asia/Calcutta`.
+4. The hosted database: the `en_US.UTF-8` locale (Q6-1 note, O12), the older tzdata (the app's list may name zones the hosted Postgres does not know yet), grants of the `postgres` role, PostgREST's rendering of the new functions, the real size of Supabase's anonymous sign-in rate limit.
+5. EAS builds: that `EXPO_PUBLIC_APP_DOWNLOAD_URL` is set in the build profile (it is in `.env.example` only; not mentioned in the setup guide).
+6. Push: the real payload of a notification of another community.
+
+### Manual test script additions (continue the numbering of the Milestone 4 script)
+
+Setup: the hosted project (migrations through `20261119000100` pushed). Two phones or one phone and the Expo Go account switcher: **Olga** (will create a community), **Bogdan** (a second user). A third user **Cora** has only an invitation code. Open the Supabase SQL editor as the project owner.
+
+84. SQL editor: `select public.admin_create_creator_code('for Olga', 14, 1);`. Expect one row with an 8-character `code`, `expires_at` 14 days ahead, `max_uses` 1. Run it again with `-1` as the days: expect the error `validation_failed:expires_in_days`. Check that a user cannot do it: the app has no such button; `select * from public.community_creator_codes;` works only here.
+85. **Olga**, fresh install (or cleared data): Welcome screen. Expect "Join a community" and the smaller "Create a community" with the line about creator codes.
+86. Olga: Create a community, type the code in lower case with a dash in the middle and a space, tap Check code. Expect "This creator code is valid." and Continue. Try a wrong code first: the field shows "That creator code is not valid"; after five wrong codes in a row the banner says to wait 15 minutes (the next valid code is refused too).
+87. Olga: Continue. Expect the name field, the time zone card (your zone preselected with the local time shown), and "What should your pack call you?". Leave the name empty and tap Create: the field message appears. Type a name of 90 characters: the message about 80 characters. Open the time zone card, search "buch", pick Bucharest; the card shows "Right now it is HH:MM (UTC+02:00 or +03:00) there" and the time matches a clock in Bucharest. Search "zzzz": the empty state.
+88. Olga: Create community. Expect the button busy, then Home with the new community name as the title (plain text, no chevron), empty trainings, and Profile with Community settings and Invitations. In the SQL editor: the code now shows `use_count` 1; one communities row, one organizer membership.
+89. Olga: airplane mode, fill the form again with another code (issue a new one), tap Create. Expect the banner with "Tap Create community again to retry: it will not create a duplicate". Turn the network on, tap Create again without touching the fields: one community only (check the table), Home opens. Repeat, but edit the name before the retry: a second community is made (this is by design, a new submission).
+90. Olga: Profile, Community settings: change the name to one with an emoji and the zone to another one; Save. Expect "Saved."; Home title and Profile show the new values. In the SQL editor change nothing; check the trainings created earlier keep their own zone. Statistics (as organizer) now bucket by the new zone.
+91. Bogdan: install, Welcome, Create a community, use a creator code that was already used: "This creator code has already been used." with "Use another code". Revoke a fresh code in the SQL editor (`select public.admin_revoke_creator_code('<code>');`), then use it: "no longer active". A member of Olga's community (Cora) tries "Create a community" without any code: there is nothing to type, so she cannot continue; typing an invitation code of Olga's community in the creator field gives "not valid".
+92. Olga: Invitations, create a code (7 days, 3 uses). Expect Copy message, Share and Copy code only. Tap Copy message and paste into a notes app: four lines, her community name, `ABCD-EFGH`, the expiry date and "works for up to 3 people", and the download link when `EXPO_PUBLIC_APP_DOWNLOAD_URL` was set in the build (otherwise "Ask me where to get the app"). Tap Share: the system share sheet opens with the same text; cancel it: no error banner. Note Q6-5 and Q6-6 while reading it.
+93. Bogdan (new install): Join a community, enter the code, pick a name, join. Then Olga makes a **second** community the same way (new creator code) and invites Bogdan to it: Bogdan, Profile, Join another community, enters the code: the screen offers "Join as <his name>" (the name is shared across communities) and Use a different name. Join.
+94. Bogdan: Home. Expect the community name with a chevron. Tap it: a sheet "Your communities" lists both with role and the local time of each zone, the current one checked. Pick the other: Home, Trainings, Activity, Statistics and Profile all show the other community's data at once, and nothing of the first. Kill the app and reopen: the last choice is remembered. Sign in on a second device is not possible (anonymous accounts), so the "two accounts on one device" case is covered by the unit tests only.
+95. Olga creates a training in each community; Bogdan answers going in one and not going in the other. Switch back and forth: each list shows only its own trainings and his own answers (no answer carried over). Olga removes Bogdan from the second community in the SQL editor (`update public.memberships set status='removed' ...`): on his phone, after pull to refresh or a minute, the switcher disappears and he is in the first community without a message (O9).
+96. Notification across communities: community 1 active on Bogdan's phone; Olga posts an announcement in community 2 (he is a member again). Tap the notification: the app switches to community 2 and opens the announcement. Do it twice in a row after having visited community 2 earlier in the same session (Q6-9: the second tap may do nothing). Then force-close the app and tap a notification of the other community from the lock screen.
+97. Display names (Q6-1): in the create form or the join screen enter a name made of two zero-width spaces (paste U+200B twice) or one containing a right-to-left override. Expected after the fix: refused or cleaned. Today: accepted and shown in participant lists.
+98. Expo Go on Android: steps 85 to 96 produce no red screen; the zone picker opens and closes with the back button; the switcher sheet closes with the back button and with a tap outside; TalkBack reads each switcher row as "name, role, zone and time, current community".
+99. Cleanup: `delete from public.communities where name in (...)` for the test communities, and `update public.community_creator_codes set revoked_at = now() where revoked_at is null;` for unused codes.
