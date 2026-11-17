@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1041152760151",
+    "project_id": "trainhive-8570d",
+    "storage_bucket": "trainhive-8570d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1041152760151:android:c0580f20e034ad2d468612",
+        "android_client_info": {
+          "package_name": "com.robearbyte.trainhive"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvgCbp_tFTLy3gBkIx-R_paS6X-aUMsBw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
