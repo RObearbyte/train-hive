@@ -7,3 +7,7 @@ Sports community management app: Expo (React Native, SDK 58) + Supabase. See `AG
 - All mutations are Postgres RPCs; tables are select-only under RLS. Migrations in `supabase/migrations/` are the source of truth.
 - Single developer: commit to `main` and push after each completed task; update `docs/PROGRESS.md` in the same commit.
 - Node on this machine: `C:\Program Files\nodejs` (may be missing from PATH in a fresh shell).
+
+## Reminders for the assistant (owner's standing requests)
+
+- **Before going to production** (when the owner talks about launching, publishing to the Play Store, inviting real members, or building a production/release build): remind them to re-check the legal details used in the privacy notice and terms — controller name, postal address and privacy contact email (`EXPO_PUBLIC_CONTROLLER_NAME`, `EXPO_PUBLIC_CONTROLLER_ADDRESS`, `EXPO_PUBLIC_PRIVACY_EMAIL`; stored in the gitignored `.env.local`, as EAS environment variables for Android builds, and in the web build environment). They are shown publicly in the app. Suggest a dedicated privacy email and a non-home address if they haven't changed them, and recommend a lawyer review of the legal texts. See `docs/GO_LIVE.md` phase 6.

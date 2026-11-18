@@ -91,6 +91,7 @@ TrainHive stores a display name, attendance and participation records, push toke
 
 | # | Step | Owner |
 |---|---|---|
+| 35a | **Re-check the legal details before launch** (controller name, postal address, privacy email: `EXPO_PUBLIC_CONTROLLER_NAME`, `EXPO_PUBLIC_CONTROLLER_ADDRESS`, `EXPO_PUBLIC_PRIVACY_EMAIL`). They appear publicly in the app and on the web policy pages; set them in the web build environment and as EAS variables for every Android build profile you ship. Consider a dedicated privacy email and a non-home address. | Owner |
 | 36 | Write a **privacy policy** (what is stored, why, how long, who can see it, Supabase as processor, how to ask for deletion) and host it at a public URL. I can draft it. | Owner + Claude |
 | 37 | Define the **data deletion process**: how a member asks, and the SQL/RPC you run to delete their account (an in-app "Delete my account" action is a sensible addition; I can build it). Google Play requires an account-deletion path for apps with accounts. | Owner + Claude |
 | 38 | Short **terms of use** (organizers are responsible for their communities' content). | Owner |
