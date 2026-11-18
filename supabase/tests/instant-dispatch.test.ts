@@ -257,6 +257,13 @@ describe('instant dispatch: with stubbed pg_net and Vault', () => {
       expect(all).not.toContain(URL_BASE);
       // The failed attempt did not consume the debounce slot: the next insert tries again.
       expect(await pingIsNever(s.client)).toBe(true);
+      // The failing step is recorded for the owner (scrubbed of URL and secret) so a skip can be diagnosed.
+      const recorded = await s.client.query<{ last_error: string | null }>('select last_error from private.dispatch_ping');
+      const lastError = recorded.rows[0]?.last_error ?? '';
+      expect(lastError).toContain('http_post');
+      expect(lastError).toContain('P0001');
+      expect(lastError).not.toContain(SECRET);
+      expect(lastError).not.toContain(URL_BASE);
       await s.client.query('update net.mode set fail = false');
       await s.asUser(organizerId, CREATE_ANNOUNCEMENT, [communityId, 'Again', 'b']);
       expect(await s.calls()).toHaveLength(1);
