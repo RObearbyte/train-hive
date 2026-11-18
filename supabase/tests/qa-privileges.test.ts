@@ -180,9 +180,15 @@ describe('QA function privileges', () => {
   });
 
   it('no function builds dynamic SQL', async () => {
+    // The one exception: the instant-dispatch trigger function reaches pg_net and Vault only
+    // through dynamic SQL so that it compiles (and is a no-op) where those do not exist. Its
+    // dynamic statements are constant text with bind parameters (pinned in
+    // instant-dispatch.test.ts); it is private and not executable by any API role.
+    const ALLOWED_DYNAMIC = ['private.trigger_instant_dispatch'];
     const dynamic = (await functions())
       .filter((f) => /\bexecute\b/i.test(f.source))
-      .map((f) => f.name);
+      .map((f) => `${f.schema}.${f.name}`)
+      .filter((name) => !ALLOWED_DYNAMIC.includes(name));
     expect(dynamic).toEqual([]);
   });
 

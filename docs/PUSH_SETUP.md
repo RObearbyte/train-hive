@@ -2,7 +2,7 @@
 
 **Status: nothing in this guide has been verified against the real Expo service, Firebase, a Supabase project's pg_net/Vault, or a physical device.** The delivery code is tested against a fake Expo server and the real database functions only. Steps and menu names were taken from the current Expo and Supabase CLI documentation (checked 2026-11-15); if a screen looks different, trust the screen and tell the lead.
 
-How it works: when something notifiable happens, the database queues a job. Every minute the database calls the Edge Function `dispatch-notifications`, which claims jobs, sends them to the Expo Push Service (`https://exp.host/--/api/v2/push/send`), and Expo hands them to Google's FCM, which wakes the phone.
+How it works: when something notifiable happens, the database queues a job and, as soon as the transaction commits, calls the Edge Function `dispatch-notifications` (migration `20261121000100_instant_dispatch.sql`, see "Instant delivery" below). A cron job also calls it every minute as the safety net. The function claims jobs, sends them to the Expo Push Service (`https://exp.host/--/api/v2/push/send`), and Expo hands them to Google's FCM, which wakes the phone.
 
 One run keeps claiming batches of 100 jobs for up to about 40 seconds (or until the queue is empty), so a large announcement goes out in one run. Each batch is sent in requests of at most 100 messages, and the jobs of a request are marked done right after Expo answers it. If Expo rejects a whole request (for example because one token belongs to another Expo project), the dispatcher splits the request in halves until only the offending message fails; that token is marked invalid. A run makes at most 60 requests and starts none after 100 seconds; anything left is retried by the next run.
 
@@ -86,6 +86,20 @@ select jobname, schedule, active from cron.job where jobname = 'trainhive_dispat
 select status, return_message, start_time from cron.job_run_details order by start_time desc limit 5;
 select id, status_code, error_msg, created from net._http_response order by created desc limit 5;
 ```
+
+### Instant delivery (trigger) and the cron safety net
+
+Queuing a notification fires a statement-level trigger on `notification_delivery_jobs` that calls the same Edge Function through `net.http_post` (same URL, `x-dispatch-secret` header and 120 s timeout, both secrets read from Vault). pg_net sends the request after the transaction commits, so a rolled-back action sends nothing and the app never waits for it. One fan-out (an announcement to 200 members) causes one call; at most one immediate call is made every 2 seconds, and a failure never breaks the action that created the notification (the trigger only logs a warning with the SQLSTATE). Jobs scheduled for later, skipped or failed calls and anything inside the 2-second window are picked up by the cron job within a minute. Overlapping runs are safe.
+
+Nothing new is needed from you: it uses the same pg_net extension and the same Vault entries. Without them the trigger does nothing. Apply the migration with `npx supabase@latest db push --remote`.
+
+Check it: create an announcement in the app, then run
+
+```sql
+select id, status_code, error_msg, created from net._http_response order by created desc limit 10;
+```
+
+A new row should appear within a second or two of creating the announcement, not only on the full minute. A Postgres log warning `instant dispatch skipped (sqlstate ...)` means the immediate call failed and the cron job will deliver instead.
 
 ## 7. Test by hand
 

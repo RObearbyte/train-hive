@@ -518,3 +518,7 @@ Migration `20261120000100_c_qa_fixes.sql`. Tests: `supabase/tests/c-qa-fixes.tes
 - Example: `update_community('…', 'Alpha Pack', 'Europe/Berlin', '2026-11-20T10:00:00.123+00:00')` → the updated row with a newer `updated_at`; the same call again → `stale_data`.
 
 **Push payload.** The Expo message `data` is now `{ deepLink, notificationId, kind, communityId }`; `communityId` is the notification's community (`claim_notification_jobs` already returned `community_id`; no migration change). The app can switch to that community on a tap without looking it up.
+
+### Milestone 3, instant dispatch (append-only)
+
+Migration `20261121000100_instant_dispatch.sql`: a statement-level AFTER INSERT trigger on `notification_delivery_jobs` (`private.trigger_instant_dispatch`, private, security definer, no API grants) calls `dispatch-notifications` through `net.http_post` (asynchronous, sent after commit) when at least one inserted job is due (`next_attempt_at <= now()`). Debounced to one call per 2 s through `private.dispatch_ping` (`for update skip locked`, taken last, never waits). It swallows all errors (warning with SQLSTATE only) and is a no-op without pg_net, Vault or either secret. The cron job remains the safety net. No RPC, signature or client behaviour changed; push arrives typically within seconds instead of up to a minute.
