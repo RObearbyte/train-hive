@@ -125,7 +125,8 @@ describe('instant dispatch: trigger definition', () => {
        join pg_namespace n on n.oid = c.relnamespace
        join pg_proc p on p.oid = t.tgfoid
        join pg_namespace pn on pn.oid = p.pronamespace
-       where not t.tgisinternal and c.relname = 'notification_delivery_jobs'`,
+       where not t.tgisinternal and c.relname = 'notification_delivery_jobs'
+         and t.tgname = 'notification_delivery_jobs_instant_dispatch'`,
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
