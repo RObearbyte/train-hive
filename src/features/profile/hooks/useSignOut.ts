@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/features/community/hooks/SessionProvider';
 import { setPendingJoinCode } from '@/features/onboarding/domain/pendingJoin';
+import { removeExportedFiles } from '@/features/dataRights/api/removeExports';
 import { unregisterThisDevice } from '@/features/notifications/api/unregisterDevice';
 import { authStorage } from '@/lib/authStorage';
 import { toAppError, type AppError } from '@/lib/errors';
@@ -30,6 +31,7 @@ export function useSignOut() {
             if (error) throw toAppError(error);
           },
           removeStored: (key) => authStorage.removeItem(key),
+          removeExportedFiles,
           clearQueryCache: () => queryClient.clear(),
           resetInMemoryState: () => setPendingJoinCode(null),
           report: reportError,

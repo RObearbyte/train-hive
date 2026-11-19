@@ -7,6 +7,7 @@ import { buildLegalConfig } from '../config';
 import {
   BUNDLED_TERMS_PRIVACY_VERSION,
   DRAFT_BANNER_TEXT,
+  FEATURES,
   LEGAL_DOC_KINDS,
   LEGAL_LAST_UPDATED,
   LEGAL_REVIEWED,
@@ -16,6 +17,7 @@ import {
   SUPERVISORY_AUTHORITY,
   TERMS_VERSION,
   parseLegalDocKind,
+  type LegalFeatures,
 } from '../constants';
 import { buildLegalDocument, type LegalDocument } from './index';
 
@@ -183,9 +185,7 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
     ['anonymous accounts', /Anonymous accounts/],
     ['no analytics', /no analytics, advertising or tracking/i],
     ['web local storage', /local storage/],
-    ['groups of 5', /groups of 5 or more/],
     ['withdrawing consent', /withdraw a consent at any time/],
-    ['legal basis for consent', /explicit consent/],
     ['security measures', /row-level security/],
   ])('mentions %s', (_name, pattern) => {
     expect(text).toMatch(pattern);
@@ -202,7 +202,8 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
 
   it('says what deletion keeps anonymously and what blocks it', () => {
     expect(text).toMatch(/Attendance counts and the attendance change history stay without your name/);
-    expect(text).toMatch(/"Former member"/);
+    expect(text).toMatch(/no longer linked to you/);
+    expect(text).not.toMatch(/Former member/);
     expect(text).toMatch(/only organizer of a community that still has other members/);
     expect(text).toMatch(/deleted together with your account/);
   });
@@ -224,10 +225,91 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
       /Ending your use/,
       /Delete my account/,
       /leave a single community/,
-      /cannot rejoin with an invitation code/,
+      /cannot rejoin with an invitation code: removal is final/,
       /law of Romania/,
     ]) {
       expect(terms).toMatch(pattern);
     }
+  });
+});
+
+const OFF: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
+const ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
+const SINGLE: [keyof LegalFeatures, RegExp][] = [
+  ['demographics', /birth year|gender|groups of 5/i],
+  ['emergencyContact', /emergency contact|T-shirt/i],
+  ['workoutLogs', /workout/i],
+  ['eventPosts', /event discussions|replies/i],
+];
+
+describe('later-phase features appear in the texts only when their flag is on', () => {
+  it('ships with every flag off', () => {
+    expect(FEATURES).toEqual(OFF);
+  });
+
+  it.each(LEGAL_DOC_KINDS)('%s: with every flag off, no later-phase feature is mentioned', (kind) => {
+    const text = textOf(buildLegalDocument(kind, FAKE, OFF));
+    for (const [, pattern] of SINGLE) expect(text).not.toMatch(pattern);
+    expect(text).not.toMatch(/explicit consent/);
+    expect(text).not.toMatch(/special-category/);
+  });
+
+  it.each(LEGAL_DOC_KINDS)('%s: the default is the shipped state (all off)', (kind) => {
+    expect(textOf(buildLegalDocument(kind, FAKE))).toBe(textOf(buildLegalDocument(kind, FAKE, OFF)));
+  });
+
+  it('privacy: each flag adds its own text and nothing of the others', () => {
+    for (const [flag, pattern] of SINGLE) {
+      const text = textOf(buildLegalDocument('privacy', FAKE, { ...OFF, [flag]: true }));
+      expect(text, flag).toMatch(pattern);
+      for (const [other, otherPattern] of SINGLE) {
+        if (other === flag) continue;
+        expect(text, flag + ' must not bring ' + other).not.toMatch(otherPattern);
+      }
+    }
+  });
+
+  it.each(LEGAL_DOC_KINDS)('%s: with every flag on, all of it is described and the 5-person rule is stated', (kind) => {
+    const text = textOf(buildLegalDocument(kind, FAKE, ON));
+    if (kind === 'privacy') {
+      expect(text).toMatch(/groups of 5 or more/);
+      expect(text).toMatch(/explicit consent/);
+      expect(text).toMatch(/Workout logs/);
+      expect(text).toMatch(/Emergency contact and T-shirt size/);
+      expect(text).toMatch(/Birth year and gender/);
+    }
+    expect(text).toMatch(/event discussions|replies/);
+  });
+
+  it.each(LEGAL_DOC_KINDS)('%s: every flag combination is coherent (no empty blocks, no leftovers)', (kind) => {
+    const keys = Object.keys(OFF) as (keyof LegalFeatures)[];
+    for (let mask = 0; mask < 1 << keys.length; mask += 1) {
+      const features = Object.fromEntries(keys.map((key, i) => [key, (mask & (1 << i)) !== 0])) as LegalFeatures;
+      const doc = buildLegalDocument(kind, FAKE, features);
+      const text = textOf(doc);
+      expect(text, String(mask)).not.toMatch(/undefined|\[object|\bNaN\b|\bnull\b|\bfalse\b|\btrue\b/);
+      for (const section of doc.sections) {
+        for (const block of section.blocks) {
+          if (block.type === 'list') expect(block.items.length).toBeGreaterThan(0);
+          if (block.type === 'facts') expect(block.rows.length).toBeGreaterThan(0);
+        }
+      }
+      if (kind === 'privacy') {
+        const anyOptional = features.demographics || features.emergencyContact || features.workoutLogs;
+        expect(/Each optional consent has its own switch/.test(text), String(mask)).toBe(anyOptional);
+      }
+    }
+  });
+
+  it('the removal rule is stated the same way in both documents', () => {
+    const privacy = textOf(buildLegalDocument('privacy', FAKE));
+    const terms = textOf(buildLegalDocument('terms', FAKE));
+    expect(privacy).toMatch(/Removal is final for that account/);
+    expect(terms).toMatch(/cannot rejoin with an invitation code: removal is final/);
+    expect(terms + privacy).not.toMatch(/invite them again/);
+  });
+
+  it('push device identifiers are described as removed when the device stops working', () => {
+    expect(textOf(buildLegalDocument('privacy', FAKE))).toMatch(/when a device stops working, within 30 days/);
   });
 });

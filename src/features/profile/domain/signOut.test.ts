@@ -22,6 +22,9 @@ function recorder(overrides: Partial<SignOutEffects> = {}) {
     removeStored: async (key) => {
       calls.push(`remove:${key}`);
     },
+    removeExportedFiles: async () => {
+      calls.push('removeExportedFiles');
+    },
     clearQueryCache: () => {
       calls.push('clearQueryCache');
     },
@@ -71,6 +74,7 @@ describe('runSignOut', () => {
       `remove:${ACCEPTANCE_STORAGE_KEY}`,
       `remove:${PUSH_PROMPT_DISMISSED_KEY}`,
       `remove:${activeCommunityStorageKey(USER)}`,
+      'removeExportedFiles',
       'clearQueryCache',
       'resetInMemoryState',
     ]);
@@ -114,6 +118,28 @@ describe('runSignOut', () => {
     expect(reported).toEqual(['signOut.removeStored']);
     expect(calls).toContain(`remove:${ACCEPTANCE_STORAGE_KEY}`);
     expect(calls.slice(-2)).toEqual(['clearQueryCache', 'resetInMemoryState']);
+  });
+
+  it('a failing export-file removal is counted and reported, and never blocks the rest or the sign-out', async () => {
+    const { effects, calls, reported } = recorder({
+      removeExportedFiles: async () => {
+        throw new Error('cache not readable');
+      },
+    });
+    const result = await runSignOut(effects, INPUT);
+    expect(result).toEqual({ ok: true, warnings: 1 });
+    expect(reported).toEqual(['signOut.removeExportedFiles']);
+    expect(calls.slice(-2)).toEqual(['clearQueryCache', 'resetInMemoryState']);
+  });
+
+  it('a failing sign-out leaves the exported file alone (the person is still signed in)', async () => {
+    const { effects, calls } = recorder({
+      signOut: async () => {
+        throw new Error('offline');
+      },
+    });
+    await runSignOut(effects, INPUT);
+    expect(calls).not.toContain('removeExportedFiles');
   });
 
   it('a throwing cache or memory reset does not stop the other one', async () => {

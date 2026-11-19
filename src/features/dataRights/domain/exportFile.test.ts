@@ -8,7 +8,10 @@ import {
   exportFileName,
   exportSuccessMessage,
   exportTruncatedWarning,
+  EXPORT_FILE_PATTERN,
   parseExport,
+  removeExportFiles,
+  type ExportFolderEntry,
   serializeExport,
   summarizeExport,
 } from './exportFile';
@@ -118,5 +121,49 @@ describe('exportErrorMessage', () => {
     expect(exportErrorMessage(new Error('Network request failed'))).toMatch(/no connection/i);
     expect(exportErrorMessage(raised('not_authenticated'))).toMatch(/session has ended/i);
     expect(exportErrorMessage(new Error('boom'))).toMatch(/something went wrong/i);
+  });
+});
+
+describe('removing exported files from a folder', () => {
+  function folder(names: string[], failing: string[] = []) {
+    const deleted: string[] = [];
+    const entries: ExportFolderEntry[] = names.map((name) => ({
+      name,
+      isFile: !name.endsWith('/'),
+      delete: () => {
+        if (failing.includes(name)) throw new Error('locked');
+        deleted.push(name);
+      },
+    }));
+    return { entries, deleted };
+  }
+
+  it('matches the dated and the dateless export name, and nothing else', () => {
+    expect(EXPORT_FILE_PATTERN.test(exportFileName('2026-11-20T08:15:00Z'))).toBe(true);
+    expect(EXPORT_FILE_PATTERN.test(exportFileName(null))).toBe(true);
+    for (const other of ['trainhive-data.json.bak', 'my-trainhive-data.json', 'photo.jpg', 'trainhive-data-x.txt']) {
+      expect(EXPORT_FILE_PATTERN.test(other), other).toBe(false);
+    }
+  });
+
+  it('deletes only export files, and no folder', () => {
+    const { entries, deleted } = folder(['trainhive-data-2026-11-20.json', 'trainhive-data.json', 'other.json', 'trainhive-data-dir.json/']);
+    expect(removeExportFiles(() => entries)).toEqual({ removed: 2, failed: 0 });
+    expect(deleted).toEqual(['trainhive-data-2026-11-20.json', 'trainhive-data.json']);
+  });
+
+  it('one file that cannot be removed is counted and the others still go', () => {
+    const { entries, deleted } = folder(['trainhive-data-a.json', 'trainhive-data-b.json'], ['trainhive-data-a.json']);
+    expect(removeExportFiles(() => entries)).toEqual({ removed: 1, failed: 1 });
+    expect(deleted).toEqual(['trainhive-data-b.json']);
+  });
+
+  it('does nothing for an empty folder and lets a failing listing surface', () => {
+    expect(removeExportFiles(() => [])).toEqual({ removed: 0, failed: 0 });
+    expect(() =>
+      removeExportFiles(() => {
+        throw new Error('no access');
+      }),
+    ).toThrow('no access');
   });
 });

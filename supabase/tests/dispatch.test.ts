@@ -9,7 +9,7 @@ import {
   type ExpoMessage,
   type FetchLike,
 } from '../functions/dispatch-notifications/dispatch';
-import { admin, asService, asUser, closeDb, createPack, createTraining, resetData, rpc, rpcRow } from './helpers';
+import { admin, asService, asUser, closeDb, createPack, createTraining, grantConsents, resetData, rpc, rpcRow } from './helpers';
 import { claimJobs, createAnnouncement, expoToken, jobs, registerToken } from './notifications-helpers';
 
 beforeEach(resetData);
@@ -94,6 +94,8 @@ async function queued(memberCount: number) {
 
 async function addTokens(userId: string, count: number, prefix: string): Promise<string[]> {
   const tokens = Array.from({ length: count }, (_, i) => expoToken(`${prefix}-${i}`));
+  // Q7-1: tokens are handed out only with a current push consent (as register_push_token requires).
+  await grantConsents(userId, ['push_notifications']);
   for (const token of tokens) {
     await admin.query(
       "insert into public.device_push_tokens (user_id, token, platform) values ($1, $2, 'android')",
@@ -221,22 +223,29 @@ describe('dispatchNotifications: happy paths', () => {
 });
 
 describe('dispatchNotifications: skipped jobs never reach Expo', () => {
-  it('skips users without tokens, with push disabled or the category switched off', async () => {
-    const p = await queued(3);
+  it('skips users without tokens, with push disabled, the category switched off or no push consent', async () => {
+    const p = await queued(4);
     await addTokens(p.memberIds[0], 1, 'none-needed');
     await asUser(p.memberIds[0], (db) => rpcRow(db, 'set_notification_preferences', [false, null, null, null]));
     await addTokens(p.memberIds[1], 1, 'cat');
     await asUser(p.memberIds[1], (db) => rpcRow(db, 'set_notification_preferences', [null, null, null, false]));
-    // memberIds[2] has no token at all.
+    // memberIds[2] consented but has no token at all.
+    await grantConsents(p.memberIds[2], ['push_notifications']);
+    // memberIds[3] has a token (registered before G1) but no push consent (Q7-1).
+    await admin.query(
+      "insert into public.device_push_tokens (user_id, token, platform) values ($1, $2, 'android')",
+      [p.memberIds[3], expoToken('no-consent')],
+    );
     const expo = fakeExpo();
 
     const summary = await run(expo);
 
     expect(expo.calls).toHaveLength(0);
-    expect(summary).toMatchObject({ claimed: 3, skipped: 3, sent: 0, expoRequests: 0 });
+    expect(summary).toMatchObject({ claimed: 4, skipped: 4, sent: 0, expoRequests: 0 });
     expect((await jobOf(p.memberIds[0])).last_error).toBe('push_disabled');
     expect((await jobOf(p.memberIds[1])).last_error).toBe('category_disabled');
     expect((await jobOf(p.memberIds[2])).last_error).toBe('no_tokens');
+    expect((await jobOf(p.memberIds[3])).last_error).toBe('no_push_consent');
     expect((await jobs()).every((j) => j.status === 'skipped')).toBe(true);
   });
 

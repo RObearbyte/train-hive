@@ -13,14 +13,18 @@ import {
   canSubmitDeletion,
   deletionReducer,
 } from '../domain/deletion';
+import { BLOCKED_BEHIND_GATE_ADVICE } from '@/features/legal/domain/termsUpdate';
 import { DeletionBlockedError, useDeleteAccount, useDeletionBlockers } from '../hooks/useDeleteAccount';
 import { DownloadMyData } from './DownloadMyData';
 
 export interface DeleteAccountFlowProps {
   visible: boolean;
   onClose: () => void;
-  /** Opens the Members screen for a community the person is the last organizer of. */
-  onOpenMembers: (communityId: string) => void;
+  /**
+   * Opens the Members screen for a community the person is the last organizer of. Omitted where
+   * that screen is out of reach (the updated-terms screen): the flow then explains the way round.
+   */
+  onOpenMembers?: (communityId: string) => void;
 }
 
 const DELETED = [
@@ -33,7 +37,7 @@ const DELETED = [
 
 const KEPT = [
   'Attendance counts stay, without your name or any link to you, so past statistics stay correct. In a very small community these counts can still point to a person.',
-  'Announcements you wrote stay and show "Former member" as the author.',
+  'Announcements you published stay visible to your community; they are no longer linked to you.',
   'Events you organized stay without an organizer.',
 ];
 
@@ -120,16 +124,19 @@ export function DeleteAccountFlow({ visible, onClose, onOpenMembers }: DeleteAcc
           <Card key={community.community_id} style={{ gap: spacing.sm }}>
             <Text variant="label">{community.name}</Text>
             <Text>{blockerSentence(community)}</Text>
-            <Button
-              label="Open members"
-              variant="secondary"
-              size="sm"
-              accessibilityLabel={`Open the members of ${community.name}`}
-              onPress={() => onOpenMembers(community.community_id)}
-            />
+            {onOpenMembers ? (
+              <Button
+                label="Open members"
+                variant="secondary"
+                size="sm"
+                accessibilityLabel={`Open the members of ${community.name}`}
+                onPress={() => onOpenMembers(community.community_id)}
+              />
+            ) : null}
           </Card>
         ))}
         <Text color="textMuted">{BLOCKED_ADVICE}</Text>
+        {onOpenMembers ? null : <Text color="textMuted">{BLOCKED_BEHIND_GATE_ADVICE}</Text>}
         <Button label="Close" variant="ghost" fullWidth onPress={close} />
       </>
     );

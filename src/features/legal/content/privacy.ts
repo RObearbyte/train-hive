@@ -1,21 +1,28 @@
 import type { LegalConfig } from '../config';
 import {
+  FEATURES,
   LEGAL_DOC_TITLES,
   LEGAL_LAST_UPDATED,
   MINIMUM_AGE,
   PRIVACY_VERSION,
   RETENTION,
   SUPERVISORY_AUTHORITY,
+  type LegalFeatures,
 } from '../constants';
 import type { LegalDocument } from './types';
 
 /**
  * The Privacy Notice (Art. 13 GDPR), in plain English. A draft: it is to be
  * reviewed by a lawyer before launch (see LEGAL_REVIEWED). The controller's
- * identity comes from `config` only. Only features that exist are described as
- * available; the rest point to the privacy e-mail until they ship.
+ * identity comes from `config` only. Only features that exist are described: a section
+ * about a later-phase feature appears only when its flag in `features` is true.
  */
-export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
+export function buildPrivacyNotice(
+  config: LegalConfig,
+  features: LegalFeatures = FEATURES,
+): LegalDocument {
+  const optionalConsents =
+    features.demographics || features.emergencyContact || features.workoutLogs;
   return {
     kind: 'privacy',
     title: LEGAL_DOC_TITLES.privacy,
@@ -73,30 +80,48 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
                 value:
                   'To plan trainings and record who took part. Basis: contract, and the legitimate interest of the community in keeping an attendance history. You may object to this at any time (see your rights below).',
               },
-              {
-                label: 'Posts and replies in announcements and event discussions',
-                value: 'To let members communicate about events. Basis: contract.',
-              },
+              features.eventPosts
+                ? {
+                    label: 'Announcements, posts and replies in event discussions',
+                    value: 'To let members communicate about events. Basis: contract.',
+                  }
+                : {
+                    label: 'Announcements organizers publish',
+                    value:
+                      'The text of announcements that organizers publish to their community, so members can read them. Basis: contract.',
+                  },
               {
                 label: 'Push notification token, notification settings and in-app notifications',
                 value:
                   'To deliver reminders and updates. Push messages need your consent (and the permission of your phone). In-app notifications are part of the service. Basis: consent for push, contract for in-app notifications.',
               },
-              {
-                label: 'Birth year and gender (optional)',
-                value:
-                  'Only if you choose to give them, to produce statistics for your community. Basis: your explicit consent, which you can withdraw at any time.',
-              },
-              {
-                label: 'Emergency contact and T-shirt size (optional)',
-                value:
-                  'Only if you choose to give them, for safety at events and for race kits. The emergency contact is another person: please tell them you gave their details. Basis: your explicit consent.',
-              },
-              {
-                label: 'Workout logs (optional)',
-                value:
-                  'Exercises, weights, distance, time, pace and notes you choose to record, for your own progress and for community totals. Because this can reveal health-related information, we treat it as special-category data. Basis: your explicit consent, which you can withdraw at any time.',
-              },
+              ...(features.demographics
+                ? [
+                    {
+                      label: 'Birth year and gender (optional)',
+                      value:
+                        'Only if you choose to give them, to produce statistics for your community. Basis: your explicit consent, which you can withdraw at any time.',
+                    },
+                  ]
+                : []),
+              ...(features.emergencyContact
+                ? [
+                    {
+                      label: 'Emergency contact and T-shirt size (optional)',
+                      value:
+                        'Only if you choose to give them, for safety at events and for race kits. The emergency contact is another person: please tell them you gave their details. Basis: your explicit consent.',
+                    },
+                  ]
+                : []),
+              ...(features.workoutLogs
+                ? [
+                    {
+                      label: 'Workout logs (optional)',
+                      value:
+                        'Exercises, weights, distance, time, pace and notes you choose to record, for your own progress and for community totals. Because this can reveal health-related information, we treat it as special-category data. Basis: your explicit consent, which you can withdraw at any time.',
+                    },
+                  ]
+                : []),
               {
                 label: 'Technical data held by our providers',
                 value:
@@ -118,11 +143,21 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
             type: 'list',
             items: [
               'Members of your community see your display name and, in event pages, whether you said you are going.',
-              "Organizers of your community can change members' roles and remove a member from the community. A member can also leave at any time. Removed and departed members lose access, and their attendance history stays in the community's records.",
+              "Organizers of your community can change members' roles and remove a member from the community. A member can also leave at any time. Removed and departed members lose access, and their attendance history stays in the community's records. Removal is final for that account: a removed member cannot rejoin that community with an invitation code.",
               'Organizers of your community also see your membership, your RSVPs and your attendance records.',
-              'Your emergency contact and T-shirt size are visible to organizers of your community only if you consented to share them.',
-              'Birth year and gender are never shown to organizers one by one. Organizers see only grouped statistics, and only for groups of 5 or more people.',
-              'Workout logs are private to you. Organizers and members see only group totals.',
+              ...(features.emergencyContact
+                ? [
+                    'Your emergency contact and T-shirt size are visible to organizers of your community only if you consented to share them.',
+                  ]
+                : []),
+              ...(features.demographics
+                ? [
+                    'Birth year and gender are never shown to organizers one by one. Organizers see only grouped statistics, and only for groups of 5 or more people.',
+                  ]
+                : []),
+              ...(features.workoutLogs
+                ? ['Workout logs are private to you. Organizers and members see only group totals.']
+                : []),
               'We do not sell your data and we do not share it for advertising.',
             ],
           },
@@ -144,10 +179,20 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
               'The hosting provider of the web version of TrainHive: serves the website files.',
             ],
           },
-          {
-            type: 'paragraph',
-            text: 'Notification texts never contain workout data or emergency contact details.',
-          },
+          ...(features.workoutLogs || features.emergencyContact
+            ? [
+                {
+                  type: 'paragraph' as const,
+                  text: `Notification texts never contain ${
+                    features.workoutLogs && features.emergencyContact
+                      ? 'workout data or emergency contact details'
+                      : features.workoutLogs
+                        ? 'workout data'
+                        : 'emergency contact details'
+                  }.`,
+                },
+              ]
+            : []),
         ],
       },
       {
@@ -167,10 +212,10 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
           {
             type: 'list',
             items: [
-              `In-app notifications: deleted ${RETENTION.readNotificationsDays} days after you read them, and ${RETENTION.unreadNotificationsDays} days after they were created if you never read them.`,
+              `In-app notifications: deleted once they are more than ${RETENTION.readNotificationsDays} days old if you have read them, and once they are more than ${RETENTION.unreadNotificationsDays} days old if you never read them.`,
               `Records of failed code attempts (used to stop guessing): deleted after ${RETENTION.failedAttemptsHours} hours.`,
-              'Push tokens: deleted when you turn push notifications off, when the token stops working, or when your account is deleted.',
-              'Account data (name, membership, RSVPs, attendance, posts, optional data you gave, your consent records): kept until you delete your account. When you delete it, attendance counts and the attendance change history stay without your name or identifier.',
+              'Push device identifiers (tokens): deleted when you turn push notifications off, when you delete your account, and when a device stops working, within 30 days.',
+              `Account data (name, membership, RSVPs, attendance${features.eventPosts ? ', posts' : ''}${optionalConsents ? ', optional data you gave' : ''}, your consent records): kept until you delete your account. When you delete it, attendance counts and the attendance change history stay without your name or identifier.`,
               'Consent records are kept as proof of what you agreed to and when, for as long as your account exists.',
             ],
           },
@@ -191,10 +236,12 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
           {
             type: 'list',
             items: [
-              'Withdraw or give consent: Profile, then Privacy. Each optional consent has its own switch, and turning one off takes effect at once.',
+              optionalConsents
+                ? 'Withdraw or give consent: Profile, then Privacy. Each optional consent has its own switch, and turning one off takes effect at once.'
+                : 'Withdraw or give consent: Profile, then Privacy. Push notifications have their own switch, and turning it off takes effect at once.',
               'Correct your name: Profile, then Change name.',
-              'Download your data: Profile, then Privacy, then Download my data. You get a file with everything we hold about you. You can do this up to 10 times per hour.',
-              'Delete your account: Profile, then Privacy, then Delete my account. This deletes your profile, memberships, RSVPs, notifications, push devices and consent records, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you wrote stay and show "Former member" as the author. In a very small community these anonymous counts can still point to a person. If you are the only organizer of a community that still has other members, hand over to another organizer first (Profile, then Members). A community in which you are the only member is deleted together with your account.',
+              'Download your data: Profile, then Privacy, then Download my data. You get a file with the data we hold about you. You can do this up to 10 times per hour.',
+              'Delete your account: Profile, then Privacy, then Delete my account. This deletes your profile, memberships, RSVPs, notifications, push devices and consent records, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you published stay visible to your community; after you delete your account they are no longer linked to you. In a very small community these anonymous counts can still point to a person. If you are the only organizer of a community that still has other members, hand over to another organizer first (Profile, then Members). A community in which you are the only member is deleted together with your account.',
               'Leave a community: Profile, then Leave this community. You lose access to it, and your attendance history stays in its records until you delete your account.',
               `Restrict or object to processing: contact us at ${config.privacyEmail}. Because accounts are anonymous, we can only act on a request if you can show that the account is yours, for example by creating a code inside the app when we ask.`,
               'We answer within one month.',
@@ -242,7 +289,7 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
         blocks: [
           {
             type: 'paragraph',
-            text: 'TrainHive has no email address or password. Your account is created on your device the first time you join a community and is tied to that device. If you sign out, uninstall the app, clear its data or lose the phone, nobody (including us) can give the account back, and you would join again as a new member with a new invitation.',
+            text: 'TrainHive has no email address or password. Your account is created on your device when you first enter an invitation code to join a community, and it is tied to that device. If you sign out, uninstall the app, clear its data or lose the phone, nobody (including us) can give the account back, and you would join again as a new member with a new invitation.',
           },
         ],
       },

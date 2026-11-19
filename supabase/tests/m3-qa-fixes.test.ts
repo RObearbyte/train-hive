@@ -18,6 +18,7 @@ import {
   countRows,
   createPack,
   createTraining,
+  grantConsents,
   resetData,
   rpc,
   rpcRow,
@@ -353,6 +354,8 @@ function realRpc(overrides: Partial<DispatchRpc> = {}): DispatchRpc {
 }
 
 async function addToken(userId: string, token: string) {
+  // Q7-1: tokens are handed out only with a current push consent (as register_push_token requires).
+  await grantConsents(userId, ['push_notifications']);
   await admin.query("insert into public.device_push_tokens (user_id, token, platform) values ($1, $2, 'android')", [userId, token]);
 }
 

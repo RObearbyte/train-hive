@@ -153,7 +153,7 @@ export const BLOCKED_ADVICE =
 
 export type AccountDeletedEffects = Pick<
   SignOutEffects,
-  'removeStored' | 'clearQueryCache' | 'resetInMemoryState' | 'report'
+  'removeStored' | 'removeExportedFiles' | 'clearQueryCache' | 'resetInMemoryState' | 'report'
 > & {
   /** Remembers the one-time notice for the welcome screen. */
   setNotice: (message: string) => void;

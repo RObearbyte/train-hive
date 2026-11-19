@@ -9,6 +9,7 @@ import { toAppError, type AppError } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 import { AUTH_STORAGE_KEY, getSupabase } from '@/lib/supabase';
 
+import { removeExportedFiles } from '../api/removeExports';
 import { deleteMyAccount, fetchDeletionBlockers } from '../api/dataRights';
 import { classifyDeleteError, runAccountDeletedCleanup } from '../domain/deletion';
 import { setAccountDeletedNotice } from '../domain/deletedNotice';
@@ -81,6 +82,7 @@ export function useDeleteAccount() {
               if (error) throw toAppError(error);
             },
             removeStored: (key) => authStorage.removeItem(key),
+            removeExportedFiles,
             clearQueryCache: () => queryClient.clear(),
             resetInMemoryState: () => setPendingJoinCode(null),
             report: (context, error) => reportError(context, toAppError(error).code),

@@ -240,16 +240,24 @@ describe('delete_my_account: everybody else is untouched', () => {
       if (table === 'public.training_sessions') delete parsed.going_count;
       return JSON.stringify(parsed);
     };
-    // The victim's id becomes null wherever it was kept (anonymized / author columns).
-    const anonymize = (row: string): string => {
+    // The victim's id becomes null wherever it was kept (anonymized / author columns); an audit
+    // row about or by the victim also loses its free-text reason (Q7-6).
+    const anonymize = (table: string, row: string): string => {
       const parsed = JSON.parse(row) as Record<string, unknown>;
-      for (const key of Object.keys(parsed)) if (parsed[key] === victim) parsed[key] = null;
+      let touched = false;
+      for (const key of Object.keys(parsed)) {
+        if (parsed[key] === victim) {
+          parsed[key] = null;
+          touched = true;
+        }
+      }
+      if (table === 'public.attendance_audit_log' && touched) parsed.reason = null;
       return JSON.stringify(parsed);
     };
 
     for (const [table, rows] of before) {
       const afterRows = new Set((after.get(table) ?? []).map((r) => normalize(table, r)));
-      const allowed = new Set(rows.map((r) => normalize(table, anonymize(r))));
+      const allowed = new Set(rows.map((r) => normalize(table, anonymize(table, r))));
       for (const row of rows) {
         if (row.includes(victim) || row.includes(life.delta.communityId)) continue;
         expect(afterRows.has(normalize(table, row)), `${table} lost or changed ${row}`).toBe(true);

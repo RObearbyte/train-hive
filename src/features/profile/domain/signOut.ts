@@ -34,6 +34,8 @@ export type SignOutEffects = {
   /** Ends the session on the server and locally; rejects on failure. */
   signOut: () => Promise<void>;
   removeStored: (key: string) => Promise<void>;
+  /** Best effort: deletes the downloaded data file(s) from this device's cache (native; nothing on web). */
+  removeExportedFiles: () => Promise<void>;
   clearQueryCache: () => void;
   resetInMemoryState: () => void;
   /** Where cleanup problems are reported (never shown with personal data). */
@@ -65,12 +67,12 @@ export async function runSignOut(
 
 /**
  * The local half of leaving an account (after sign-out, or after the server
- * deleted it): stored session and per-device records, query cache, in-memory
+ * deleted it): stored session and per-device records, downloaded data files, query cache, in-memory
  * onboarding state. A failing step is counted, reported and never stops the
  * rest. Returns the number of failed steps.
  */
 export async function runLocalCleanup(
-  effects: Pick<SignOutEffects, 'removeStored' | 'clearQueryCache' | 'resetInMemoryState' | 'report'>,
+  effects: Pick<SignOutEffects, 'removeStored' | 'removeExportedFiles' | 'clearQueryCache' | 'resetInMemoryState' | 'report'>,
   input: { userId: string | null; authStorageKey: string },
 ): Promise<number> {
   let warnings = 0;
@@ -81,6 +83,13 @@ export async function runLocalCleanup(
       warnings += 1;
       effects.report('signOut.removeStored', error);
     }
+  }
+  // The export holds the person's whole history: it must not outlive their session on a shared device.
+  try {
+    await effects.removeExportedFiles();
+  } catch (error) {
+    warnings += 1;
+    effects.report('signOut.removeExportedFiles', error);
   }
   for (const step of [effects.clearQueryCache, effects.resetInMemoryState]) {
     try {

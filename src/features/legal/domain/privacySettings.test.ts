@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ConsentPurpose } from '@/lib/database.types';
 
 import { applyConsentEvent, isConsentCurrent, optimisticConsent } from './consentCache';
+import type { LegalFeatures } from '../constants';
 import { OPTIONAL_PURPOSES } from './consentState';
 import {
   PURPOSE_COPY,
@@ -10,12 +11,15 @@ import {
   optionalRows,
   requiredRows,
   switchLabel,
+  visibleOptionalPurposes,
 } from './privacySettings';
 import { accepted, consentState, grantedState, neverRecorded } from './testFixtures';
 
+const ALL_ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
+
 describe('optional rows', () => {
-  it('lists the four optional purposes, in order, all off for someone who never decided', () => {
-    const rows = optionalRows(neverRecorded());
+  it('with every feature shipped lists the four optional purposes, in order, all off for someone who never decided', () => {
+    const rows = optionalRows(neverRecorded(), ALL_ON);
     expect(rows.map((row) => row.purpose)).toEqual([...OPTIONAL_PURPOSES]);
     expect(rows.every((row) => !row.enabled && row.stateLabel === 'Off' && row.at === null)).toBe(true);
   });
@@ -25,7 +29,7 @@ describe('optional rows', () => {
       push_notifications: grantedState('1', '2026-11-10T08:00:00.000Z'),
       workout_logs: consentState({ granted: false, current: false, document_version: '1', at: '2026-11-12T08:00:00.000Z' }),
     });
-    const rows = Object.fromEntries(optionalRows(my).map((row) => [row.purpose, row]));
+    const rows = Object.fromEntries(optionalRows(my, ALL_ON).map((row) => [row.purpose, row]));
     expect(rows.push_notifications).toMatchObject({ enabled: true, stateLabel: 'On', at: '2026-11-10T08:00:00.000Z' });
     expect(rows.workout_logs).toMatchObject({ enabled: false, stateLabel: 'Off' });
     expect(switchLabel(rows.push_notifications)).toBe('Push notifications: On');
@@ -46,11 +50,17 @@ describe('optional rows', () => {
     expect(PURPOSE_COPY.profile_demographics.withdrawMessage).toMatch(/deleted/);
   });
 
-  it('is honest about features that do not exist yet', () => {
-    expect(PURPOSE_COPY.push_notifications.comingSoon).toBe(false);
-    for (const purpose of ['profile_demographics', 'emergency_contact', 'workout_logs'] as const) {
-      expect(PURPOSE_COPY[purpose].comingSoon).toBe(true);
-    }
+  it('shows only the consents that exist now: push notifications while the later features are off', () => {
+    expect(optionalRows(neverRecorded()).map((row) => row.purpose)).toEqual(['push_notifications']);
+    expect(visibleOptionalPurposes()).toEqual(['push_notifications']);
+  });
+
+  it('a flag adds exactly its own switch', () => {
+    const base: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
+    expect(visibleOptionalPurposes({ ...base, demographics: true })).toEqual(['push_notifications', 'profile_demographics']);
+    expect(visibleOptionalPurposes({ ...base, emergencyContact: true })).toEqual(['push_notifications', 'emergency_contact']);
+    expect(visibleOptionalPurposes({ ...base, workoutLogs: true })).toEqual(['push_notifications', 'workout_logs']);
+    expect(visibleOptionalPurposes({ ...base, eventPosts: true })).toEqual(['push_notifications']);
   });
 });
 

@@ -9,7 +9,7 @@ import {
   type ExpoMessage,
   type FetchLike,
 } from '../functions/dispatch-notifications/dispatch';
-import { admin, asService, closeDb, createPack, createTraining, resetData, rpc } from './helpers';
+import { admin, asService, closeDb, createPack, createTraining, grantConsents, resetData, rpc } from './helpers';
 import { claimJobs, expoToken, jobs } from './notifications-helpers';
 
 /**
@@ -33,6 +33,8 @@ const ok = (n: number, count: number) =>
   Array.from({ length: count }, (_, i) => ({ status: 'ok', id: `t-${n}-${i}` }));
 
 async function addToken(userId: string, token: string) {
+  // Q7-1: tokens are handed out only with a current push consent (as register_push_token requires).
+  await grantConsents(userId, ['push_notifications']);
   await admin.query("insert into public.device_push_tokens (user_id, token, platform) values ($1, $2, 'android')", [userId, token]);
 }
 

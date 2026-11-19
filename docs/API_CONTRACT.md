@@ -678,3 +678,35 @@ Tested (`account-deletion.test.ts`): every place in the database that refers to 
 New error codes: `last_organizer`, `cannot_change_own_role`, `cannot_remove_self`, `validation_failed:role`, `rate_limited` (export). Existing ones used: `not_authenticated`, `not_a_member`, `forbidden`, `not_found`, `validation_failed:user_id`.
 
 TypeScript (`src/lib/database.types.ts`): `LeaveCommunityResult`, `DeletionBlocker`, `MyDeletionBlockers`, `DeletionBlockedDetail`, `DeleteMyAccountResult`, `MyDataExport`; `AttendanceSheet` gains `former_members`; `attendance_records.user_id` and `attendance_audit_log.user_id` are `string | null`.
+---
+
+# GDPR Q7 fixes (append-only)
+
+Migration `20261125000100_gdpr_qa_fixes.sql`; fixes Q7-1, Q7-2, Q7-3, Q7-4 and Q7-6 of `docs/QA_REPORT.md`. Tests: `supabase/tests/gdpr-qa-fixes.test.ts`, the flipped `FIXED Q7-n` tests in `qa-gdpr-consent.test.ts`, `dispatch.test.ts` (dispatcher completes a `no_push_consent` job as skipped). No signature, grant or error code changed; two new private helpers (`private.purge_old_data_export_log()`, `private.purge_stale_push_tokens()`) are executable by no API role.
+
+**Deployment order (owner decision):** the app update that asks existing members for push consent ships first, then this migration. From then on pushes go only to members with a current `push_notifications` consent; this supersedes "Existing users" in G1 ("the dispatcher does not check consent").
+
+## Push consent at send time (Q7-1)
+
+`claim_notification_jobs` hands out a user's tokens only when `private.has_consent(user_id, 'push_notifications')` is true. Otherwise the job has `tokens: []`, `push_allowed: false`, `skip_reason: 'no_push_consent'`; the dispatcher completes it as `skipped` with that reason (it passes any `skip_reason` through; no code change). In-app notifications are unaffected. The `skip_reason` ladder (first match wins): `not_a_member`, `push_disabled`, `category_disabled`, `no_push_consent`, then `no_tokens` (push allowed but no valid token). Consent is read when the job is claimed: a withdrawal that commits after the claim cannot recall a push already handed to the dispatcher (it still deletes the tokens, so no later claim sends). TypeScript: `NotificationSkipReason` gains `no_push_consent`.
+
+## Switching push off (Q7-2)
+
+`withdraw_consent('push_notifications')` always deletes all the caller's push tokens, also when no grant is on record (a member whose token predates the ledger) or the consent is already withdrawn. With no current grant nothing is written to the ledger and the answer is unchanged (`changed: false`); calling it again is harmless. Other purposes are unchanged.
+
+## Retention (Q7-3, Q7-4): final numbers
+
+All run in the existing daily job `trainhive_purge_notification_data` (pg_cron, 03:17 UTC, `purge_old_notification_data()`; its return value is unchanged and does not count these rows). Because the job runs once a day, each limit can be exceeded by up to one day.
+
+| Data | Deleted | Effective maximum |
+|---|---|---|
+| Export rate-limit records (`private.data_export_log`) | older than **1 hour** (the rate-limit window; nothing else reads them) | about **25 hours** |
+| Push token reported invalid by Expo (`invalidated_at`, DeviceNotRegistered) | **30 days** after it was invalidated | 31 days |
+| Push token not registered again (`last_seen_at`; the app registers on every start and return to the foreground) | **270 days** after it was last registered | 271 days |
+| Push tokens on switch-off, sign-out (best effort, app) and account deletion | immediately | — |
+
+The export README now says "rate-limit records kept for **about a day**" (was "at most a day", which a daily job cannot guarantee). A device whose token was purged gets it back on the next app start if push consent is still current.
+
+## Erasure scrubs audit reasons (Q7-6)
+
+`private.erase_user` (so `delete_my_account`) sets `attendance_audit_log.reason = null` on every audit row **about** the erased user (which also loses `user_id`) and on every row the erased user **wrote** (which loses `changed_by`). Statuses, actions and times stay. Scope: a reason on another member's row that mentions the erased person by name is not changed (no text matching).

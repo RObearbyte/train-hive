@@ -126,3 +126,32 @@ export function exportErrorMessage(error: unknown): string {
   }
   return userMessage(appError.code, appError.field);
 }
+
+/** `trainhive-data-<date>.json` and the dateless `trainhive-data.json`: the only files this app writes for an export. */
+export const EXPORT_FILE_PATTERN = /^trainhive-data(?:-[A-Za-z0-9-]*)?\.json$/;
+
+/** What `removeExportFiles` needs from a folder entry: the file system boundary, faked in tests. */
+export type ExportFolderEntry = { name: string; isFile: boolean; delete: () => void };
+
+/**
+ * Deletes the export files (and only those) from a folder listing. Each file
+ * is removed on its own: one that cannot be removed is counted and the rest
+ * still go. A listing that fails throws, so the caller can report it.
+ */
+export function removeExportFiles(list: () => readonly ExportFolderEntry[]): {
+  removed: number;
+  failed: number;
+} {
+  let removed = 0;
+  let failed = 0;
+  for (const entry of list()) {
+    if (!entry.isFile || !EXPORT_FILE_PATTERN.test(entry.name)) continue;
+    try {
+      entry.delete();
+      removed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { removed, failed };
+}

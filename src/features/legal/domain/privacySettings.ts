@@ -5,6 +5,7 @@
  */
 import type { ConsentPurpose, MyConsents } from '@/lib/database.types';
 
+import { FEATURES, type LegalFeatures } from '../constants';
 import { OPTIONAL_PURPOSES, REQUIRED_PURPOSES } from './consentState';
 
 type PurposeCopy = {
@@ -15,8 +16,6 @@ type PurposeCopy = {
   withdrawTitle: string;
   /** What turning it off deletes or stops. */
   withdrawMessage: string;
-  /** The feature does not exist yet: turning it on only records the choice. */
-  comingSoon: boolean;
 };
 
 export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
@@ -25,14 +24,12 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
     description: 'You read and accepted how TrainHive works and how your data is handled.',
     withdrawTitle: '',
     withdrawMessage: '',
-    comingSoon: false,
   },
   age_16: {
     title: 'Age confirmation',
     description: 'You confirmed that you are at least 16 years old.',
     withdrawTitle: '',
     withdrawMessage: '',
-    comingSoon: false,
   },
   push_notifications: {
     title: 'Push notifications',
@@ -41,7 +38,6 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
     withdrawTitle: 'Turn off push notifications?',
     withdrawMessage:
       'We will delete the push tokens saved for your account, so your devices stop receiving push messages. Notifications still appear in the Activity tab. You can turn this on again at any time.',
-    comingSoon: false,
   },
   profile_demographics: {
     title: 'Birth year and gender',
@@ -50,7 +46,6 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
     withdrawTitle: 'Withdraw consent for birth year and gender?',
     withdrawMessage:
       'The birth year and gender you gave will be deleted. You can give them again later.',
-    comingSoon: true,
   },
   emergency_contact: {
     title: 'Emergency contact and T-shirt size',
@@ -59,7 +54,6 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
     withdrawTitle: 'Withdraw consent for emergency contact?',
     withdrawMessage:
       'Your emergency contact and T-shirt size will be deleted and organizers will no longer see them. You can give them again later.',
-    comingSoon: true,
   },
   workout_logs: {
     title: 'Workout logs',
@@ -68,7 +62,6 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
     withdrawTitle: 'Withdraw consent for workout logs?',
     withdrawMessage:
       'Your workout logs will be deleted and cannot be restored. You can start a new log later.',
-    comingSoon: true,
   },
 };
 
@@ -76,7 +69,6 @@ export type OptionalConsentRow = {
   purpose: ConsentPurpose;
   title: string;
   description: string;
-  comingSoon: boolean;
   /** Current state; this is what the switch shows. */
   enabled: boolean;
   /** Text next to the switch that does not rely on its colour: "On" / "Off". */
@@ -99,8 +91,22 @@ export type RequiredConsentRow = {
   accepted: boolean;
 };
 
-export function optionalRows(my: MyConsents): OptionalConsentRow[] {
-  return OPTIONAL_PURPOSES.map((purpose) => {
+/**
+ * The optional consents that exist now. A switch for a feature that has not
+ * shipped (`FEATURES` flag false) is not shown: a consent with nothing behind
+ * it would be a promise the system does not keep.
+ */
+export function visibleOptionalPurposes(features: LegalFeatures = FEATURES): ConsentPurpose[] {
+  return OPTIONAL_PURPOSES.filter((purpose) => {
+    if (purpose === 'profile_demographics') return features.demographics;
+    if (purpose === 'emergency_contact') return features.emergencyContact;
+    if (purpose === 'workout_logs') return features.workoutLogs;
+    return true;
+  });
+}
+
+export function optionalRows(my: MyConsents, features: LegalFeatures = FEATURES): OptionalConsentRow[] {
+  return visibleOptionalPurposes(features).map((purpose) => {
     const state = my.consents[purpose];
     const copy = PURPOSE_COPY[purpose];
     const enabled = state.current;
@@ -108,7 +114,6 @@ export function optionalRows(my: MyConsents): OptionalConsentRow[] {
       purpose,
       title: copy.title,
       description: copy.description,
-      comingSoon: copy.comingSoon,
       enabled,
       stateLabel: enabled ? 'On' : 'Off',
       at: state.at,

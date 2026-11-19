@@ -1288,8 +1288,13 @@ export type NotificationDeliveryJob = Tables<'notification_delivery_jobs'>;
 export type AnnouncementStatus = Enums<'announcement_status'>;
 export type NotificationKind = Enums<'notification_kind'>;
 
-/** Why a claimed job has no tokens (`claim_notification_jobs`). */
-export type NotificationSkipReason = 'not_a_member' | 'push_disabled' | 'category_disabled' | 'no_tokens';
+/** Why a claimed job has no tokens (`claim_notification_jobs`; first match wins, in this order). */
+export type NotificationSkipReason =
+  | 'not_a_member'
+  | 'push_disabled'
+  | 'category_disabled'
+  | 'no_push_consent'
+  | 'no_tokens';
 
 /** One row of `claim_notification_jobs` (service_role dispatcher). */
 export type ClaimedNotificationJob = {

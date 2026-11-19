@@ -11,6 +11,7 @@ import {
   createPack,
   createTraining,
   createUser,
+  grantConsents,
   resetData,
   rpc,
   rpcRow,
@@ -108,6 +109,8 @@ describe('claim_notification_jobs', () => {
 
   it('a user without devices: push allowed, no tokens, skip_reason no_tokens', async () => {
     const p = await queued(1);
+    // With push consent (Q7-1: without it the reason is no_push_consent, tested in gdpr-qa-fixes).
+    await grantConsents(p.memberIds[0], ['push_notifications']);
     const [job] = await claimJobs('w');
     expect(job).toMatchObject({ push_allowed: true, skip_reason: 'no_tokens', tokens: [] });
     expect(await completeJob(job.job_id, 'skipped', 'no_tokens')).toMatchObject({ status: 'skipped', changed: true });

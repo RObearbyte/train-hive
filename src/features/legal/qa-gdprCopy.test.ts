@@ -9,6 +9,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { FEATURES } from './constants';
 import { buildPrivacyNotice } from './content/privacy';
 import { buildTerms } from './content/terms';
 
@@ -24,41 +25,44 @@ const privacyText = JSON.stringify(buildPrivacyNotice(config as never));
 const termsText = JSON.stringify(buildTerms(config as never));
 
 describe('texts versus what exists', () => {
-  // DEFECT Q7-7: the notice describes data and a statistics rule that no code implements yet.
-  it.fails('DEFECT Q7-7: every optional data item and rule the notice names exists in the schema', () => {
+  // Q7-7 (fixed): the texts name only features that exist; later phases flip a flag in constants.ts.
+  it('Q7-7: the notice names no unbuilt data item or rule while the feature flags are off', () => {
+    expect(FEATURES).toEqual({ demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false });
     for (const [phrase, column] of [
       ['Birth year and gender', 'birth_year'],
-      ['Emergency contact and T-shirt size', 'emergency_contact'],
-      ['Workout logs', 'workout_log'],
+      ['Emergency contact', 'tshirt_size'],
+      ['Workout logs', 'public.workout_logs '],
     ] as const) {
-      expect(privacyText.includes(phrase), phrase).toBe(true);
-      expect(migrations.includes(column), `${phrase} -> ${column}`).toBe(true);
+      expect(privacyText.includes(phrase), phrase).toBe(false);
+      expect(migrations.includes(column), `${phrase} -> ${column}`).toBe(false);
     }
-    // "only for groups of 5 or more people": a threshold must exist in some statistics function.
-    expect(privacyText).toContain('groups of 5 or more');
-    expect(/having\s+count\(\*\)\s*>=\s*5|>=\s*5\b[^;]{0,80}(birth|gender|demograph)/i.test(migrations)).toBe(true);
+    expect(privacyText).not.toContain('groups of 5 or more');
+    expect(termsText).not.toMatch(/emergency contact|workout/i);
   });
 
-  // DEFECT Q7-9: announcements never show an author, so "show Former member as the author" is untrue.
-  it.fails('DEFECT Q7-9: the announcement screens display an author, so "Former member" can appear', () => {
-    expect(privacyText).toContain('Former member');
-    const screens = [
-      read('src', 'app', '(app)', 'announcements', '[id].tsx'),
-      ...readdirSync(path.join(ROOT, 'src', 'features', 'notifications', 'components')).map((f) =>
-        read('src', 'features', 'notifications', 'components', f),
-      ),
-    ].join('\n');
-    expect(/Former member|author_id|authorName/.test(screens)).toBe(true);
+  it('Q7-7: with every flag on, the notice names each item and the 5-person rule', () => {
+    const all = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
+    const text = JSON.stringify(buildPrivacyNotice(config as never, all));
+    for (const phrase of ['Birth year and gender', 'Emergency contact and T-shirt size', 'Workout logs', 'groups of 5 or more']) {
+      expect(text).toContain(phrase);
+    }
   });
 
-  it('Terms say a removed member needs a new invitation; the backend refuses every code (see Q7-5 in qa-gdpr-consent)', () => {
-    expect(termsText).toContain('cannot rejoin with an invitation code and needs an organizer to invite them again');
+  // Q7-9 (fixed): no screen shows an author, so the notice does not promise a "Former member" author.
+  it('Q7-9: the notice makes no claim about an announcement author', () => {
+    expect(privacyText).not.toContain('Former member');
+    expect(privacyText).toContain('they are no longer linked to you');
+  });
+
+  it('Q7-5: Terms say removal is final (no rejoin by code); the backend refuses every code', () => {
+    expect(termsText).toContain('cannot rejoin with an invitation code: removal is final for that account');
+    expect(termsText).not.toContain('invite them again');
     expect(migrations).toContain('A removed member cannot rejoin by code.');
     expect(/function public\.(reinstate|restore|readd)_member/i.test(migrations)).toBe(false);
   });
 
   it('the retention numbers stated in the notice are the ones the purge function uses', () => {
-    expect(privacyText).toContain('90 days after you read them');
+    expect(privacyText).toContain('more than 90 days old if you have read them');
     expect(migrations).toMatch(/read_at is not null and n\.created_at < now\(\) - interval '90 days'/);
     expect(migrations).toMatch(/read_at is null and n\.created_at < now\(\) - interval '180 days'/);
     expect(migrations).toMatch(/attempted_at < now\(\) - interval '24 hours'/);
@@ -73,15 +77,15 @@ describe('texts versus what exists', () => {
 });
 
 describe('local cleanup after sign out and account deletion', () => {
-  // DEFECT Q7-8: the downloaded data file stays in the cache after sign out and after deletion.
-  it.fails('DEFECT Q7-8: sign out and account deletion remove the exported data file', () => {
+  // Q7-8 (fixed): the downloaded data file is removed after sign out and after deletion.
+  it('Q7-8: sign out and account deletion remove the exported data file', () => {
     const cleanup = [
       read('src', 'features', 'profile', 'domain', 'signOut.ts'),
       read('src', 'features', 'profile', 'hooks', 'useSignOut.ts'),
       read('src', 'features', 'dataRights', 'hooks', 'useDeleteAccount.ts'),
       read('src', 'features', 'dataRights', 'domain', 'deletion.ts'),
     ].join('\n');
-    expect(/removeOldExports|trainhive-data|clearExport/.test(cleanup)).toBe(true);
+    expect(/removeExportedFiles/.test(cleanup)).toBe(true);
   });
 
   it('the stored acknowledgement, push prompt flag, session and active community are cleared', () => {
@@ -91,10 +95,11 @@ describe('local cleanup after sign out and account deletion', () => {
     }
   });
 
-  // DEFECT Q7-10: a person who does not accept updated terms has no path to export or delete.
-  it.fails('DEFECT Q7-10: the blocking terms screen offers Delete my account / Download my data without accepting', () => {
+  // Q7-10 (fixed): a person who does not accept updated terms can still export or delete.
+  it('Q7-10: the blocking terms screen offers Delete my account / Download my data without accepting', () => {
     const screen = read('src', 'features', 'legal', 'components', 'TermsUpdateScreen.tsx');
-    expect(/DeleteAccount|DownloadMyData|\/privacy/.test(screen.replace(/Privacy Notice|Privacy contact/g, ''))).toBe(true);
+    expect(screen).toContain('<DownloadMyData');
+    expect(screen).toContain('<DeleteAccountFlow');
   });
 });
 

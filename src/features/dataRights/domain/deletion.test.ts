@@ -168,6 +168,9 @@ describe('runAccountDeletedCleanup', () => {
         calls.push(`remove:${key}`);
         if (key === options.failRemove) throw new Error('storage');
       },
+      removeExportedFiles: async () => {
+        calls.push('removeExportedFiles');
+      },
       clearQueryCache: () => calls.push('clearQueryCache'),
       resetInMemoryState: () => calls.push('resetInMemoryState'),
       report: (context: string) => calls.push(`report:${context}`),
@@ -185,6 +188,7 @@ describe('runAccountDeletedCleanup', () => {
     expect(calls).toContain('remove:auth-key');
     expect(calls).toContain(`remove:${ACCEPTANCE_STORAGE_KEY}`);
     expect(calls).toContain('remove:trainhive.active-community.u1');
+    expect(calls).toContain('removeExportedFiles');
     expect(calls.slice(-2)).toEqual(['clearQueryCache', 'resetInMemoryState']);
   });
 

@@ -15,16 +15,13 @@ import { Share } from 'react-native';
 import { reportError } from '@/lib/logger';
 
 import { EXPORT_MIME_TYPE } from '../domain/exportFile';
+import { removeExportedFiles } from './removeExports';
 
 export type DeliveryMethod = 'file' | 'text' | 'download';
 
-const OWN_FILE = /^trainhive-data-.*\.json$/;
-
-function removeOldExports(): void {
+async function removeOldExports(): Promise<void> {
   try {
-    for (const entry of Paths.cache.list()) {
-      if (entry instanceof File && OWN_FILE.test(entry.name)) entry.delete();
-    }
+    await removeExportedFiles();
   } catch (error) {
     reportError('export.cleanup', error);
   }
@@ -39,7 +36,7 @@ export async function deliverExport(fileName: string, text: string): Promise<Del
   let file: File;
   try {
     if (!(await Sharing.isAvailableAsync())) return await shareAsText(text);
-    removeOldExports();
+    await removeOldExports();
     file = new File(Paths.cache, fileName);
     file.create({ overwrite: true });
     await file.write(text);

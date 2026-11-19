@@ -63,11 +63,6 @@ function ConsentRow({
       <Text variant="caption" color="textMuted">
         {row.description}
       </Text>
-      {row.comingSoon ? (
-        <Text variant="caption" color="textMuted">
-          This feature is not available yet. Your choice is saved for when it is.
-        </Text>
-      ) : null}
       {since ? (
         <Text variant="caption" color="textMuted">
           {`On since ${since}`}

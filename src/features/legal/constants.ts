@@ -65,3 +65,27 @@ export const LEGAL_DOC_TITLES: Record<LegalDocKind, string> = {
   terms: 'Terms of Use',
   privacy: 'Privacy Notice',
 };
+
+/**
+ * Features that collect or show personal data and ship in later phases. The
+ * legal texts and the Privacy settings describe a feature ONLY when its flag
+ * is true, so a text never promises something the system does not do. Flip a
+ * flag in the same change that ships the feature.
+ */
+export type LegalFeatures = {
+  /** Birth year and gender, with grouped statistics (groups of 5 or more). */
+  demographics: boolean;
+  /** Emergency contact and T-shirt size. */
+  emergencyContact: boolean;
+  /** Workout logs and group totals. */
+  workoutLogs: boolean;
+  /** Replies and posts in event discussions. */
+  eventPosts: boolean;
+};
+
+export const FEATURES: LegalFeatures = {
+  demographics: false,
+  emergencyContact: false,
+  workoutLogs: false,
+  eventPosts: false,
+};

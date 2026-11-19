@@ -159,7 +159,7 @@ describe('push consent versus pre-G1 tokens', () => {
   }
 
   // DEFECT Q7-1: the dispatcher gate (claim_notification_jobs) never looks at push consent.
-  it.fails('DEFECT Q7-1: a token without a recorded push consent is not handed to the dispatcher', async () => {
+  it('FIXED Q7-1: a token without a recorded push consent is not handed to the dispatcher', async () => {
     const { organizerId, communityId, member } = await memberWithLegacyToken();
     await createAnnouncement(organizerId, communityId, { title: 'Qseven News' });
     const claimed = await claimJobs('qa-worker');
@@ -169,7 +169,7 @@ describe('push consent versus pre-G1 tokens', () => {
   });
 
   // DEFECT Q7-2: a user whose token predates the ledger cannot remove it with the Privacy switch.
-  it.fails('DEFECT Q7-2: withdraw_consent(push) removes tokens even when no grant event exists', async () => {
+  it('FIXED Q7-2: withdraw_consent(push) removes tokens even when no grant event exists', async () => {
     const { member } = await memberWithLegacyToken();
     await asUser(member, (db) => rpc(db, 'withdraw_consent', ['push_notifications']));
     const { rows } = await admin.query('select count(*)::int as n from public.device_push_tokens where user_id = $1', [member]);
@@ -180,7 +180,7 @@ describe('push consent versus pre-G1 tokens', () => {
 describe('retention promises of the notice and the export README', () => {
   // DEFECT Q7-3: README says rate-limit records are kept for at most a day; only the same user's
   // next export prunes them, no purge job does.
-  it.fails('DEFECT Q7-3: private.data_export_log rows older than a day are purged', async () => {
+  it('FIXED Q7-3: private.data_export_log rows older than a day are purged', async () => {
     const user = await createUser();
     await admin.query("insert into private.data_export_log (user_id, requested_at) values ($1, now() - interval '5 days')", [user]);
     await asService((db) => rpc(db, 'purge_old_notification_data'));
@@ -190,7 +190,7 @@ describe('retention promises of the notice and the export README', () => {
 
   // DEFECT Q7-4: the notice says push tokens are deleted "when the token stops working"; the
   // dispatcher only sets invalidated_at and nothing ever deletes the row (token value kept).
-  it.fails('DEFECT Q7-4: an invalidated push token is eventually deleted', async () => {
+  it('FIXED Q7-4: an invalidated push token is eventually deleted', async () => {
     const pack = await createPack(1);
     const [member] = pack.memberIds;
     await admin.query(
@@ -222,14 +222,16 @@ describe('retention promises of the notice and the export README', () => {
 });
 
 describe('removed members', () => {
-  // DEFECT Q7-5: the Terms promise "needs an organizer to invite them again", but a removed
-  // member's membership row blocks every code and no reinstate function exists.
-  it.fails('DEFECT Q7-5: a removed member can be invited again with a new code', async () => {
+  // FIXED Q7-5 (by text): the Terms now say removal is final for that account in this version. The
+  // server enforces exactly that: a removed member's membership row blocks every code and no
+  // reinstate function exists. This pins the behaviour the Terms promise.
+  it('Q7-5: a removed member cannot rejoin with a new code (removal is final)', async () => {
     const pack = await createPack(1);
     const [member] = pack.memberIds;
     await removeMember(pack.organizerId, pack.communityId, member);
     const code = await asUser(pack.organizerId, (db) => rpcRow<{ code: string }>(db, 'create_invitation', [pack.communityId]));
-    expect((await redeem(member, code.code)).ok).toBe(true);
+    const result = await redeem(member, code.code);
+    expect(result.ok).toBe(false);
   });
 
   it('a removed member gets no new notifications and sees no community rows beyond their own', async () => {
@@ -271,7 +273,7 @@ describe('removed members', () => {
 describe('free text survives anonymization', () => {
   // DEFECT Q7-6: the plan promises audit entries "without name or id"; the organizer's free-text
   // reason stays on the anonymized audit row and can contain the person's name.
-  it.fails('DEFECT Q7-6: attendance_audit_log.reason of an erased user is scrubbed', async () => {
+  it('FIXED Q7-6: attendance_audit_log.reason of an erased user is scrubbed', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(2, 2);
     const [victim] = memberIds;
     await recordAttendance(organizerId, session.id, victim, 'absent', 'Zed Zebra had the flu');
