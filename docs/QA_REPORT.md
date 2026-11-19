@@ -951,3 +951,182 @@ Fixed and verified by tests (full suite: 103 files, 2003 tests, all passing; typ
 Owner decisions applied: D1 one global display name (kept; app tells users), D2 community names need not be unique, D3 "Create a community" stays visible (creator codes gate it), D4 the invitation message shows the expiry time, D5 daily cleanup of failed attempts, no per-code cap.
 
 Still unverified (needs a hosted Supabase project, an Android device, Expo/Firebase): everything listed under each section's "cannot be verified" list, notably Realtime, pg_cron/pg_net scheduling, push delivery, rendering of the new screens, and Hermes behaviour of `Intl.supportedValuesOf`.
+
+---
+
+## GDPR (G1 + G2) (Q7)
+
+Scope: `20261123000100_consents.sql`, `20261124000100_member_roles.sql`, `20261124000200_data_rights.sql`; `src/features/legal/**`, `src/features/dataRights/**`, `src/features/members/**`, sign-out (`src/features/profile/domain/signOut.ts`); the texts in `content/privacy.ts` and `content/terms.ts`. Reviewed against `docs/GDPR_PLAN.md` and the contract, not the developers' summaries. This is a technical review, not legal advice.
+
+### Verdict
+
+**The mechanisms hold; the texts and a few edges do not yet match them. Ten defects are open (4 medium, 6 low), none critical.** What was attacked and held: the ledger is append-only against every API role and the table owner (only owner/superuser `TRUNCATE` and `session_replication_role = replica` bypass it, confirmed); a client cannot forge consent for another user or a stale version; bumping either legal document re-gates joins while optional consents stay; the join gate sits on both join RPCs and consumes nothing; deletion leaves no reference to the user in `public`, `private` or `auth`; the last-organizer rule survives concurrency; a generated sweep of every function `authenticated` can execute (not a hand-written list) returns nothing, writes nothing and raises no raw constraint error for a deleted account's still-valid token, and shows no community data to a removed member (the sweep is shown non-blind by running it as an active organizer). The weak points: (1) push consent is not enforced where pushes are sent, (2) the notice promises things the system does not do (re-invitation, token deletion, groups of 5+, "Former member", features not built), (3) the blocking "updated terms" screen leaves no export/delete path, (4) small retention gaps. Defects are `it.fails` tests so `main` stays green; each turns red when fixed (remove `.fails`).
+
+### Defects
+
+| Id | Sev | Where | Summary | Owner |
+|---|---|---|---|---|
+| Q7-1 | medium | `20261116000100_m3_qa_fixes.sql` (`claim_notification_jobs`, CTE `with_tokens`, about l.378-386) | Dispatcher hands out tokens without checking push consent. | backend |
+| Q7-2 | low | `20261123000100_consents.sql:358-361` (`withdraw_consent`) | Withdrawing push consent is a no-op (tokens stay) when no grant event exists. | backend |
+| Q7-3 | low | `20261124000200_data_rights.sql:308-314, 350-352` | `private.data_export_log` is pruned only by the same user's next export; the README promises "at most a day". | backend |
+| Q7-4 | low | `20261115000400_notifications_rpcs.sql:1229` and the purge functions | Invalidated push tokens are never deleted; notice: deleted "when the token stops working". | backend (or text) |
+| Q7-5 | medium | `20261114000200_invitations_and_onboarding.sql:190`; `terms.ts` "Ending your use" | Terms: a removed member "needs an organizer to invite them again"; every code is refused (`invalid_code`) and no reinstate function exists. | backend / lead |
+| Q7-6 | low | `20261124000200_data_rights.sql` `erase_user` step 4 | The organizer's free-text `reason` stays on the anonymized audit row and may contain the person's name. | backend |
+| Q7-7 | medium | `privacy.ts` ("what we collect", "who can see") | Notice describes birth year, gender, emergency contact, T-shirt size, workout logs, replies and a "groups of 5 or more" rule; none exists in schema or code (Privacy settings shows switches for them). | lead / mobile |
+| Q7-8 | low | `deliverExport.ts:19-26`; `signOut.ts`, `useDeleteAccount.ts` | The downloaded JSON stays in the cache after sign out and after account deletion. | mobile |
+| Q7-9 | low | `privacy.ts` rights list | "announcements you wrote ... show 'Former member' as the author": no announcement screen shows an author. | lead / mobile |
+| Q7-10 | medium | `TermsUpdateScreen.tsx:75-82` | The blocking screen for existing members offers only "accept"; to export or delete you must first accept the new terms. | mobile / lead |
+
+**Q7-1.** Repro: `qa-gdpr-consent.test.ts` "DEFECT Q7-1". A member with a token registered before G1 (no consent event) receives an announcement; `claim_notification_jobs` returns the token. Expected: `tokens: []` unless `push_notifications` is current. Actual: pushes continue for everybody who registered before G1 (the contract already lists this as an open question), so "Push messages need your consent" is untrue for them, and a withdrawal racing a claim still sends. Fix: add `private.has_consent(user_id, 'push_notifications')` to the `blocked_reason` ladder, and make the app ask existing members for push consent again.
+
+**Q7-2.** Repro: "DEFECT Q7-2". `withdraw_consent('push_notifications')` returns `changed:false` and keeps the token while the Privacy switch shows off. Fix: for that purpose always delete the caller's tokens.
+
+**Q7-3.** Repro: "DEFECT Q7-3": a 5-day-old row survives `purge_old_notification_data()`. Fix: delete rows older than a day there.
+
+**Q7-4.** Repro: "DEFECT Q7-4": a token invalidated 60 days ago survives the purge. Fix: purge long-invalidated tokens, or reword the notice.
+
+**Q7-5.** Repro: "DEFECT Q7-5": the organizer removes a member, creates a fresh code, the member redeems it: refused. Fix: let an organizer-created invitation reactivate a removed membership, or change the Terms to "cannot rejoin".
+
+**Q7-6.** Repro: "DEFECT Q7-6": reason "Zed Zebra had the flu" survives deletion on a row with `user_id null`. The plan promised audit entries "without name or id". Fix: null `reason` when anonymizing (or document that reasons stay).
+
+**Q7-7.** Repro: `qa-gdprCopy.test.ts` "DEFECT Q7-7". The notice (whose comment says "Only features that exist are described as available") already announces P3/P5 data, and the "5 or more" threshold is implemented nowhere. Expected: the text names only what exists, or P3/P5 ship the threshold with the data. Consent given today covers a purpose with no processing behind it.
+
+**Q7-8.** Repro: "DEFECT Q7-8" (source check). `removeOldExports` runs only before the next export; after sign out or deletion the file with the member's whole history stays in the app cache on a shared device. Fix: call the same cleanup from `runLocalCleanup`.
+
+**Q7-9.** Repro: "DEFECT Q7-9". Fix: show the author (with "Former member" for null) or drop the sentence.
+
+**Q7-10.** Repro: "DEFECT Q7-10" (source check). Fix: put "Download my data" and "Delete my account" on the update screen (both RPCs work without current terms) so rights do not depend on accepting.
+
+### Observations (no defect filed)
+
+- **O1** Rolling a legal version back makes old acceptances valid again (test). Fine for undoing a mistaken bump; never reuse a version string for different texts.
+- **O2** `my_consents` for a deleted account's token returns a default document (needs acceptance, all false) instead of an error; no data. The app would show the terms gate for a ghost session until the token expires.
+- **O3** The rate limit counts withdrawals too: 30 toggles in an hour block a re-grant (including re-accepting terms after a bump) for the rest of the hour.
+- **O4** Authored announcements and organized events stay with their text and no author; the plan said "choose: delete". The notice is honest about it, but the body can hold personal data (test pins it); an erasure request may still require removal.
+- **O5** Tiny community: the anonymous `present` row plus `former_members` in the attendance sheet identify the leaver to an organizer who knows who attended (test pins it). The notice says so.
+- **O6** Sign-out unregisters the push token best-effort; if that fails the token stays on the server for an account nobody can reach (see Q7-4).
+- **O7** Realtime: every published table keeps the default replica identity, so old values in delete/update payloads carry only the key (test).
+- **O8** `ConsentGate` fails open offline; the server still refuses joins and push registration. Reasonable.
+- **O9** Backups, Supabase logs (IP addresses, `auth.audit_log_entries`) and the processors' copies are outside the app; the notice says data is kept "until you delete" without mentioning backup lag.
+- **O10** The web build bakes the controller details into the public bundle (intended). Scan with the values from the gitignored `.env.local`: 0 tracked files contain them; only the gitignored `dist` does.
+
+### Claims in the texts versus the system
+
+P = privacy.ts, T = terms.ts. yes = implemented and tested; partly; no.
+
+| # | Claim | Impl. | Evidence | Action |
+|---|---|---|---|---|
+| 1 | Anonymous account, membership, role stored; contract basis (P) | yes | schema, RLS suites | none |
+| 2 | Display name shared with the community (P) | yes | members screens | none |
+| 3 | RSVPs, attendance, change history kept; objection "at any time" (P) | partly | audit log yes; objection only by e-mail | owner: e-mail process |
+| 4 | "Posts and replies in announcements and event discussions" (P) | partly | announcements yes; no replies or discussions | Q7-7 |
+| 5 | Push token, settings, in-app notifications; push needs consent (P) | partly | register gate yes; dispatcher does not check | Q7-1 |
+| 6 | Birth year, gender (optional, consent) (P) | no | no schema or code | Q7-7 |
+| 7 | Emergency contact, T-shirt size (optional) (P) | no | no schema or code | Q7-7 |
+| 8 | Workout logs (optional) (P) | no | no schema or code | Q7-7 |
+| 9 | No location, contacts, ad IDs, payments, children's data (P) | yes | no such code; age box is self-declared | none |
+| 10 | Members see display name and "going" on event pages (P) | yes | RLS and rsvp suites | none |
+| 11 | Organizers change roles and remove; members leave; removed lose access; history stays (P) | yes | `member-roles.test.ts`, `qa-gdpr-consent` removed-member tests, sweep | none |
+| 12 | Organizers see membership, RSVPs, attendance (P) | yes | RLS suites | none |
+| 13 | Emergency contact visible only with consent (P) | no | not built | Q7-7 |
+| 14 | Birth year and gender only as groups of 5+ (P) | no | no threshold anywhere | Q7-7 |
+| 15 | Workout logs private; only group totals (P) | no | not built | Q7-7 |
+| 16 | We do not sell or share for advertising (P) | yes | no such code | none |
+| 17 | Processors: Supabase, Expo, FCM, web host (P) | partly | list matches code; DPAs not in repo | owner |
+| 18 | Notification texts never hold workout or emergency data (P) | partly | true today; no enforcement | test when P3/P5 land |
+| 19 | Transfers outside the EEA rely on SCC/DPF (P) | n/a | contractual | owner / lawyer |
+| 20 | Notifications deleted 90 d after read, 180 d unread (P) | partly | purge uses `created_at` (earlier than "after read", safe side); needs pg_cron hosted | reword; verify cron |
+| 21 | Failed attempts deleted after 24 h (P) | yes | `purge_old_invitation_attempts`; tests | verify cron |
+| 22 | Push tokens deleted on switch-off, when the token stops working, at deletion (P) | partly | switch-off (with a grant) and deletion yes; invalid tokens kept | Q7-2, Q7-4 |
+| 23 | Account data kept until deletion; attendance stays anonymous (P) | yes | `account-deletion.test.ts` | none |
+| 24 | Consent records kept while the account exists (P) | yes | ledger tests | none |
+| 25 | Each optional consent has a switch; off is immediate (P) | partly | push yes; other three gate nothing yet | Q7-7 |
+| 26 | Correct your name: Profile, Change name (P) | yes | `profile.tsx:97` | none |
+| 27 | Download up to 10 per hour, "everything we hold" (P) | partly | limit yes; id-keyed scan finds no gap; free text on other people's rows not covered | none |
+| 28 | Deletion list; attendance anonymous; "Former member" author (P) | partly | deletion yes; no author shown | Q7-9 |
+| 29 | Leave a community: Profile, Leave this community (P) | yes | `LeaveCommunitySection` | none |
+| 30 | We answer within a month (P) | n/a | process | owner |
+| 31 | RLS on every data table (P) | yes | schema test | none |
+| 32 | All changes through checked functions; no admin keys in the app (P) | yes | `no-unguarded-writes.test.ts`; no service key in `src` | none |
+| 33 | Encrypted in transit (P) | yes (hosted) | HTTPS to Supabase | verify hosted |
+| 34 | Attendance audit log; code-guess limiter (P) | yes | existing suites | none |
+| 35 | Session in secure storage where available (P) | yes | `authStorage.ts` | none |
+| 36 | Breach: authority and people notified (P) | no runbook | none | owner: `BREACH_RUNBOOK.md` (G3) |
+| 37 | Under 16 not allowed; accounts deleted if found (P) | partly | self-declared box; no process | owner |
+| 38 | Account created on the device "the first time you join" (P) | partly | created at the first code submit, also a wrong code | wording |
+| 39 | No analytics, advertising or tracking tools (P) | yes | no SDK in `package.json` (test) | re-check per dependency |
+| 40 | Web: local storage only, no tracking cookies (P) | yes | `authStorage.ts` | none |
+| 41 | New versions shown and confirmed before joining (P, T) | yes | gate tests | none |
+| 42 | Must be 16 (T) | partly | self-declared | see 37 |
+| 43 | Ticking the start-screen box accepts the Terms (T) | yes | `BeforeYouStartScreen` | none |
+| 44 | Organizers must not export member data; "correct or remove a record when asked" (T) | partly | no organizer export; no function removes an attendance record | owner: decide |
+| 45 | "Organizers may remove posts that break these rules" (T) | partly | organizers can cancel scheduled announcements only | add delete or reword |
+| 46 | Removed member needs a new invitation (T) | no | a new code is refused too | Q7-5 |
+| 47 | Delete account: Profile, Privacy, Delete my account (T) | yes | flow tests | none |
+| 48 | Governing law Romania (T) | n/a | legal | lawyer |
+
+### For the owner and the lawyer (not technical)
+
+1. Processing agreements with Supabase (EU region), Expo and Google; the hosting provider of the web version; transfer mechanism for Expo and Google.
+2. Record of processing (Art. 30) and a DPIA assessment (workout data, planned); controller identity set in `.env.local` and the build environment.
+3. Retention schedule: inactive accounts (G3), notification delivery jobs (30 days, not in the notice), backups and Supabase logs (IP addresses, auth audit log) and how long they live.
+4. Breach runbook (72 hours), contact process for e-mail requests, how to verify an anonymous account.
+5. Decide: re-invitation of removed members, deletion versus retention of authored announcements, retention of free-text reasons, organizer record removal.
+6. Age gate is self-declared; confirm Romania's age (16) and the wording; flip `LEGAL_REVIEWED` only after review.
+7. Hosted Supabase checks listed in the contract (`delete from auth.users` by the security-definer function, cascade of Auth tables, pg_cron jobs).
+
+### Evidence map
+
+| Requirement | Evidence |
+|---|---|
+| Append-only ledger, all roles | `qa-gdpr-consent` "ledger: append-only", `consent-ledger.test.ts` |
+| Documented gaps (replica, TRUNCATE) | `qa-gdpr-consent` GAP test |
+| Versions, re-gating, no forgery | `qa-gdpr-consent` "versions and re-gating", `consent-gates.test.ts` |
+| Push consent, pre-G1 tokens | Q7-1, Q7-2, `consent-gates.test.ts` |
+| Deleted-account token on every function | `qa-gdpr-sweep` (generated from `pg_proc`), `account-deletion.test.ts` |
+| Removed member sees nothing | `qa-gdpr-sweep`, `qa-gdpr-consent` "removed members" |
+| Export: no tokens, codes, other people | `qa-gdpr-consent` last test, `data-export.test.ts` |
+| Erasure completeness, anonymity, concurrency | `account-deletion*.test.ts` (existing), Q7-6, O4, O5 |
+| Texts versus system | `qa-gdprCopy.test.ts`, the claims table |
+| Cleanup after sign out / deletion | `qa-gdprCopy.test.ts` (Q7-8) |
+
+### Cannot verify here
+
+Hosted `auth.users` deletion by the function and cascade of Auth tables; pg_cron jobs for purges; Supabase Auth audit log contents; real push delivery and Expo handling of a token after withdrawal; anything on a device (checkbox/switch accessibility with TalkBack, dialogs, share sheet, cache file lifetime, back-button on the consent screen); Hermes behaviour; the web page generator's output in a browser (CSP, escaping were not exercised beyond the existing `renderHtml.test.ts`); whether the Realtime server sends anything for the anonymizing updates.
+
+### Manual test script additions (continue the numbering of the C-Q1 script)
+
+Setup: hosted project with the G1 and G2 migrations; two phones or one phone with account switching: **Ana** (organizer) and **Bob** (member), fake names only; a third account **Cora**.
+
+100. Fresh install, Welcome. Tap Join a community. Expect "Before you start" with two unticked boxes, Terms and Privacy links; Continue disabled. Tick one box: still disabled. Tick both, Continue: the code screen.
+101. Open the web link `/join#code=XXXX` in a fresh browser profile: expect the consent screen first (not the code screen), the address bar without the fragment, then the code prefilled after Continue.
+102. Join with a valid code. SQL: `select purpose, granted, document_version from consent_records where user_id = '<id>' order by created_at;` expect `terms_privacy` (`terms:1|privacy:1`) and `age_16` before the membership row's time.
+103. SQL: `select public.admin_set_legal_version('privacy','2');` Bob (existing member) opens the app: "We updated our terms" appears; try to export or delete from there (Q7-10: not possible today). Accept; the app opens. Ana tries Join another community before accepting: refused until accepted.
+104. Profile, Privacy: push switch on (system permission prompt after the in-app prompt). Check `device_push_tokens` has a row. Switch off: confirmation dialog; confirm; row gone; the switch stays off after killing the app. Airplane mode, switch on: it snaps back with an error.
+105. Push consent for an old token (Q7-1): insert a token row by SQL for Bob without consent, Ana posts an announcement: Bob's phone should not get a push (it does today).
+106. Download my data: file opens in the share sheet; no push token values, no other member names. Press it 11 times within an hour: the 11th says rate limited. Sign out, then look at the app cache folder: the file should be gone (Q7-8: it stays).
+107. Members screen as Ana: promote Bob (he becomes organizer), demote him, remove Cora; Cora's phone loses access to the community; Cora enters a fresh code from Ana: expect to be refused (Q7-5: text promises a re-invite works). Ana cannot demote or remove herself.
+108. Delete my account with two accounts: Ana is the only organizer of a community with Bob in it: Delete shows the blocking community and does not delete. Ana promotes Bob; delete again: typed confirmation, success notice on Welcome. Check: Ana's id gone from `auth.users`; Bob sees the community, past attendance as "Former member"; Bob can still use the app; Ana's old session token cannot read anything.
+109. Last member: Bob (alone in another community) deletes his account: the community is listed as "deleted with the account" before confirming and is gone afterwards.
+110. Deleted account on the same phone: Welcome shows the deletion notice; Before you start appears again (the stored acknowledgement was cleared); a new join makes a new account.
+111. Withdraw consent and delete while pushes are queued: post an announcement and immediately delete Bob; Bob's phone must not receive it after the deletion.
+112. TalkBack: checkboxes read as checkbox with state; switches announce the purpose; dialogs trap focus and close with Back; typed-confirmation field is announced.
+
+### What was run (Q7)
+
+Windows, embedded Postgres, 2026-11-19, one suite at a time:
+
+- `npm test` -> `Test Files  128 passed (128)`, `Tests  2432 passed | 10 expected fail (2442)` (409 s). The 10 expected failures are Q7-1 to Q7-10.
+- `npm run typecheck` -> exit 0, no output.
+- `npm run lint` -> exit 0.
+- `npx expo export --platform web` (to a scratch directory) -> `Exported: ...`, exit 0.
+- `npx expo-doctor` -> `19/20 checks passed`; the failed check is the dependency versions (`@expo/ui ~58.0.29` expected, 58.0.28 installed, 4 packages out of date). Not a GDPR matter; for the lead.
+- Not run: Android bundle, a device, hosted Supabase, Deno.
+
+### Test inventory (Q7)
+
+| File | Tests | Covers |
+|---|---|---|
+| `supabase/tests/qa-gdpr-consent.test.ts` | 20 (6 expected fail) | ledger against all roles and owner, documented gaps, version re-gating, private helpers, deleted token, pre-G1 tokens, retention, removed members, free text after anonymization, RLS and Realtime identity, export contents |
+| `supabase/tests/qa-gdpr-sweep.test.ts` | 3 | every `authenticated` function from `pg_proc`: deleted account, removed member, non-blind control |
+| `src/features/legal/qa-gdprCopy.test.ts` | 9 (4 expected fail) | texts versus schema and source, analytics SDKs, sign-out cleanup, hygiene |
