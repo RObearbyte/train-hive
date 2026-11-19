@@ -319,8 +319,8 @@ describe('Q8 numeric and text edge cases', () => {
     }
   });
 
-  // DEFECT Q8-1: description (and meeting_instructions, title) keep control and bidi override characters that event_notes strips.
-  it.fails('title, description and notes are cleaned the same way (no divergence between the text fields)', async () => {
+  // Q8-1 (fixed in 20261127000100): one hygiene for every free-text field.
+  it('title, description and notes are cleaned the same way (no divergence between the text fields)', async () => {
     const { communityId, organizerId } = await createPack();
     const dirty = 'ab\u0007c\r\nd‮e';
     const made = await createEvent(organizerId, communityId, 'social', { description: dirty, event_notes: dirty });

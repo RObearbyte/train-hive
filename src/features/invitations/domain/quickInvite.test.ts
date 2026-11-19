@@ -8,12 +8,15 @@ import {
   FAB_SIZE,
   INITIAL_QUICK_INVITE,
   inviteFabVisible,
+  QUICK_INVITE_CREATED_HINT,
   QUICK_INVITE_DEFAULTS,
   quickInviteReducer,
   quickInviteRequest,
   type QuickInviteEvent,
   type QuickInviteState,
 } from './quickInvite';
+
+import { createInvitationFailure } from './createInvitation';
 
 const INVITATION = { id: 'i1', code: 'ABCDEFGH' } as unknown as InvitationCode;
 const run = (events: QuickInviteEvent[], from: QuickInviteState = INITIAL_QUICK_INVITE) =>
@@ -107,5 +110,22 @@ describe('quickInviteReducer', () => {
     expect(
       quickInviteReducer(INITIAL_QUICK_INVITE, { type: 'succeeded', attempt: 0, invitation: INVITATION }),
     ).toBe(INITIAL_QUICK_INVITE);
+  });
+});
+
+describe('quick invite messages', () => {
+  it('the created state hints at the 30 day validity and where to revoke', () => {
+    expect(QUICK_INVITE_CREATED_HINT).toBe(
+      'This code stays valid for 30 days. You can see or revoke it in Invitations.',
+    );
+    expect(QUICK_INVITE_DEFAULTS.expiry).toBe('30d');
+  });
+  it('a refused expires_at reads as a device clock problem', () => {
+    const state = run([
+      { type: 'create' },
+      { type: 'failed', attempt: 1, error: { code: 'validation_failed', field: 'expires_at' } },
+    ]);
+    if (state.phase !== 'error') throw new Error('expected error');
+    expect(createInvitationFailure(state.error).message).toContain("Check this device's date and time");
   });
 });

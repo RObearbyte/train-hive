@@ -268,9 +268,16 @@ export function trainingFormSchema(context: TrainingFormContext) {
     // only loses its deadline once the (stored) deadline has passed. Display rule; the server decides.
     const storedDeadlinePassed =
       stored !== undefined && nowMs >= new Date(stored.rsvp_deadline).getTime();
+    // The server also freezes a scheduled training whose deadline has passed (the minutes before
+    // the finalizer decides it).
+    const trainingDecided =
+      training &&
+      (stored?.status === 'confirmed' || (stored?.status === 'scheduled' && storedDeadlinePassed));
     const deadlineFrozen =
-      stored?.status === 'confirmed' && (training || storedDeadlinePassed);
-    const limitsFrozen = stored?.status === 'confirmed' && training;
+      (stored?.status === 'confirmed' && (training || storedDeadlinePassed)) || trainingDecided;
+    const limitsFrozen = trainingDecided;
+    const frozenSince =
+      stored?.status === 'confirmed' ? 'after the training is confirmed' : 'once the deadline has passed';
     const noun = training ? 'training' : 'event';
 
     // --- Text -------------------------------------------------------------
@@ -371,7 +378,7 @@ export function trainingFormSchema(context: TrainingFormContext) {
         issue(
           'deadlineDate',
           training
-            ? 'The RSVP deadline cannot be changed after the training is confirmed.'
+            ? `The RSVP deadline cannot be changed ${frozenSince}.`
             : 'Registration has closed, so the deadline can no longer be changed.',
         );
       } else if (!training && deadlineMs !== null && startMs !== null && deadlineMs >= startMs) {
@@ -408,7 +415,7 @@ export function trainingFormSchema(context: TrainingFormContext) {
       else if (min === null) issue('minParticipants', 'Enter a whole number.');
       else if (min < 1) issue('minParticipants', 'The minimum must be at least 1.');
       else if (limitsFrozen && min !== stored?.min_participants) {
-        issue('minParticipants', 'The minimum cannot be changed after the training is confirmed.');
+        issue('minParticipants', `The minimum cannot be changed ${frozenSince}.`);
       }
     }
 
@@ -416,7 +423,7 @@ export function trainingFormSchema(context: TrainingFormContext) {
     const max = maxText === '' ? null : parseInteger(maxText);
     if (maxText !== '' && max === null) issue('maxParticipants', 'Enter a whole number.');
     else if (limitsFrozen && max !== (stored?.max_participants ?? null)) {
-      issue('maxParticipants', 'The maximum cannot be changed after the training is confirmed.');
+      issue('maxParticipants', `The maximum cannot be changed ${frozenSince}.`);
     } else if (max !== null) {
       if (min !== null && min >= 1 && max < min) {
         issue('maxParticipants', 'The maximum cannot be lower than the minimum.');

@@ -446,11 +446,13 @@ describe('trainingFormSchema: edit', () => {
       const afterDeadline = new Date('2026-11-13T17:00:00Z');
       expect(editErrors(makeSession(), {}, afterDeadline)).toEqual({});
       expect(editErrors(makeSession(), { title: 'Renamed' }, afterDeadline)).toEqual({});
-      // A changed deadline must still be in the future.
+      // Q8-2: the server freezes the deadline once it has passed, even before the finalizer runs.
       expect(editErrors(makeSession(), { deadlineTime: '18:30' }, afterDeadline)).toEqual({
-        deadlineDate: ['The RSVP deadline must be in the future.'],
+        deadlineDate: ['The RSVP deadline cannot be changed once the deadline has passed.'],
       });
-      expect(editErrors(makeSession(), { deadlineTime: '20:00' }, afterDeadline)).toEqual({});
+      expect(editErrors(makeSession(), { deadlineTime: '20:00' }, afterDeadline)).toEqual({
+        deadlineDate: ['The RSVP deadline cannot be changed once the deadline has passed.'],
+      });
     });
 
     it('requires the future only for timestamps that were changed', () => {

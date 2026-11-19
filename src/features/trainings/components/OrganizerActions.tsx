@@ -75,7 +75,7 @@ export function OrganizerActions({ session, onEdit }: OrganizerActionsProps) {
         title="Cancel this event?"
         message={`Members will see "${session.title}" as cancelled by the organizer and can no longer answer. This cannot be undone.`}
         confirmLabel="Cancel event"
-        cancelLabel="Keep training"
+        cancelLabel="Keep event"
         destructive
         pending={cancel.isPending}
         error={failure}

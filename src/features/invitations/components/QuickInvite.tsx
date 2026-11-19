@@ -19,6 +19,7 @@ import { remainingUsesText } from '../domain/invitation';
 import {
   FAB_SIZE,
   INITIAL_QUICK_INVITE,
+  QUICK_INVITE_CREATED_HINT,
   inviteFabVisible,
   quickInviteReducer,
   quickInviteRequest,
@@ -206,6 +207,9 @@ function SheetBody({
           now={now}
           showPreview
         />
+        <Text variant="caption" color="textMuted">
+          {QUICK_INVITE_CREATED_HINT}
+        </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
           <Button label="Create another" variant="secondary" size="sm" icon="plus" onPress={onCreate} />
           {more}

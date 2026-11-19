@@ -31,6 +31,10 @@ export function inviteFabVisible(input: {
   return input.isOrganizerOfActive && input.activeCommunityId !== null && !input.keyboardVisible;
 }
 
+/** Shown under a freshly created code: closing the sheet does not lose it. */
+export const QUICK_INVITE_CREATED_HINT =
+  'This code stays valid for 30 days. You can see or revoke it in Invitations.';
+
 export const FAB_SIZE = 56;
 const FAB_MARGIN = 16;
 /** Extra bottom padding for scroll content so the button never hides the last row. */

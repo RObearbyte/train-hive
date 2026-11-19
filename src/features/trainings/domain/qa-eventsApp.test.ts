@@ -33,9 +33,8 @@ function issues(session: TrainingSession, change: Record<string, string>): strin
 }
 
 describe('Q8 form versus server freeze rules', () => {
-  // DEFECT Q8-2: a training past its deadline but not yet decided is frozen by the server
-  // (validation_failed:rsvp_deadline / min / max); the form only freezes once status = confirmed.
-  it.fails('a scheduled training past its deadline cannot change the limits or the deadline in the form either', () => {
+  // Q8-2 (fixed): the server freezes a training past its deadline before the finalizer runs; so does the form.
+  it('a scheduled training past its deadline cannot change the limits or the deadline in the form either', () => {
     const s = stored();
     expect(issues(s, { maxParticipants: '7' })).toContain('maxParticipants');
     expect(issues(s, { minParticipants: '1' })).toContain('minParticipants');
@@ -91,8 +90,8 @@ describe('Q8 form versus server freeze rules', () => {
 
 describe('Q8 vocabulary', () => {
   const read = (file: string) => readFileSync(join(__dirname, '..', 'components', file), 'utf8');
-  // DEFECT Q8-3: the cancel dialog of every kind offers "Keep training".
-  it.fails('the cancel dialog does not say "training" for a race or a social event', () => {
+  // Q8-3 (fixed): the cancel dialog says "Keep event".
+  it('the cancel dialog does not say "training" for a race or a social event', () => {
     expect(read('OrganizerActions.tsx')).not.toMatch(/cancelLabel="Keep training"/);
   });
   it('the minimum field and the confirmed banner are only rendered for trainings', () => {

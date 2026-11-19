@@ -803,3 +803,8 @@ Enum `event_kind` (`EventKind`), table `event_subtypes` (`EventSubtype`), `train
 ## Hosted deployment
 
 `npx supabase@latest db push --remote` after the app build that understands non-training events and a nullable `min_participants` is installed (an older app keeps creating and editing trainings, but would show races as trainings without a minimum).
+
+## Q8 fixes
+
+- `title`, `description` and `meeting_instructions` of `create_training` / `update_training` now get the same text hygiene as `event_notes` (control and bidi-override characters stripped, line breaks normalized, whitespace-only = null, invisible-only text rejected with `validation_failed:<field>`; length is checked after cleaning). Normal text is unchanged. Migration `20261127000100_events_text_hygiene.sql`; no signature or privilege change.
+- Future: `create_invitation` takes an absolute `p_expires_at` computed on the device; a server-side duration parameter would remove the dependency on the phone clock.
