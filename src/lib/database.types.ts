@@ -816,6 +816,27 @@ export type Database = {
           },
         ];
       };
+      // GDPR G1. Select-only; no client writes.
+      legal_documents: {
+        Row: { document: LegalDocumentKind; version: string; effective_at: string; updated_at: string };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      /** Append-only ledger; a user reads only their own rows. Write through record_consent / withdraw_consent. */
+      consent_records: {
+        Row: {
+          id: string;
+          user_id: string;
+          purpose: ConsentPurpose;
+          document_version: string | null;
+          granted: boolean;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       notification_preferences: {
         Row: {
           user_id: string;
@@ -1086,6 +1107,31 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      // GDPR G1: legal versions and consents.
+      /** service_role only (or `postgres` in the SQL editor). Returns an `AdminSetLegalVersionResult`. */
+      admin_set_legal_version: {
+        Args: { p_document: LegalDocumentKind; p_version: string };
+        Returns: Json;
+      };
+      /**
+       * Appends a grant. For `terms_privacy`, `p_document_version` must be `MyConsents.terms_privacy_version`
+       * exactly. Returns a `ConsentEvent`. Raises `validation_failed:purpose`,
+       * `validation_failed:document_version`, `rate_limited`, `not_authenticated`.
+       */
+      record_consent: {
+        Args: { p_purpose: ConsentPurpose; p_document_version?: string | null };
+        Returns: Json;
+      };
+      /** Appends a withdrawal. Returns a `ConsentEvent`. Raises `not_withdrawable` for terms_privacy / age_16. */
+      withdraw_consent: {
+        Args: { p_purpose: ConsentPurpose };
+        Returns: Json;
+      };
+      /** Returns `MyConsents`. */
+      my_consents: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
       // Milestone 4: statistics (read-only, authenticated). Definitions: docs/STATS_DEFINITIONS.md.
       /** Active member of the community. Returns a `MyStatistics`. */
       get_my_statistics: {
@@ -1270,7 +1316,63 @@ export type CreateCommunityWithCodeError =
   | 'validation_failed:name'
   | 'validation_failed:timezone'
   | 'validation_failed:display_name'
-  | 'validation_failed:request_id';
+  | 'validation_failed:request_id'
+  /** GDPR G1: current terms_privacy and age_16 consent are missing (checked first, after not_authenticated). */
+  | 'consent_required';
+
+// GDPR G1: legal versions and consents ---------------------------------------------------------
+
+export type LegalDocumentKind = 'terms' | 'privacy';
+
+/** Consent purposes. terms_privacy and age_16 cannot be withdrawn (not_withdrawable). */
+export type ConsentPurpose =
+  | 'terms_privacy'
+  | 'age_16'
+  | 'profile_demographics'
+  | 'emergency_contact'
+  | 'workout_logs'
+  | 'push_notifications';
+
+/** Result of `record_consent` / `withdraw_consent`. `changed` is false when nothing was written (idempotent). */
+export type ConsentEvent = {
+  purpose: ConsentPurpose;
+  granted: boolean;
+  /** terms_privacy: 'terms:<v>|privacy:<v>'; other purposes: the privacy version at the time. Null when never recorded. */
+  document_version: string | null;
+  at: string | null;
+  changed: boolean;
+};
+
+/** Current state of one purpose in `my_consents`. */
+export type ConsentState = {
+  /** The latest event is a grant. */
+  granted: boolean;
+  /** granted and, for terms_privacy, of the current versions (what the server checks). */
+  current: boolean;
+  document_version: string | null;
+  at: string | null;
+};
+
+/** Result of `my_consents`. */
+export type MyConsents = {
+  terms_version: string;
+  terms_effective_at: string;
+  privacy_version: string;
+  privacy_effective_at: string;
+  /** Pass verbatim as `p_document_version` of record_consent('terms_privacy', …). */
+  terms_privacy_version: string;
+  /** True unless terms_privacy is current and age_16 is granted. Show the first-launch screen when true. */
+  needs_terms_acceptance: boolean;
+  consents: Record<ConsentPurpose, ConsentState>;
+};
+
+/** Result of `admin_set_legal_version` (service_role only). */
+export type AdminSetLegalVersionResult = {
+  document: LegalDocumentKind;
+  version: string;
+  effective_at: string;
+  changed: boolean;
+};
 
 /** Result of `preview_creator_code`. */
 export type PreviewCreatorCodeResult = { ok: true } | { ok: false; error: CreatorCodeError };

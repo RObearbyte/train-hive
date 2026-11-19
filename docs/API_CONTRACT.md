@@ -522,3 +522,66 @@ Migration `20261120000100_c_qa_fixes.sql`. Tests: `supabase/tests/c-qa-fixes.tes
 ### Milestone 3, instant dispatch (append-only)
 
 Migration `20261121000100_instant_dispatch.sql`: a statement-level AFTER INSERT trigger on `notification_delivery_jobs` (`private.trigger_instant_dispatch`, private, security definer, no API grants) calls `dispatch-notifications` through `net.http_post` (asynchronous, sent after commit) when at least one inserted job is due (`next_attempt_at <= now()`). Debounced to one call per 2 s through `private.dispatch_ping` (`for update skip locked`, taken last, never waits). It swallows all errors (warning with SQLSTATE only) and is a no-op without pg_net, Vault or either secret. The cron job remains the safety net. No RPC, signature or client behaviour changed; push arrives typically within seconds instead of up to a minute.
+
+---
+
+# GDPR G1 — consents (append-only)
+
+Migration `20261123000100_consents.sql`. Plan: `docs/GDPR_PLAN.md` sections 2 and 5 (G1). Tests: `supabase/tests/consent-ledger.test.ts`, `supabase/tests/consent-gates.test.ts`, plus the updated privilege matrix in `qa-privileges.test.ts`.
+
+## Tables (RLS, select-only for `authenticated`; nothing for `anon` or `service_role`)
+
+| Table | Columns | Who can select |
+|---|---|---|
+| `legal_documents` | `document text pk` in `terms` / `privacy`, `version text` (`^[A-Za-z0-9._-]{1,20}$`), `effective_at`, `updated_at`. Seeded `'1'` / `'1'`. | any signed-in user |
+| `consent_records` | `id uuid pk`, `user_id → auth.users (on delete cascade)` (not profiles: acceptance happens at first launch, before a profile exists), `purpose`, `document_version text?`, `granted boolean`, `created_at` | own rows only |
+
+**Purposes:** `terms_privacy` (acknowledgement of the Terms + Privacy notice), `age_16` (confirmation of being 16 or older), `profile_demographics`, `emergency_contact`, `workout_logs`, `push_notifications`. Extending the list is a migration (check constraint + `private.consent_purposes()`).
+
+**Versions (decision).** A `terms_privacy` event stores ONE combined string `terms:<terms version>|privacy:<privacy version>` (e.g. `terms:1|privacy:1`), so one row proves which pair of texts was accepted. Every other purpose stores the privacy-notice version in force at the time of the event. Bumping either document makes `terms_privacy` stale; optional consents are not reset by a new notice version.
+
+**Ledger is append-only.** One row per grant or withdrawal; the latest event per (user, purpose) is the current state (order: `created_at`, made strictly increasing per user by the RPCs, which write under a per-user lock). Enforced twice: (1) privileges: no API role, `service_role` included, has INSERT / UPDATE / DELETE / TRUNCATE; (2) a `BEFORE UPDATE OR DELETE` row trigger (`private.guard_consent_ledger`) raises `consent_ledger_append_only` for every UPDATE, and for every DELETE unless the row's auth user no longer exists, which is exactly the `on delete cascade` from `auth.users` (account deletion, G2). It applies to the table owner too. Not covered (owner / superuser only): `TRUNCATE` and `session_replication_role = replica`, which bypass row triggers.
+
+## RPCs (`authenticated`; errors are raised, `P0001`, message = code)
+
+`record_consent(p_purpose text, p_document_version text default null) → jsonb` → `ConsentEvent` `{ purpose, granted: true, document_version, at, changed }`
+- `terms_privacy`: `p_document_version` must equal the current combined version (`my_consents().terms_privacy_version`), else `validation_failed:document_version`. Other purposes: optional; if given it must equal the current privacy version.
+- Idempotent: if the latest event is already a grant of the same version, nothing is written and `changed` is false.
+- Rate limit: a new grant is refused with `rate_limited` when the caller already has 30 ledger events in the last hour. Withdrawals are never limited (a withdrawal must stay as easy as the grant; each needs a prior grant, so they are bounded too).
+- Errors: `not_authenticated` (no user, or the JWT's user was deleted), `validation_failed:purpose`, `validation_failed:document_version`, `rate_limited`.
+
+`withdraw_consent(p_purpose text) → jsonb` → `ConsentEvent` with `granted: false`
+- `terms_privacy`, `age_16`: `not_withdrawable` (leaving the service = deleting the account, G2).
+- Not currently granted (never recorded, or already withdrawn): nothing written, `changed: false`.
+- Effects in the same transaction: `push_notifications` deletes **all of the caller's push tokens**. (P3 / P5 extend this to delete demographics, emergency contact and workout logs.)
+- Errors: `not_authenticated`, `validation_failed:purpose`, `not_withdrawable`.
+
+`my_consents() → jsonb` → `MyConsents`
+```
+{ terms_version: '1', terms_effective_at, privacy_version: '1', privacy_effective_at,
+  terms_privacy_version: 'terms:1|privacy:1',
+  needs_terms_acceptance: true,
+  consents: { terms_privacy: { granted, current, document_version, at }, age_16: {…}, profile_demographics: {…},
+              emergency_contact: {…}, workout_logs: {…}, push_notifications: {…} } }
+```
+- `granted`: the latest event is a grant. `current`: what the server checks (granted, and for `terms_privacy` of the current versions). Never recorded: `granted: false, current: false, document_version: null, at: null`.
+- `needs_terms_acceptance` = not (`terms_privacy` current and `age_16` granted). The app shows the first-launch screen (Terms + Privacy + 16+) when true, then calls `record_consent('terms_privacy', terms_privacy_version)` and `record_consent('age_16')`.
+
+`admin_set_legal_version(p_document text, p_version text) → jsonb` — **`service_role` only** (and `postgres` in the SQL editor)
+- `{ document, version, effective_at, changed }`; the same version again: `changed: false`. Errors `validation_failed:document`, `validation_failed:version`.
+- Owner, after publishing a new privacy notice: `select public.admin_set_legal_version('privacy','2');` — every user then has `needs_terms_acceptance: true` and cannot join a community until they accept again.
+
+`private.has_consent(p_user_id uuid, p_purpose text) → boolean` (no execute for any API role): true only when the latest event is a grant (for `terms_privacy`, of the current versions). **Rule for future features:** every write function that stores consent-dependent data (P3 demographics, emergency contact, P5 workout logs) takes `private.lock_consents(auth.uid())`, then checks `private.has_consent(auth.uid(), '<purpose>')` and raises `consent_required` when false; `withdraw_consent` must delete that data for its purpose.
+
+## Gates
+
+- **Joining.** `redeem_invitation` and `create_community_with_code` return `{ ok: false, error: 'consent_required' }` unless the caller has a current `terms_privacy` and a granted `age_16`. Checked right after `not_authenticated`, before the attempt lock, the rate limit, the request id / replay and the code lookup: it consumes nothing, is not counted as a failed attempt and reveals nothing about the code. Re-redeeming as an existing member is gated too. `preview_invitation` / `preview_creator_code` stay open. The legal versions are share-locked during the check, so a concurrent version bump is ordered before or after the join.
+- **Push.** `register_push_token` raises `consent_required` without a current `push_notifications` consent (order: validation errors, `not_a_member` (no profile), then `consent_required`). It takes the same per-user consent lock as `withdraw_consent`, so a registration can never land after a withdrawal removed the tokens. App flow: in-context prompt, `record_consent('push_notifications')`, OS permission, register.
+
+## Existing users (decision)
+
+No consent is backfilled: consent and the 16+ confirmation cannot be presumed, and the ledger must only hold events a person performed. Users who existed before G1 have no records, so `my_consents().needs_terms_acceptance` is true for them and the app asks on next launch. They are **not** blocked from the app (RSVP, attendance, reads, statistics do not check consent); only new joins and new push-token registrations are gated. Push tokens registered before G1 stay until the user withdraws push consent, signs out, or the token becomes invalid (the dispatcher does not check consent; open question for the lead).
+
+New error codes: `consent_required`, `not_withdrawable`, `rate_limited` (consents), `validation_failed:purpose`, `validation_failed:document_version`, `validation_failed:document`, `validation_failed:version`, `consent_ledger_append_only` (only for direct writes by the owner).
+
+TypeScript: `LegalDocumentKind`, `ConsentPurpose`, `ConsentEvent`, `ConsentState`, `MyConsents`, `AdminSetLegalVersionResult`; `CreateCommunityWithCodeError` gains `consent_required`.

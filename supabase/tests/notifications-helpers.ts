@@ -1,4 +1,4 @@
-import { admin, asService, asUser, rpc, rpcRow } from './helpers';
+import { admin, asService, asUser, grantConsents, rpc, rpcRow } from './helpers';
 
 /**
  * Shared helpers for the Milestone 3 suites (`announcements*.test.ts`, `notifications*.test.ts`).
@@ -148,12 +148,15 @@ export function completeJob(
   );
 }
 
-export function registerToken(
+export async function registerToken(
   userId: string,
   token: string,
   platform = 'android',
   label: string | null = null,
 ): Promise<Record<string, unknown>> {
+  // GDPR G1: registration requires the push_notifications consent; fixture users give it first
+  // (the gate itself is tested in consent-gates.test.ts).
+  await grantConsents(userId, ['push_notifications']);
   return asUser(userId, (db) => rpcRow(db, 'register_push_token', [token, platform, label]));
 }
 

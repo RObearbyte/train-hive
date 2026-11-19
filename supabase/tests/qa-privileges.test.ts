@@ -29,6 +29,11 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   list_my_communities: 'authenticated',
   preview_creator_code: 'authenticated',
   update_community: 'authenticated',
+  // GDPR G1: legal versions and the consent ledger.
+  admin_set_legal_version: 'service_role',
+  my_consents: 'authenticated',
+  record_consent: 'authenticated',
+  withdraw_consent: 'authenticated',
   cancel_announcement: 'authenticated',
   cancel_training: 'authenticated',
   claim_notification_jobs: 'service_role',
@@ -250,6 +255,9 @@ describe('QA function privileges', () => {
       ],
       ['select public.update_community($1, $2, $3)', [communityId, 'Pack', 'UTC']],
       ['select public.list_my_communities()', []],
+      ['select public.record_consent($1)', ['age_16']],
+      ['select public.withdraw_consent($1)', ['workout_logs']],
+      ['select public.my_consents()', []],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
@@ -269,6 +277,9 @@ describe('QA function privileges', () => {
     ).rejects.toMatchObject(denied);
     await expect(
       asUser(organizerId, (db) => db.query("select public.admin_revoke_creator_code('AAAAAAAA')")),
+    ).rejects.toMatchObject(denied);
+    await expect(
+      asUser(organizerId, (db) => db.query("select public.admin_set_legal_version('terms', '9')")),
     ).rejects.toMatchObject(denied);
   });
 });
@@ -302,6 +313,21 @@ describe('QA table privileges', () => {
        where has_table_privilege(r.role, 'public.' || t.name, p.privilege)
           or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
               and has_any_column_privilege(r.role, 'public.' || t.name, p.privilege))`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('the consent ledger and legal versions: authenticated SELECT only; service_role and anon nothing (G1)', async () => {
+    const { rows } = await admin.query<{ role: string; table: string; privilege: string }>(
+      `select r.role, t.name as table, p.privilege
+       from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
+       cross join unnest(array['consent_records', 'legal_documents']) as t(name)
+       cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
+       where (has_table_privilege(r.role, 'public.' || t.name, p.privilege)
+              or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+                  and has_any_column_privilege(r.role, 'public.' || t.name, p.privilege)))
+         and not (r.role = 'authenticated' and p.privilege = 'SELECT')
+       order by 1, 2, 3`,
     );
     expect(rows).toEqual([]);
   });

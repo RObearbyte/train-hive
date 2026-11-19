@@ -67,12 +67,52 @@ export function asService<T>(fn: (db: PoolClient) => Promise<T>): Promise<T> {
   return asRole('service_role', { role: 'service_role' }, fn);
 }
 
-/** Inserts an auth user (as Supabase anonymous sign-in would) and returns its id. */
-export async function createUser(): Promise<string> {
+/** The consents every join requires (GDPR G1): Terms + Privacy acknowledgement and the 16+ confirmation. */
+export const JOIN_CONSENTS = ['terms_privacy', 'age_16'] as const;
+
+/**
+ * Inserts an auth user (as Supabase anonymous sign-in would) and returns its id.
+ *
+ * By default the user has also completed the first-launch screen: the ledger holds a current
+ * `terms_privacy` and `age_16` grant (inserted directly, as superuser), so the onboarding RPCs
+ * behave as they did before the G1 join gate. Pass `{ consent: false }` for a user who has not
+ * accepted anything (the gate tests in consent*.test.ts).
+ */
+export async function createUser(options: { consent?: boolean } = {}): Promise<string> {
+  const { consent = true } = options;
   const { rows } = await admin.query<{ id: string }>(
-    'insert into auth.users (is_anonymous) values (true) returning id',
+    `with u as (insert into auth.users (is_anonymous) values (true) returning id),
+          c as (
+            insert into public.consent_records (user_id, purpose, document_version, granted)
+            select u.id, p.purpose,
+                   case when p.purpose = 'terms_privacy' then private.terms_privacy_version()
+                        else private.privacy_version() end,
+                   true
+            from u, unnest($1::text[]) as p(purpose)
+          )
+     select id from u`,
+    [consent ? [...JOIN_CONSENTS] : []],
   );
   return rows[0].id;
+}
+
+/**
+ * Fixture: records a current grant of each purpose the user does not hold yet (superuser insert,
+ * same shape as `record_consent`). Does nothing for a user that no longer exists. The RPC itself
+ * is covered by consent*.test.ts.
+ */
+export async function grantConsents(userId: string, purposes: readonly string[]): Promise<void> {
+  await admin.query(
+    `insert into public.consent_records (user_id, purpose, document_version, granted)
+     select $1, p.purpose,
+            case when p.purpose = 'terms_privacy' then private.terms_privacy_version()
+                 else private.privacy_version() end,
+            true
+     from unnest($2::text[]) as p(purpose)
+     where exists (select 1 from auth.users u where u.id = $1)
+       and not private.has_consent($1, p.purpose)`,
+    [userId, purposes],
+  );
 }
 
 function placeholders(count: number): string {
@@ -106,9 +146,12 @@ export async function rpcRow<T = Record<string, unknown>>(
 }
 
 /** Tables that hold seeded reference data and must survive `resetData()`. */
-const REFERENCE_TABLES = ['activity_types'];
+const REFERENCE_TABLES = ['activity_types', 'legal_documents'];
 
-/** Empties every app table in `public` (except reference data) and `auth.users`. */
+/**
+ * Empties every app table in `public` (except reference data) and `auth.users`, and puts the
+ * legal document versions back to the seeded '1'.
+ */
 export async function resetData(): Promise<void> {
   const { rows } = await admin.query<{ tablename: string }>(
     "select tablename from pg_tables where schemaname = 'public' and tablename <> all($1::text[])",
@@ -116,6 +159,9 @@ export async function resetData(): Promise<void> {
   );
   const tables = rows.map((row) => `public."${row.tablename}"`);
   await admin.query(`truncate table ${['auth.users', ...tables].join(', ')} cascade`);
+  await admin.query(
+    "update public.legal_documents set version = '1' where version <> '1'",
+  );
 }
 
 /** Closes the pool; call from `afterAll` in every test file that imports these helpers. */
