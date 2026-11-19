@@ -82,6 +82,8 @@ function RootNavigator() {
       </Stack.Protected>
       {/* Web join link: open to everyone, it forwards to the right join screen. */}
       <Stack.Screen name="join" />
+      {/* Privacy Notice and Terms of Use: readable without an account, from onboarding or the app. */}
+      <Stack.Screen name="legal/[doc]" />
     </Stack>
   );
 }

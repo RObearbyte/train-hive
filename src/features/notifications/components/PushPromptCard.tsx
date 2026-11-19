@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 
-import { Button, Card, Icon, Text, useTheme } from '@/ui';
+import { Banner, Button, Card, Icon, Text, useTheme } from '@/ui';
 
 import { usePush } from '../hooks/PushProvider';
 
@@ -21,9 +21,13 @@ export function PushPromptCard() {
         <Icon name="bell" size={26} color="primary" />
         <View style={{ flex: 1, gap: spacing.xxs }}>
           <Text variant="heading">Stay in the loop</Text>
-          <Text color="textMuted">Get notified when trainings are confirmed or cancelled.</Text>
+          <Text color="textMuted">
+            Get notified when trainings are confirmed or cancelled. Tapping Enable records your consent to
+            push notifications; you can withdraw it any time in Profile, Privacy.
+          </Text>
         </View>
       </View>
+      {push.enableError ? <Banner tone="error" message={push.enableError} /> : null}
       <View style={{ flexDirection: 'row', gap: spacing.sm }}>
         <Button
           label="Enable"

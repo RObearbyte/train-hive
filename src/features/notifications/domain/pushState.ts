@@ -19,6 +19,11 @@ export type PushEnvironment = {
 
 export type PushStateInput = {
   env: PushEnvironment;
+  /**
+   * The member's `push_notifications` consent as the server reports it: true = current,
+   * false = never given or withdrawn, null = not known yet. Nothing is registered without it.
+   */
+  consent: boolean | null;
   /** null until the system permission has been read. */
   permission: PushPermission | null;
   /** The system will still show its permission dialog. */
@@ -31,6 +36,7 @@ export type PushStateKind =
   | 'unsupported_expo_go'
   | 'not_configured'
   | 'checking'
+  | 'consent_needed'
   | 'can_enable'
   | 'denied_can_ask'
   | 'denied_blocked'
@@ -44,7 +50,9 @@ export function derivePushState(input: PushStateInput): PushStateKind {
   // Remote push was removed from Expo Go on Android (SDK 53+); iOS Expo Go still has it.
   if (env.platform === 'android' && env.isExpoGo) return 'unsupported_expo_go';
   if (!env.hasProjectId) return 'not_configured';
-  if (input.permission === null) return 'checking';
+  if (input.permission === null || input.consent === null) return 'checking';
+  // No consent (never given, or withdrawn): nothing is registered. The system permission is irrelevant until they agree.
+  if (!input.consent) return input.permission === 'undetermined' ? 'can_enable' : 'consent_needed';
   if (input.permission === 'undetermined') return 'can_enable';
   if (input.permission === 'denied') {
     return input.canAskAgain ? 'denied_can_ask' : 'denied_blocked';
@@ -58,6 +66,21 @@ export function derivePushState(input: PushStateInput): PushStateKind {
       return 'registering';
   }
 }
+
+/**
+ * The native notification stack may be used at all: a phone or tablet build (not web, not Expo Go on
+ * Android) with a push project.
+ */
+export function isPushNativeAvailable(env: PushEnvironment): boolean {
+  return (
+    (env.platform === 'ios' || env.platform === 'android') &&
+    !(env.platform === 'android' && env.isExpoGo) &&
+    env.hasProjectId
+  );
+}
+
+/** Stored next to the session: the member chose "Not now" on the in-context card. */
+export const PUSH_PROMPT_DISMISSED_KEY = 'trainhive-push-prompt-dismissed';
 
 /** The in-context "Get notified" card is shown: not yet decided, not dismissed. */
 export function shouldOfferPrompt(kind: PushStateKind, dismissed: boolean): boolean {
@@ -105,6 +128,14 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
     tone: 'info',
     action: null,
     actionLabel: null,
+  },
+  consent_needed: {
+    title: 'Push notifications are off',
+    description:
+      'You have not allowed TrainHive to send push notifications. Turn them on to get reminders on this device. Everything still appears in the Activity tab.',
+    tone: 'info',
+    action: 'enable',
+    actionLabel: 'Turn on notifications',
   },
   can_enable: {
     title: 'Push notifications are off',

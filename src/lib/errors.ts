@@ -34,12 +34,17 @@ export const BACKEND_ERROR_CODES = [
   'announcement_not_editable',
   'announcement_not_cancellable',
   'stale_data',
+  'consent_required',
+  'not_withdrawable',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
 
-/** Backend codes plus the two client-side ones. */
-export type AppErrorCode = BackendErrorCode | 'network_error' | 'unknown';
+/**
+ * Backend codes plus the client-side ones. `app_update_required`: the server
+ * asks for a version of the legal texts this build does not contain.
+ */
+export type AppErrorCode = BackendErrorCode | 'network_error' | 'app_update_required' | 'unknown';
 
 const VALIDATION_PREFIX = 'validation_failed';
 
@@ -204,6 +209,12 @@ const MESSAGES: Record<AppErrorCode, string> = {
     'This announcement was already published, so it can no longer be cancelled.',
   stale_data:
     'Someone else changed these community settings while you were editing. Review the latest values and try again.',
+  consent_required:
+    'Please confirm the Terms of Use, the Privacy Notice and your age first, then try again.',
+  not_withdrawable:
+    'That agreement is needed to use TrainHive and cannot be withdrawn. To stop, delete your account.',
+  app_update_required:
+    'Our terms or privacy notice changed and this version of TrainHive cannot show the new text. Please update the app and try again.',
   network_error: 'No connection. Check your internet and try again.',
   unknown: 'Something went wrong. Please try again.',
 };

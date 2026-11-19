@@ -7,7 +7,9 @@ import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembe
 import { YourCommunities } from '@/features/communities/components/YourCommunities';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { NotificationSettings } from '@/features/notifications/components/NotificationSettings';
+import { LegalLinks } from '@/features/legal/components/LegalLinks';
 import { DisplayNameForm } from '@/features/profile/components/DisplayNameForm';
+import { SignOutSection } from '@/features/profile/components/SignOutSection';
 import { formatLongDate, isValidTimeZone, zoneCityName } from '@/lib/datetime';
 import { userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -172,6 +174,19 @@ export default function ProfileScreen() {
       <NotificationSettings />
 
       <View style={{ gap: spacing.sm }}>
+        <Text variant="heading">Privacy</Text>
+        <Card>
+          <ListItem
+            title="Privacy settings"
+            subtitle="Choose what TrainHive may do with optional information"
+            leading={<Icon name="info" size={22} color="primary" />}
+            onPress={() => router.push('/privacy' as Href)}
+          />
+        </Card>
+        <LegalLinks />
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
         <Text variant="heading">Your account</Text>
         <Card style={{ gap: spacing.sm }}>
           <Text>
@@ -184,6 +199,7 @@ export default function ProfileScreen() {
             member.
           </Text>
         </Card>
+        <SignOutSection />
       </View>
 
       <Text variant="caption" color="textMuted" align="center">

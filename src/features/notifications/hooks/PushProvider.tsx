@@ -8,9 +8,17 @@ import {
   type ReactNode,
   type SetStateAction,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppState } from 'react-native';
 
+import { useSession } from '@/features/community/hooks/SessionProvider';
+import { recordConsent } from '@/features/legal/api/consents';
+import { consentKeys } from '@/features/legal/api/keys';
+import { applyConsentEvent, isConsentCurrent } from '@/features/legal/domain/consentCache';
+import { useMyConsents } from '@/features/legal/hooks/useConsents';
 import { authStorage } from '@/lib/authStorage';
+import type { MyConsents } from '@/lib/database.types';
+import { toAppError, userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 
 import { registerPushToken } from '../api/pushTokens';
@@ -30,20 +38,27 @@ import {
 } from '../api/pushNative';
 import { RegistrationQueue } from '../domain/registrationQueue';
 import {
+  PUSH_PROMPT_DISMISSED_KEY,
   derivePushState,
+  isPushNativeAvailable,
   shouldOfferPrompt,
   type PushRegistration,
   type PushStateKind,
 } from '../domain/pushState';
 
-const DISMISSED_KEY = 'trainhive-push-prompt-dismissed';
-
 export type PushContextValue = {
   kind: PushStateKind;
   /** The in-context "Get notified" card should be shown. */
   showPrompt: boolean;
-  /** Ask the system for permission (or open settings when the system will not ask again). */
+  /**
+   * An explicit tap on "Enable notifications": records the push consent first, then asks the system
+   * for permission (or opens settings when the system will not ask again).
+   */
   enable: () => Promise<void>;
+  /** Only the system permission step (the consent was just recorded, for example by the Privacy switch). */
+  requestPermission: () => Promise<void>;
+  /** Why "Enable" failed (friendly text), or null. */
+  enableError: string | null;
   /** "Not now": hides the card for good (settings keeps offering it). */
   dismissPrompt: () => void;
   /** Try registering this device again after a failure. */
@@ -61,6 +76,7 @@ const PushContext = createContext<PushContextValue | null>(null);
  */
 async function registerDevice(
   setRegistration: Dispatch<SetStateAction<PushRegistration>>,
+  onConsentRequired: () => void,
 ): Promise<boolean> {
   const projectId = readProjectId();
   if (projectId === null) return true;
@@ -73,6 +89,9 @@ async function registerDevice(
   } catch (error) {
     reportError('push.register', error);
     setRegistration('failed');
+    // The server says the consent is not current: read the consent again (the state then shows the
+    // consent prompt). Nothing here retries by itself, so this cannot loop.
+    if (toAppError(error).code === 'consent_required') onConsentRequired();
     return false;
   }
 }
@@ -92,7 +111,9 @@ async function loadPermission(
  * registers the Expo push token with the server (on start, on return to the
  * foreground and whenever the token changes), and installs the foreground
  * banner handler. Permission is only ever requested from a user action
- * (`enable`), never at launch.
+ * (`enable`), never at launch, and nothing is registered unless the member's
+ * `push_notifications` consent is current on the server (withdrawing it in
+ * Privacy settings stops registration and the server deletes the tokens).
  *
  * Mounted inside `(app)`, so the profile exists (`register_push_token` needs
  * it). Nothing here touches the native module on web or in Expo Go on
@@ -100,23 +121,35 @@ async function loadPermission(
  */
 export function PushProvider({ children }: { children: ReactNode }) {
   const env = readPushEnvironment();
-  const nativeAvailable =
-    (env.platform === 'ios' || env.platform === 'android') &&
-    !(env.platform === 'android' && env.isExpoGo) &&
-    env.hasProjectId;
+  const nativeAvailable = isPushNativeAvailable(env);
+  const queryClient = useQueryClient();
+  const { userId } = useSession();
+  const { consents } = useMyConsents();
+  const consent = isConsentCurrent(consents ?? undefined, 'push_notifications');
+  const consentGranted = consent === true;
 
   const [permission, setPermission] = useState<PermissionInfo | null>(null);
   const [registration, setRegistration] = useState<PushRegistration>('idle');
   // null until the stored choice is read: treated as dismissed so the card never flashes.
   const [dismissed, setDismissed] = useState<boolean | null>(null);
+  const [enableError, setEnableError] = useState<string | null>(null);
   const queue = useRef<RegistrationQueue | null>(null);
-  queue.current ??= new RegistrationQueue(() => registerDevice(setRegistration));
+  const refreshConsents = () => {
+    void queryClient.invalidateQueries({ queryKey: consentKeys.all });
+  };
+  // The query client is stable for the life of the app, so capturing it in the queue is safe.
+  queue.current ??= new RegistrationQueue(() =>
+    registerDevice(setRegistration, () => {
+      void queryClient.invalidateQueries({ queryKey: consentKeys.all });
+    }),
+  );
   const register = (key: string) => {
     void queue.current?.submit(key);
   };
 
   const kind = derivePushState({
     env,
+    consent,
     permission: permission?.permission ?? null,
     canAskAgain: permission?.canAskAgain ?? true,
     registration,
@@ -125,7 +158,7 @@ export function PushProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     authStorage
-      .getItem(DISMISSED_KEY)
+      .getItem(PUSH_PROMPT_DISMISSED_KEY)
       .then((value) => {
         if (active) setDismissed(value === '1');
       })
@@ -152,9 +185,10 @@ export function PushProvider({ children }: { children: ReactNode }) {
 
   const granted = permission?.permission === 'granted';
 
-  // Register whenever permission is granted: on start, on return to the foreground, on token change.
+  // Register whenever permission AND consent are granted: on start, on return to the foreground, on
+  // token change. Withdrawing the consent tears this down, so no further registration happens.
   useEffect(() => {
-    if (!nativeAvailable || !granted) return;
+    if (!nativeAvailable || !granted || !consentGranted) return;
     const submit = (key: string) => {
       void queue.current?.submit(key);
     };
@@ -169,9 +203,9 @@ export function PushProvider({ children }: { children: ReactNode }) {
       appState.remove();
       stopTokenListener();
     };
-  }, [nativeAvailable, granted]);
+  }, [nativeAvailable, granted, consentGranted]);
 
-  const enable = async () => {
+  const requestPermissionStep = async () => {
     if (!nativeAvailable) return;
     try {
       const current = await readPermission();
@@ -185,9 +219,29 @@ export function PushProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const enable = async () => {
+    if (!nativeAvailable) return;
+    setEnableError(null);
+    if (consent !== true) {
+      try {
+        const event = await recordConsent('push_notifications');
+        queryClient.setQueryData<MyConsents>(consentKeys.mine(userId), (current) =>
+          current ? applyConsentEvent(current, event) : current,
+        );
+        refreshConsents();
+      } catch (error) {
+        reportError('push.recordConsent', error);
+        const failure = toAppError(error);
+        setEnableError(userMessage(failure.code, failure.field));
+        return;
+      }
+    }
+    await requestPermissionStep();
+  };
+
   const dismissPrompt = () => {
     setDismissed(true);
-    authStorage.setItem(DISMISSED_KEY, '1').catch((error: unknown) => {
+    authStorage.setItem(PUSH_PROMPT_DISMISSED_KEY, '1').catch((error: unknown) => {
       reportError('push.saveDismissed', error);
     });
   };
@@ -196,6 +250,8 @@ export function PushProvider({ children }: { children: ReactNode }) {
     kind,
     showPrompt: shouldOfferPrompt(kind, dismissed !== false),
     enable,
+    requestPermission: requestPermissionStep,
+    enableError,
     dismissPrompt,
     retry: () => register('retry'),
     openSettings: () => {

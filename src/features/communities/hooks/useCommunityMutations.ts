@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useActiveCommunityStore } from '@/features/community/hooks/ActiveCommunityProvider';
 import { membershipKeys } from '@/features/community/hooks/useCurrentMembership';
+import { consentKeys } from '@/features/legal/api/keys';
 import { statisticsKeys } from '@/features/statistics/api/keys';
 import type { Community } from '@/lib/database.types';
 import type { AppError } from '@/lib/errors';
@@ -38,7 +39,11 @@ export function useCreateCommunity() {
       select(created.communityId);
       await queryClient.invalidateQueries({ queryKey: membershipKeys.all });
     },
-    onError: (error) => reportError('communities.create', error),
+    onError: (error) => {
+      reportError('communities.create', error);
+      // The server's consent state changed (a new version): let the terms gate read it again.
+      if (error.code === 'consent_required') void queryClient.invalidateQueries({ queryKey: consentKeys.all });
+    },
   });
 }
 

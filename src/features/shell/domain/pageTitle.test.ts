@@ -20,6 +20,10 @@ describe('titleForPath', () => {
     ['/code', 'Join a community · TrainHive'],
     ['/add-community/join-code', 'Join a community · TrainHive'],
     ['/join', 'Join a community · TrainHive'],
+    ['/privacy', 'Privacy · TrainHive'],
+    ['/consent', 'Before you start · TrainHive'],
+    ['/legal/privacy', 'Privacy Notice · TrainHive'],
+    ['/legal/terms', 'Terms of Use · TrainHive'],
   ])('%s -> %s', (path, title) => {
     expect(titleForPath(path)).toBe(title);
   });

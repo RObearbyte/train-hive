@@ -24,6 +24,10 @@ const TITLES: [RegExp, string][] = [
   [/^\/invitations$/, 'Invitations'],
   [/^\/community-settings$/, 'Community settings'],
   [/^\/attendance-history$/, 'Attendance history'],
+  [/^\/privacy$/, 'Privacy'],
+  [/^\/consent$/, 'Before you start'],
+  [/^\/legal\/privacy$/, 'Privacy Notice'],
+  [/^\/legal\/terms$/, 'Terms of Use'],
 ];
 
 /** "Trainings · TrainHive". Unknown paths get the plain app name. */

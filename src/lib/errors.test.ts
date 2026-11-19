@@ -27,6 +27,7 @@ describe('contract coverage', () => {
         'attendee_has_going_rsvp',
         'attendee_not_a_member',
         'community_limit_reached',
+        'consent_required',
         'exhausted',
         'expired',
         'forbidden',
@@ -36,6 +37,7 @@ describe('contract coverage', () => {
         'not_authenticated',
         'no_going_rsvp',
         'not_found',
+        'not_withdrawable',
         'rate_limited',
         'revoked',
         'rsvp_closed',
@@ -63,7 +65,7 @@ describe('contract coverage', () => {
     expect(appErrorFromResult(code).code).toBe(code);
   });
 
-  it.each([...BACKEND_ERROR_CODES, 'network_error'] as const)(
+  it.each([...BACKEND_ERROR_CODES, 'network_error', 'app_update_required'] as const)(
     'has a specific friendly message for "%s"',
     (code) => {
       const message = userMessage(code);
@@ -251,5 +253,31 @@ describe('userMessage', () => {
       userMessage('validation_failed', 'title'),
     );
     expect(userMessageFor(new Error('boom'))).toBe(GENERIC);
+  });
+});
+
+describe('GDPR G1 consent codes', () => {
+  it('parses consent_required and not_withdrawable raised by record / withdraw / register', () => {
+    expect(toAppError(pgError('consent_required')).code).toBe('consent_required');
+    expect(toAppError(pgError('not_withdrawable')).code).toBe('not_withdrawable');
+  });
+
+  it('maps consent_required returned by the join RPCs', () => {
+    expect(appErrorFromResult('consent_required').code).toBe('consent_required');
+  });
+
+  it('keeps the field of validation_failed:purpose and validation_failed:document_version', () => {
+    expect(toAppError(pgError('validation_failed:purpose')).field).toBe('purpose');
+    expect(toAppError(pgError('validation_failed:document_version')).field).toBe('document_version');
+  });
+
+  it('gives friendly, distinct texts that never show a raw code', () => {
+    const consent = userMessage('consent_required');
+    const withdrawable = userMessage('not_withdrawable');
+    expect(consent).not.toBe(GENERIC);
+    expect(withdrawable).not.toBe(GENERIC);
+    expect(consent).not.toContain('consent_required');
+    expect(withdrawable).not.toContain('not_withdrawable');
+    expect(userMessage('app_update_required')).toMatch(/update the app/i);
   });
 });

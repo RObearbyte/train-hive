@@ -23,8 +23,14 @@ $env:Path += ";C:\Program Files\nodejs"
 $env:EXPO_PUBLIC_SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co"
 $env:EXPO_PUBLIC_SUPABASE_ANON_KEY = "YOUR-ANON-KEY"
 $env:EXPO_PUBLIC_WEB_APP_URL = "https://trainhive-yourname.netlify.app"
-npx expo export --platform web
+# Legal details of the controller, shown in the Privacy Notice and Terms (see "Legal pages" below)
+$env:EXPO_PUBLIC_CONTROLLER_NAME = "Your legal name or organization"
+$env:EXPO_PUBLIC_CONTROLLER_ADDRESS = "Your postal address"
+$env:EXPO_PUBLIC_PRIVACY_EMAIL = "privacy@your-domain.example"
+npm run build:web
 ```
+
+`npm run build:web` runs `npm run legal:build` and then `npx expo export --platform web`.
 
 The result is the folder `dist`. Important:
 
@@ -32,6 +38,17 @@ The result is the folder `dist`. Important:
 - Only the anon key goes in. Never the `service_role` key.
 - If `.env.local` exists it is used for values you did not set in PowerShell; values set in PowerShell win.
 - `EXPO_PUBLIC_WEB_APP_URL` has no trailing path or `?query`. A sub-path such as `https://example.com/trainhive` is accepted, but then the whole site must be served from that sub-path, which this guide does not cover. Use a domain or sub-domain of its own.
+
+### Legal pages (`privacy.html` and `terms.html`)
+
+The web build also serves the Privacy Notice and Terms of Use as plain static pages at `/privacy.html` and `/terms.html` (linked from the welcome screen), so they can be read without loading the app. They are generated from the same texts the app uses by `npm run legal:build`, which writes `public/privacy.html` and `public/terms.html`, and `expo export` then copies them into `dist`.
+
+- **Run `npm run legal:build` with the three `EXPO_PUBLIC_CONTROLLER_...` / `EXPO_PUBLIC_PRIVACY_EMAIL` variables set (or in `.env.local`) before building the web app.** `npm run build:web` does this for you. If you run `npx expo export --platform web` by hand, run `npm run legal:build` first.
+- When a variable is missing the pages show the marker `[TO BE FILLED]` and the script prints a warning. Check the pages before uploading: search `dist/privacy.html` for `[TO BE FILLED]`.
+- The generated files contain your name, address and e-mail. They are git-ignored on purpose: never commit them.
+- The same three values are also baked into the app itself (Privacy screen, in-app documents), so they must be set for the app build too.
+- Both documents carry a "Draft: to be reviewed by a lawyer before launch" banner until `LEGAL_REVIEWED` in `src/features/legal/constants.ts` is set to `true` after a lawyer has reviewed them.
+- `public/_redirects` sends every unknown address to the app but never replaces a file that exists, so `/privacy.html` and `/terms.html` stay static pages.
 
 Check locally before uploading (optional): `npx expo serve`, then open http://localhost:8081.
 

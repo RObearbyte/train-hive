@@ -19,3 +19,9 @@ export async function registerPushToken(
   });
   if (error) throw toAppError(error);
 }
+
+/** Removes one token of the signed-in user (`unregister_push_token`). Throws AppError. */
+export async function unregisterPushToken(token: string): Promise<void> {
+  const { error } = await getSupabase().rpc('unregister_push_token', { p_token: token });
+  if (error) throw toAppError(error);
+}

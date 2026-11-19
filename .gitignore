@@ -46,3 +46,7 @@ example
 .tmp/
 .pgdata/
 .env
+
+# generated legal pages (may contain the controller's details: never commit; see docs/WEB_DEPLOY.md)
+/public/privacy.html
+/public/terms.html

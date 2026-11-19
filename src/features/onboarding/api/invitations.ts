@@ -1,4 +1,5 @@
 import { ensureSession } from '@/features/community/api/session';
+import { ensureConsentRecorded } from '@/features/legal/api/consents';
 import type {
   MembershipRole,
   PreviewInvitationResult,
@@ -37,13 +38,17 @@ export async function previewInvitation(code: string): Promise<InvitationPreview
 
 /**
  * Joins the community behind the code and saves the display name. An existing
- * member succeeds too (`alreadyMember`), keeping their current role.
+ * member succeeds too (`alreadyMember`), keeping their current role. Records the
+ * first-launch consent first; throws `consent_required` / `app_update_required`
+ * when that is not possible.
  */
 export async function redeemInvitation(
   code: string,
   displayName: string,
 ): Promise<RedeemedInvitation> {
   await ensureSession();
+  // The acknowledgement from the first-launch screen must be on the server before joining (GDPR G1).
+  await ensureConsentRecorded();
   const { data, error } = await getSupabase().rpc('redeem_invitation', {
     p_code: normalizeInvitationCode(code),
     p_display_name: displayName,

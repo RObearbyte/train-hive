@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   derivePushState,
+  isPushNativeAvailable,
   pushStateView,
   shouldOfferPrompt,
   type PushEnvironment,
@@ -15,13 +16,14 @@ const ANDROID: PushEnvironment = { platform: 'android', isExpoGo: false, hasProj
 function state(
   env: Partial<PushEnvironment>,
   permission: PushPermission | null,
-  options: { canAskAgain?: boolean; registration?: PushRegistration } = {},
+  options: { canAskAgain?: boolean; registration?: PushRegistration; consent?: boolean | null } = {},
 ): PushStateKind {
   return derivePushState({
     env: { ...ANDROID, ...env },
     permission,
     canAskAgain: options.canAskAgain ?? true,
     registration: options.registration ?? 'idle',
+    consent: options.consent === undefined ? true : options.consent,
   });
 }
 
@@ -79,5 +81,44 @@ describe('pushStateView', () => {
     expect(pushStateView('unsupported_expo_go').title).toBe('Push needs a development build');
     expect(pushStateView('unsupported_expo_go').action).toBeNull();
     expect(pushStateView('not_configured').title).toMatch(/not configured/i);
+  });
+});
+
+describe('derivePushState with the push consent (GDPR G1)', () => {
+  it('waits for the server answer before showing anything about registration', () => {
+    expect(state({}, 'granted', { consent: null })).toBe('checking');
+    expect(state({}, 'undetermined', { consent: null })).toBe('checking');
+  });
+
+  it('never registers without consent, whatever the system permission is', () => {
+    expect(state({}, 'undetermined', { consent: false })).toBe('can_enable');
+    expect(state({}, 'granted', { consent: false })).toBe('consent_needed');
+    expect(state({}, 'granted', { consent: false, registration: 'registered' })).toBe('consent_needed');
+    expect(state({}, 'denied', { consent: false, canAskAgain: false })).toBe('consent_needed');
+  });
+
+  it('a withdrawn consent after a registered device shows the consent state, not "registered"', () => {
+    expect(state({}, 'granted', { registration: 'registered', consent: true })).toBe('registered');
+    expect(state({}, 'granted', { registration: 'registered', consent: false })).toBe('consent_needed');
+  });
+
+  it('platform checks still come first', () => {
+    expect(state({ platform: 'web' }, 'granted', { consent: false })).toBe('unsupported_platform');
+    expect(state({ hasProjectId: false }, null, { consent: null })).toBe('not_configured');
+  });
+
+  it('offers to turn it on again from settings, without showing the in-context card', () => {
+    const view = pushStateView('consent_needed');
+    expect(view.action).toBe('enable');
+    expect(view.description).toMatch(/Activity/);
+    expect(shouldOfferPrompt('consent_needed', false)).toBe(false);
+  });
+
+  it('knows when the native stack may be used', () => {
+    expect(isPushNativeAvailable(ANDROID)).toBe(true);
+    expect(isPushNativeAvailable({ ...ANDROID, isExpoGo: true })).toBe(false);
+    expect(isPushNativeAvailable({ ...ANDROID, platform: 'web' })).toBe(false);
+    expect(isPushNativeAvailable({ ...ANDROID, hasProjectId: false })).toBe(false);
+    expect(isPushNativeAvailable({ platform: 'ios', isExpoGo: true, hasProjectId: true })).toBe(true);
   });
 });

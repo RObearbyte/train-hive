@@ -62,7 +62,9 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "legal:build": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-legal-pages.mjs",
+    "build:web": "npm run legal:build && expo export --platform web"
   },
   "private": true,
   "allowScripts": {

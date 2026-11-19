@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useActiveCommunityStore } from '@/features/community/hooks/ActiveCommunityProvider';
+import { consentKeys } from '@/features/legal/api/keys';
 import { membershipKeys } from '@/features/community/hooks/useCurrentMembership';
 import type { AppError } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -34,6 +35,10 @@ export function useRedeemInvitation() {
       select(joined.communityId);
       await queryClient.invalidateQueries({ queryKey: membershipKeys.all });
     },
-    onError: (error) => reportError('onboarding.redeem', error),
+    onError: (error) => {
+      reportError('onboarding.redeem', error);
+      // The server's consent state changed (a new version): let the terms gate read it again.
+      if (error.code === 'consent_required') void queryClient.invalidateQueries({ queryKey: consentKeys.all });
+    },
   });
 }

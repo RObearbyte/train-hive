@@ -61,6 +61,9 @@ describe('QA hygiene: colors, secrets, logging', () => {
     for (const [, source] of text) for (const m of code(source).matchAll(/process\.env\.(\w+)/g)) vars.add(m[1]);
     expect([...vars].sort()).toEqual([
       'EXPO_PUBLIC_APP_DOWNLOAD_URL',
+      'EXPO_PUBLIC_CONTROLLER_ADDRESS',
+      'EXPO_PUBLIC_CONTROLLER_NAME',
+      'EXPO_PUBLIC_PRIVACY_EMAIL',
       'EXPO_PUBLIC_SUPABASE_ANON_KEY',
       'EXPO_PUBLIC_SUPABASE_URL',
       'EXPO_PUBLIC_WEB_APP_URL',
@@ -167,6 +170,8 @@ describe('QA hygiene: the client clock', () => {
     // the expiry preset; coalesce / chunked storage are timers only.
     expect(readers).toEqual([
       'src/features/invitations/components/CreateInvitationForm.tsx',
+      // First-launch acknowledgement: a note kept on the device (informational); the server stamps the real consent record.
+      'src/features/legal/hooks/useConsents.ts',
       'src/features/trainings/components/TrainingForm.tsx',
       'src/features/trainings/components/DateTimeField.native.tsx',
       'src/features/trainings/domain/coalesce.ts',

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { WelcomeLegalLinks } from '@/features/legal/components/WelcomeLegalLinks';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { BrandHero } from '@/features/onboarding/components/BrandHero';
 import { Button, Text, useTheme } from '@/ui';
@@ -45,6 +46,7 @@ export default function WelcomeScreen() {
         <Text variant="caption" color="textMuted" align="center">
           I have a creator code. Creator codes are issued by the TrainHive team.
         </Text>
+        <WelcomeLegalLinks />
       </SafeAreaView>
     </View>
   );

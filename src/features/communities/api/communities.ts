@@ -1,4 +1,5 @@
 import { ensureSession } from '@/features/community/api/session';
+import { ensureConsentRecorded } from '@/features/legal/api/consents';
 import { normalizeInvitationCode } from '@/features/onboarding/domain/invitationCode';
 import type {
   Community,
@@ -50,6 +51,8 @@ export type CreatedCommunity = {
  */
 export async function createCommunityWithCode(input: CreateCommunityInput): Promise<CreatedCommunity> {
   await ensureSession();
+  // The acknowledgement from the first-launch screen must be on the server before creating (GDPR G1).
+  await ensureConsentRecorded();
   const { data, error } = await getSupabase().rpc('create_community_with_code', {
     p_code: normalizeInvitationCode(input.code),
     p_name: input.name,

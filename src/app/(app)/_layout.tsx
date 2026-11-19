@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { View } from 'react-native';
 
+import { ConsentGate } from '@/features/legal/components/ConsentGate';
 import { PushProvider } from '@/features/notifications/hooks/PushProvider';
 import { useActivityRealtime } from '@/features/notifications/hooks/useActivityRealtime';
 import { useNotificationLinks } from '@/features/notifications/hooks/useNotificationLinks';
@@ -47,7 +48,10 @@ function AppShell() {
 export default function AppLayout() {
   return (
     <PushProvider>
-      <AppShell />
+      {/* Members from before the consent ledger (or after a new version) accept the current terms first. */}
+      <ConsentGate>
+        <AppShell />
+      </ConsentGate>
     </PushProvider>
   );
 }

@@ -96,6 +96,7 @@ export function NotificationSettings() {
           view.action && view.actionLabel ? { label: view.actionLabel, onPress: runAction } : undefined
         }
       />
+      {push.enableError ? <Banner tone="error" message={push.enableError} /> : null}
 
       {preferences.isLoading ? (
         <LoadingState message="Loading notification settings" />

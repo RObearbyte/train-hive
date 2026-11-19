@@ -205,7 +205,7 @@ describe('QA push permission state machine', () => {
           for (const permission of permissions) {
             for (const canAskAgain of [true, false]) {
               for (const registration of registrations) {
-                const kind = derivePushState({ env: { platform, isExpoGo, hasProjectId }, permission, canAskAgain, registration });
+                const kind = derivePushState({ env: { platform, isExpoGo, hasProjectId }, permission, canAskAgain, registration, consent: true });
                 if (platform !== 'ios' && platform !== 'android') expect(kind).toBe('unsupported_platform');
                 else if (platform === 'android' && isExpoGo) expect(kind).toBe('unsupported_expo_go');
                 else if (!hasProjectId) expect(kind).toBe('not_configured');
@@ -223,7 +223,7 @@ describe('QA push permission state machine', () => {
 
   it('a registered state requires a granted permission: revoking it in system settings drops the claim', () => {
     const env = { platform: 'android', isExpoGo: false, hasProjectId: true } as const;
-    expect(derivePushState({ env, permission: 'denied', canAskAgain: false, registration: 'registered' })).toBe('denied_blocked');
+    expect(derivePushState({ env, permission: 'denied', canAskAgain: false, registration: 'registered', consent: true })).toBe('denied_blocked');
   });
 });
 
