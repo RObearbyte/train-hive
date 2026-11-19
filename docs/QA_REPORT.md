@@ -1130,3 +1130,87 @@ Windows, embedded Postgres, 2026-11-19, one suite at a time:
 | `supabase/tests/qa-gdpr-consent.test.ts` | 20 (6 expected fail) | ledger against all roles and owner, documented gaps, version re-gating, private helpers, deleted token, pre-G1 tokens, retention, removed members, free text after anonymization, RLS and Realtime identity, export contents |
 | `supabase/tests/qa-gdpr-sweep.test.ts` | 3 | every `authenticated` function from `pg_proc`: deleted account, removed member, non-blind control |
 | `src/features/legal/qa-gdprCopy.test.ts` | 9 (4 expected fail) | texts versus schema and source, analytics SDKs, sign-out cleanup, hygiene |
+
+## Events and navigation (P1 + P2) review (Q8)
+
+Scope: migration `20261126000100_events.sql`, the P1 app (kinds, form, status, RSVP, vocabulary, statistics) and the P2 app (tabs, bell, Home feed, `/activity` redirect, quick invite). Reviewed against `docs/EVENTS_PLAN.md` and the "Events (P1)" contract, not the developers' summaries. Code-level only: nothing was run on a device, a browser or a hosted project.
+
+### Verdict
+
+**P1 backend passes; P1 and P2 app pass with three low defects.** No critical, high or medium defect. The migration held under authorization, input, immutability, race, deadline-instant, erasure and lock probes (about 120 new database tests). The app's rules match the server except where listed. Three low defects are open as `it.fails` tests, plus four observations for the lead.
+
+### Defects
+
+| Id | Severity | Owner | Where | Summary |
+|---|---|---|---|---|
+| Q8-1 | low | backend | `20261126000100_events.sql:231-233, 333` vs `:411` | `event_notes` gets the announcement text hygiene; `title`, `description` and `meeting_instructions` do not. |
+| Q8-2 | low | mobile | `src/features/trainings/domain/schema.ts:271-273` | The form does not freeze deadline, minimum and maximum for a training that is past its deadline but not yet decided. |
+| Q8-3 | low | mobile | `src/features/trainings/components/OrganizerActions.tsx:78` | The cancel dialog of every kind has the button "Keep training". |
+
+**Q8-1.** Test: `qa-events.test.ts`, "title, description and notes are cleaned the same way" (`it.fails`). Input `'ab\u0007c\r\nd‮e'`: notes become `abc\nde`; the description keeps the control and the right-to-left override. Expected one hygiene for every free-text field (bidi controls can reorder text in a title). Pre-existing for title and description; P1 made it visible by cleaning only the new field. Fix: route title, description and meeting instructions through the same cleaner.
+
+**Q8-2.** Test: `qa-eventsApp.test.ts`, "a scheduled training past its deadline..." (`it.fails`); server side in `qa-events.test.ts`, "a training past its deadline but not yet decided is frozen". Server: `validation_failed:min_participants / max_participants / rsvp_deadline`. Form: `deadlineFrozen` and `limitsFrozen` need `status === 'confirmed'`, so for a `scheduled` training with a passed deadline (the minutes before the finalizer runs) the form offers fields the server then refuses. Fix: also freeze when `stored.status === 'scheduled'` and the stored deadline has passed (display only).
+
+**Q8-3.** Race, sports and social events show "Keep training". Fix: "Keep event".
+
+### Observations (no defect filed)
+
+- **O1 Quick invite uses the device clock for the expiry** (`quickInvite.ts:14`, same preset as the Invitations screen). A phone 40 days behind sends an expiry in the past (`validation_failed:expires_at`); a phone ahead gives a longer-lived code. A test documents it. Fix if wanted: let `create_invitation` take a duration, or use a server-derived time.
+- **O2 Opening the sheet creates a code at once.** Closing during creation, or reopening, leaves live 30-day single-use codes nobody saw (visible later on the Invitations screen). By design of "one tap"; consider revoking on close.
+- **O3 Legal wording changed (trainings to events) without a version bump** (already noted in `PROGRESS.md`; owner decision).
+- **O4 `export_my_data` lists organized events without kind or subtype.** Harmless.
+
+### What held (probes that found nothing)
+
+- Authorization of create, update, cancel and RSVP for member, outsider, other-community organizer, removed and demoted organizer, anon; no direct table or `event_subtypes` write for any API role; `community_id`, `status`, `going_count`, `organizer_id` in a payload are ignored.
+- Kind immutable through every payload, the sync trigger and direct writes; table checks agree with the RPC (one known difference: a direct write rounds 10.555, the RPC refuses it).
+- Numeric edges for distance, D+, obstacles, minimum (exponent forms, 1e3000, negatives, strings); notes hygiene, 1000-character limits, hostile text stored verbatim; the database seed equals the app's bundled subtype list, and the app's course helpers equal the database rules for every kind x subtype pair.
+- RSVP: capacity, already-going never `session_full`, RSVP at the deadline instant after a lock wait (`clock_timestamp`), RSVP racing a cancel, mixed-kind finalizer and legacy-shaped rows, update freezes per kind, member removal on open and closed events across two communities, notification counts and texts per kind, reminders 24h/2h once each, statistics and history for each kind, top sessions with a null minimum.
+- Erasure and export with race, social and sports events: no reference left, counts exact, attendance anonymized; organizer erasure keeps the event. `create_training` of every kind racing removal and deletion of the organizer: no deadlock, no foreign-key error.
+- Status colours: all new tokens pass 4.5:1 (text) and 3:1 (borders) in light and dark, and differ from `confirmed` by glyph and fill style.
+- Hosted risks by reading: backfill precedes `NOT NULL` and the composite foreign key; the lookup is seeded from `activity_types` first; the only top-level UPDATE has a WHERE (also asserted by test); `distance_km` reaches the app as a JSON number.
+- Deep links: the allowlist holds against 19 hostile forms; `/activity` stays valid for the database constraint, the dispatcher payload `deepLink` and the redirect; sidebar active state for every route including `/notifications`, `/announcements/*`, `/members`, `/privacy`, `/invitations`.
+
+### Evidence map
+
+| Area | Evidence |
+|---|---|
+| Authorization, privileges, immutability, numeric and text edges, RSVP, finalizer, freezes, removal, notifications, reminders, statistics, erasure, lock probe, migration shape | `supabase/tests/qa-events.test.ts` (120 tests, 1 expected fail Q8-1) |
+| Form versus server, RSVP offer, status per kind, vocabulary | `src/features/trainings/domain/qa-eventsApp.test.ts` (Q8-2, Q8-3 expected fails) |
+| Deep links, routes, bell | `src/features/notifications/domain/qa-navigation.test.ts` |
+| Home feed | `src/features/home/domain/qa-homeFeed.test.ts` |
+| Quick invite | `src/features/invitations/domain/qa-quickInvite.test.ts` |
+| Contrast | `src/ui/theme/qa-statusContrast.test.ts` |
+
+### Cannot verify here
+
+Anything on a device or in a browser: layout of the round button over the tab bar and on wide web, keyboard overlap, TalkBack reading of kind cards, chips, statuses and the bell, push taps (cold start and background) for each kind, Realtime updates of the badge, `db push` on a hosted database with data, the PostgREST numeric shape on the hosted project, DST behaviour of the form on a device, performance of 200 events on a phone.
+
+### Manual test script additions
+
+Setup: two accounts, **Ana** (organizer) and **Bob** (member), plus a second community where Bob is organizer; fake names only.
+
+113. Ana: Events, New event. Four kind cards appear; pick Training, then a subtype. The minimum is required. Create. Bob gets "New training".
+114. Ana creates a Race (Trail running) with distance `21,5`, D+ 450 and notes. No minimum field. Details show "21.5 km, D+ 450 m", the notes and status "Registration open". Bob gets "New race".
+115. Ana creates an OCR race: the obstacles field appears. Edit it and switch the subtype to Asphalt running: obstacles disappear and are cleared.
+116. Ana creates a Social event and a Sports event; a minimum is not offered.
+117. Bob answers "Going" on the race and the social event. Set the maximum of the race to 1 in Edit; Cora (third account) cannot go: "full".
+118. Edit the deadline of the social event to 2 minutes ahead. Wait: Bob's buttons disappear, status "Registration closed", the event is NOT cancelled and stays visible. A training with too few people is cancelled at its deadline as before.
+119. Ana edits a race after its deadline: the deadline field is locked, the maximum is still editable, the kind cannot change.
+120. Ana cancels a race: the dialog button says "Keep event" (Q8-3: shows "Keep training"); Bob gets "Race cancelled".
+121. Events tab: filter All, Trainings, Races, Sports, Social; an empty filter shows "Show all".
+122. Bell: shown top right on Home, Events, Statistics, Profile. Ana posts an announcement: Bob's badge shows 1; open the centre; Mark all read: the badge and the Home announcement dot disappear. With 10 or more unread: "9+".
+123. Tap a push for an event and for an announcement from the background and from a killed app: the right screen opens. Open `/activity` in the web build: lands on Notifications.
+124. Home as Bob: Next up (never a past event), Coming up, Latest announcements, "See all". As an organizer a "Needs attendance" list appears after an event.
+125. Quick invite: Ana sees the round "Invite" button on Home and Events; Bob (member) does not. Switch Bob to the community where he is organizer: it appears; switch back: it disappears. Tap: a code appears with Copy and Share; "Create another" makes a second; close during creation and check Invitations for an unseen extra code (O2). Redeem with a third account: works once, a second use is refused.
+126. Set the phone clock 40 days back and tap Invite: an error (O1). Restore the clock.
+
+### What was run (Q8)
+
+Windows, embedded Postgres, 2026-11-19, one suite at a time.
+
+- `npm test` -> `Test Files  145 passed (145)`, `Tests  2907 passed | 3 expected fail (2910)` (477 s), exit 0. The 3 expected failures are Q8-1, Q8-2, Q8-3.
+- `npm run typecheck` -> exit 0. `npm run lint` -> exit 0.
+- `npx expo export --platform web` (scratch directory) -> `Exported`, exit 0.
+- `npx expo-doctor` -> exit 1, one failed check: 4 packages out of date (`@expo/ui`, `expo`, `expo-router`, `expo-web-browser`), known drift, not fixed.
+- Not run: a device, a browser session, hosted Supabase, Deno.
