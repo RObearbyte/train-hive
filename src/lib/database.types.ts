@@ -384,7 +384,8 @@ export type Database = {
           id: string;
           session_id: string;
           community_id: string;
-          user_id: string;
+          /** G2: null once the member deleted their account (anonymous record, kept for session statistics). */
+          user_id: string | null;
           status: Database['public']['Enums']['attendance_status'];
           recorded_by: string | null;
           recorded_at: string;
@@ -396,7 +397,7 @@ export type Database = {
           id?: string;
           session_id: string;
           community_id: string;
-          user_id: string;
+          user_id?: string | null;
           status?: Database['public']['Enums']['attendance_status'];
           recorded_by?: string | null;
           recorded_at?: string;
@@ -408,7 +409,7 @@ export type Database = {
           id?: string;
           session_id?: string;
           community_id?: string;
-          user_id?: string;
+          user_id?: string | null;
           status?: Database['public']['Enums']['attendance_status'];
           recorded_by?: string | null;
           recorded_at?: string;
@@ -452,7 +453,8 @@ export type Database = {
           id: string;
           session_id: string;
           community_id: string;
-          user_id: string;
+          /** G2: null once the member deleted their account. */
+          user_id: string | null;
           changed_by: string | null;
           changed_at: string;
           old_status: Database['public']['Enums']['attendance_status'];
@@ -464,7 +466,7 @@ export type Database = {
           id?: string;
           session_id: string;
           community_id: string;
-          user_id: string;
+          user_id?: string | null;
           changed_by?: string | null;
           changed_at?: string;
           old_status: Database['public']['Enums']['attendance_status'];
@@ -476,7 +478,7 @@ export type Database = {
           id?: string;
           session_id?: string;
           community_id?: string;
-          user_id?: string;
+          user_id?: string | null;
           changed_by?: string | null;
           changed_at?: string;
           old_status?: Database['public']['Enums']['attendance_status'];
@@ -1132,6 +1134,51 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: Json;
       };
+      // GDPR G2: role management, export and deletion.
+      /**
+       * Active organizer only. `p_user_id` is the target (an active member, not the caller).
+       * Raises `forbidden`, `validation_failed:user_id`, `validation_failed:role`,
+       * `cannot_change_own_role`, `not_found`, `last_organizer`. Same role again: unchanged row.
+       */
+      set_member_role: {
+        Args: {
+          p_community_id: string;
+          p_user_id: string;
+          p_role: Database['public']['Enums']['membership_role'];
+        };
+        Returns: Database['public']['Tables']['memberships']['Row'];
+      };
+      /**
+       * Active organizer only; sets the target's status to `removed` (idempotent). Raises `forbidden`,
+       * `validation_failed:user_id`, `cannot_remove_self`, `not_found`, `last_organizer`.
+       */
+      remove_member: {
+        Args: { p_community_id: string; p_user_id: string };
+        Returns: Database['public']['Tables']['memberships']['Row'];
+      };
+      /** Returns a `LeaveCommunityResult`. Raises `not_a_member`, `last_organizer`. */
+      leave_community: {
+        Args: { p_community_id: string };
+        Returns: Json;
+      };
+      /** Returns a `MyDataExport`. Raises `rate_limited` (10 per hour), `not_authenticated`. */
+      export_my_data: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      /** Returns `MyDeletionBlockers`. Raises `not_authenticated`. */
+      my_deletion_blockers: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      /**
+       * Deletes the caller's account. Returns a `DeleteMyAccountResult`. Raises `not_authenticated`
+       * (also on a second call) and `last_organizer` (error `details`: `DeletionBlockedDetail` as JSON).
+       */
+      delete_my_account: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
       // Milestone 4: statistics (read-only, authenticated). Definitions: docs/STATS_DEFINITIONS.md.
       /** Active member of the community. Returns a `MyStatistics`. */
       get_my_statistics: {
@@ -1437,6 +1484,218 @@ export type AttendanceSheet = {
   attendance_finalized_at: string | null;
   attendance_finalized_by: string | null;
   entries: AttendanceSheetEntry[];
+  /**
+   * G2: anonymous records of deleted accounts (never listed as entries), by status. Always sent by
+   * the server since 20261124000200; optional so cached / older payloads still type-check.
+   */
+  former_members?: { present: number; absent: number; unrecorded: number };
+};
+
+// GDPR G2: role management, export and deletion -------------------------------------------------
+
+/** Result of `leave_community`. `changed` is false when the membership was already removed. */
+export type LeaveCommunityResult = {
+  community_id: string;
+  membership_id: string;
+  status: 'removed';
+  changed: boolean;
+  /** Open invitation codes revoked because nobody active is left in the community. */
+  invitations_revoked: number;
+};
+
+/** A community where the caller is the last active organizer while other active members remain. */
+export type DeletionBlocker = { community_id: string; name: string; active_members: number };
+
+/** Result of `my_deletion_blockers`. */
+export type MyDeletionBlockers = {
+  can_delete: boolean;
+  last_organizer: DeletionBlocker[];
+  /** Communities where the caller is the last active member: deleted with the account. */
+  deleted_with_account: { community_id: string; name: string }[];
+};
+
+/** JSON in the error `details` of `delete_my_account` when it raises `last_organizer`. */
+export type DeletionBlockedDetail = { communities: DeletionBlocker[] };
+
+/** Result of `delete_my_account`. */
+export type DeleteMyAccountResult = {
+  user_id: string;
+  communities_deleted: string[];
+  memberships_deleted: number;
+  rsvps_deleted: number;
+  attendance_records_anonymized: number;
+  attendance_changes_anonymized: number;
+  notifications_deleted: number;
+};
+
+/** Result of `export_my_data` (format_version 1). Lists hold at most 5000 items, oldest first. */
+export type MyDataExport = {
+  format_version: 1;
+  generated_at: string;
+  README: string;
+  account: { user_id: string; created_at: string; is_anonymous: boolean };
+  profile: { display_name: string; created_at: string; updated_at: string } | null;
+  memberships: {
+    membership_id: string;
+    community_id: string;
+    community_name: string;
+    role: MembershipRole;
+    status: MembershipStatus;
+    joined_at: string;
+  }[];
+  rsvps: {
+    rsvp_id: string;
+    session_id: string;
+    community_id: string;
+    event_title: string;
+    event_starts_at: string;
+    event_status: SessionStatus;
+    response: RsvpResponse;
+    responded_at: string;
+    updated_at: string;
+  }[];
+  attendance: {
+    record_id: string;
+    session_id: string;
+    community_id: string;
+    event_title: string;
+    event_starts_at: string;
+    status: AttendanceStatus;
+    is_walk_in: boolean;
+    had_rsvp_going: boolean;
+    recorded_at: string;
+    updated_at: string;
+  }[];
+  attendance_changes: {
+    change_id: string;
+    session_id: string;
+    community_id: string;
+    event_title: string;
+    event_starts_at: string;
+    old_status: AttendanceStatus;
+    new_status: AttendanceStatus;
+    action: AttendanceAuditAction;
+    reason: string | null;
+    changed_at: string;
+    /** Never an organizer's name or id. */
+    changed_by: 'you' | 'an organizer';
+  }[];
+  invitation_redemptions: {
+    redemption_id: string;
+    community_id: string;
+    community_name: string;
+    role: MembershipRole;
+    redeemed_at: string;
+  }[];
+  creator_code_redemptions: {
+    redemption_id: string;
+    community_id: string;
+    community_name: string;
+    redeemed_at: string;
+  }[];
+  consents: {
+    event_id: string;
+    purpose: ConsentPurpose;
+    granted: boolean;
+    document_version: string | null;
+    at: string;
+  }[];
+  /** null when never saved (all defaults on). */
+  notification_preferences: {
+    push_enabled: boolean;
+    training_reminders: boolean;
+    announcements: boolean;
+    training_updates: boolean;
+    updated_at: string;
+  } | null;
+  notifications: {
+    notification_id: string;
+    community_id: string;
+    kind: NotificationKind;
+    title: string;
+    body: string;
+    created_at: string;
+    read_at: string | null;
+    push_status: NotificationJobStatus | null;
+    push_sent_at: string | null;
+  }[];
+  announcement_reads: {
+    announcement_id: string;
+    community_id: string;
+    announcement_title: string;
+    read_at: string;
+  }[];
+  /** Token values are never exported. */
+  push_devices: {
+    device_id: string;
+    platform: PushPlatform;
+    device_label: string | null;
+    created_at: string;
+    last_seen_at: string;
+    invalidated_at: string | null;
+  }[];
+  authored: {
+    announcements: {
+      announcement_id: string;
+      community_id: string;
+      community_name: string;
+      title: string;
+      body: string;
+      status: AnnouncementStatus;
+      scheduled_for: string | null;
+      published_at: string | null;
+      created_at: string;
+    }[];
+    events_organized: {
+      session_id: string;
+      community_id: string;
+      community_name: string;
+      title: string;
+      starts_at: string;
+      status: SessionStatus;
+      created_at: string;
+    }[];
+    invitation_codes: {
+      invitation_id: string;
+      community_id: string;
+      community_name: string;
+      role: MembershipRole;
+      created_at: string;
+      expires_at: string | null;
+      max_redemptions: number | null;
+      redemption_count: number;
+      revoked_at: string | null;
+    }[];
+    events_cancelled: number;
+    events_attendance_finalized: number;
+    attendance_records_created_for_others: number;
+    attendance_changes_made_for_others: number;
+  };
+  technical: {
+    invitation_attempts: { attempted_at: string; success: boolean }[];
+    data_export_requests: { requested_at: string }[];
+  };
+  /** P3 (About you) and P5 (workout logs) add their sections here; empty until then. */
+  extensions: Record<string, Json>;
+  /** true for a section that had more than 5000 items. */
+  truncated: Record<
+    | 'memberships'
+    | 'rsvps'
+    | 'attendance'
+    | 'attendance_changes'
+    | 'invitation_redemptions'
+    | 'creator_code_redemptions'
+    | 'consents'
+    | 'notifications'
+    | 'announcement_reads'
+    | 'push_devices'
+    | 'authored_announcements'
+    | 'events_organized'
+    | 'invitation_codes'
+    | 'invitation_attempts'
+    | 'data_export_requests',
+    boolean
+  >;
 };
 
 /**

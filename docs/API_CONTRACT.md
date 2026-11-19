@@ -585,3 +585,96 @@ No consent is backfilled: consent and the 16+ confirmation cannot be presumed, a
 New error codes: `consent_required`, `not_withdrawable`, `rate_limited` (consents), `validation_failed:purpose`, `validation_failed:document_version`, `validation_failed:document`, `validation_failed:version`, `consent_ledger_append_only` (only for direct writes by the owner).
 
 TypeScript: `LegalDocumentKind`, `ConsentPurpose`, `ConsentEvent`, `ConsentState`, `MyConsents`, `AdminSetLegalVersionResult`; `CreateCommunityWithCodeError` gains `consent_required`.
+
+---
+
+# GDPR G2 — export and deletion (append-only)
+
+Migrations `20261124000100_member_roles.sql` (organizer tools) and `20261124000200_data_rights.sql` (attendance anonymization, export, deletion). Plan: `docs/GDPR_PLAN.md` section 3 and phase G2. Tests: `supabase/tests/member-roles.test.ts`, `data-export.test.ts`, `account-deletion.test.ts`, `account-deletion-rules.test.ts`, `account-deletion-concurrency.test.ts`, plus the updated privilege matrix (`qa-privileges.test.ts`). All functions below: `security definer`, `set search_path = ''`, `authenticated` only (anon and service_role: no execute); errors are raised (`P0001`, message = code).
+
+## Organizer tools
+
+Invariant: a community with active members always keeps an active organizer. Every path that can shrink the set of active organizers (the three functions below and account deletion) takes a per-community role lock (`private.lock_community_roles`, advisory) and counts the remaining organizers after it, so concurrent demotions / removals / departures / deletions never leave zero organizers (tested: two organizers demoting each other at once, two organizers deleting at once, leave vs delete).
+
+`set_member_role(p_community_id uuid, p_user_id uuid, p_role membership_role) → memberships`
+- Caller: active organizer of the community (checked before and again after the locks), else `forbidden` (also unknown / null community). `p_user_id` is the target member.
+- Check order: `not_authenticated`, `forbidden`, `validation_failed:user_id`, `validation_failed:role`, `cannot_change_own_role` (the caller's own id), then after the locks `forbidden`, `not_found` (no membership here, or `removed`), `last_organizer` (defensive; cannot occur while the caller is another active organizer).
+- Same role again: returns the row unchanged. `memberships` has no `updated_at`; nothing else is written.
+
+`remove_member(p_community_id uuid, p_user_id uuid) → memberships`
+- Caller: active organizer (re-checked after the locks), else `forbidden`. Sets the target's status to `removed`: the existing trigger releases their going RSVPs on open sessions; RSVPs, attendance and audit history stay; a removed member cannot rejoin by code (`invalid_code`). Can remove another organizer.
+- Errors: `not_authenticated`, `forbidden`, `validation_failed:user_id`, `cannot_remove_self` (use `leave_community`), `not_found` (no membership here), `last_organizer` (defensive). Already removed: the row unchanged.
+
+`leave_community(p_community_id uuid) → jsonb` → `LeaveCommunityResult` `{ community_id, membership_id, status: 'removed', changed, invitations_revoked }`
+- Any member. Sets the caller's own membership to `removed` (RSVPs on open sessions released, history kept, no rejoining by code). Already removed: `changed: false`.
+- `last_organizer` when the caller is the last active organizer and other active members remain (promote someone first).
+- The last active member may leave; the community then has nobody active, so its open invitation codes are revoked in the same transaction (`invitations_revoked`; nobody can join a community without an organizer). The community and its history stay (dormant).
+- Errors: `not_authenticated`, `not_a_member` (no membership, no profile, null / unknown community), `last_organizer`.
+
+## `export_my_data() → jsonb` ("Download my data")
+
+`MyDataExport`, everything personal about the caller and nothing about anyone else. One statement builds it (a consistent snapshot). `volatile` (not `stable`) only because it records the call for the rate limit; it changes nothing else.
+- **Rate limit:** 10 exports per user per rolling hour, then `rate_limited` (counted under a per-user advisory lock: 16 parallel calls give exactly 10). Kept in `private.data_export_log` (no API access); rows older than an hour are pruned by the user's next export and deleted with the account.
+- Errors: `not_authenticated` (no user, or the JWT's user was deleted; also when the account is deleted while the export runs), `rate_limited`.
+- **Caps:** every list at most 5000 items, oldest first; `truncated.<section>` is true when more exist.
+- **Other people:** never another member's id or display name; community names and event titles only. Changes to the caller's attendance show `changed_by: 'an organizer'` (or `'you'`). Authored rows that are about other people are only counted. Push token values are never exported.
+
+```
+{ format_version: 1, generated_at, README: '<plain-language explanation>',
+  account: { user_id, created_at, is_anonymous },
+  profile: { display_name, created_at, updated_at } | null,
+  memberships: [ { membership_id, community_id, community_name, role, status, joined_at } ],
+  rsvps: [ { rsvp_id, session_id, community_id, event_title, event_starts_at, event_status, response, responded_at, updated_at } ],
+  attendance: [ { record_id, session_id, community_id, event_title, event_starts_at, status, is_walk_in, had_rsvp_going, recorded_at, updated_at } ],
+  attendance_changes: [ { change_id, session_id, community_id, event_title, event_starts_at, old_status, new_status, action, reason, changed_at, changed_by: 'you' | 'an organizer' } ],
+  invitation_redemptions: [ { redemption_id, community_id, community_name, role, redeemed_at } ],
+  creator_code_redemptions: [ { redemption_id, community_id, community_name, redeemed_at } ],
+  consents: [ { event_id, purpose, granted, document_version, at } ],          -- every ledger event
+  notification_preferences: { push_enabled, training_reminders, announcements, training_updates, updated_at } | null,
+  notifications: [ { notification_id, community_id, kind, title, body, created_at, read_at, push_status, push_sent_at } ],
+  announcement_reads: [ { announcement_id, community_id, announcement_title, read_at } ],
+  push_devices: [ { device_id, platform, device_label, created_at, last_seen_at, invalidated_at } ],
+  authored: { announcements: [ { announcement_id, community_id, community_name, title, body, status, scheduled_for, published_at, created_at } ],
+              events_organized: [ { session_id, community_id, community_name, title, starts_at, status, created_at } ],
+              invitation_codes: [ { invitation_id, community_id, community_name, role, created_at, expires_at, max_redemptions, redemption_count, revoked_at } ],
+              events_cancelled: 1, events_attendance_finalized: 1,
+              attendance_records_created_for_others: 2, attendance_changes_made_for_others: 2 },
+  technical: { invitation_attempts: [ { attempted_at, success } ], data_export_requests: [ { requested_at } ] },
+  extensions: {},                       -- P3 (About you) and P5 (workout logs) add their keys here
+  truncated: { memberships: false, rsvps: false, … } }
+```
+Example (abridged): `{ "format_version": 1, "profile": { "display_name": "Ana" , … }, "memberships": [ { "community_name": "Făget Trail Pack", "role": "member", "status": "active", … } ], "attendance": [ { "event_title": "Morning run", "status": "present", "is_walk_in": false, … } ], "attendance_changes": [ { "old_status": "absent", "new_status": "present", "reason": "Arrived late", "changed_by": "an organizer", … } ], "push_devices": [ { "platform": "android", "device_label": "Phone", … } ], "extensions": {}, … }`. The app saves it as a `.json` file.
+
+Tested (`account-deletion.test.ts`): every place in the database that refers to the user (a scan of all uuid / text / json columns of `public`, `private`, `auth`) is a section of the export with the same number of rows, and after `delete_my_account` every listed row is deleted or anonymized.
+
+## `my_deletion_blockers() → jsonb`
+
+`MyDeletionBlockers` `{ can_delete, last_organizer: [ { community_id, name, active_members } ], deleted_with_account: [ { community_id, name } ] }` for the "Delete my account" screen (show it before the double confirmation). `deleted_with_account`: communities where the caller is the last active member; they are deleted with the account, including everything in them (sessions, removed members' history, announcements, codes). Read-only, no locks (the deletion re-checks under its locks). Errors: `not_authenticated`.
+
+## `delete_my_account() → jsonb` ("Delete my account")
+
+`DeleteMyAccountResult` `{ user_id, communities_deleted: [ids], memberships_deleted, rsvps_deleted, attendance_records_anonymized, attendance_changes_anonymized, notifications_deleted }`. One transaction: checks, then `private.erase_user(auth.uid())`.
+- Errors: `not_authenticated` (no user; the JWT's user no longer exists, so a **second call** with the still-valid JWT answers this), `last_organizer` while the caller is the last active organizer of a community that still has other active members; the error **`details`** carries `DeletionBlockedDetail` as JSON: `{"communities":[{"community_id":"…","name":"Alpha Pack","active_members":3}]}`. Promote another member (`set_member_role`) and retry.
+- After the deletion the app signs out locally (the JWT stays valid until it expires, up to an hour). Every RPC called with it answers with its own documented error (`not_authenticated`, `not_a_member`, `forbidden`, `not_found`; invitation / creator code functions `{ok:false, error:'not_authenticated'}`), never a raw foreign-key error (tested for every user RPC).
+
+**Deleted:** profile; memberships (an active one releases its going RSVPs on open sessions first); RSVPs (a deleted `going` row is uncounted from its session's `going_count` whatever the status, as before: `going_count` always equals the going rows, so a past session's `going_count` and the statistics' `rsvp_going_total` / `average_rsvp_participation` / `top_sessions[].going_count` drop by the deleted member's going RSVPs); push tokens; notification preferences; notifications and their push jobs; announcement read receipts; invitation redemptions (the code's `redemption_count` is kept); creator-code redemptions (**decision:** deleted, not nullified; the code's `use_count` is kept, so the code stays used, and the per-user community limit only concerns the deleted user); invitation attempts; the data-export log; the consent ledger (by the cascade from `auth.users`, the only DELETE the ledger's guard allows, so `auth.users` is deleted last); the `auth.users` row; communities where the user was the last active member (cascade).
+
+**Anonymized (kept without identity):** `attendance_records` and `attendance_audit_log` rows about the user keep their session, community, status, walk-in / RSVP-origin flags and times, with `user_id = null`. `user_id` is now **nullable, `on delete set null`** on both tables (a plain `delete from auth.users` behaves the same). The unique `(session_id, user_id)` still prevents duplicates for real users; several anonymous rows can exist for one session. Rows the user **authored** keep their subject and lose the author (`recorded_by`, `changed_by` = null).
+
+**Kept without author:** announcements (`author_id` null; the app shows **"Former member"**; a scheduled one still publishes, any organizer can cancel it), sessions they organized / cancelled / finalized (`organizer_id`, `cancelled_by`, `attendance_finalized_by` null), invitation codes they created (`created_by` null).
+
+**Statistics with anonymous rows** (`private.stats_rows` replaced, otherwise identical for real users): an anonymous record is a non-eligible row (like a person who joined after the session started), with RSVP `going` when the record came from a going RSVP (`had_rsvp_going`) else `no_response`. So session-level community numbers (`completed_trainings`, `total_attendances`, `average_attendees`, `incomplete_sessions`, `rsvp_going_present`, `rsvp_going_recorded`, `rsvp_conversion`, `trend`, `top_sessions[].present`) are **unchanged** by a deletion; per-member numbers (`list_member_statistics_summary`, `members_attended`, `active_members`, `get_member_statistics` → `not_found`) no longer include the user (tested). Caveat from the plan: in a very small club anonymous counts can still point to a person.
+
+**Attendance RPCs with anonymous rows:** `get_attendance_sheet` never lists an anonymous row as an entry and gains **`former_members: { present, absent, unrecorded }`** (counts of anonymous records of the session). `record_attendance` / `add_walk_in_attendee` cannot target them (`validation_failed:user_id` for null); `cancel_training` still refuses a session with anonymous `present` / `absent` records (`session_has_attendance`: the attendance happened). Organizers reading `attendance_records` / `attendance_audit_log` directly see rows with `user_id = null`; show them as "Former member".
+
+**Concurrency.** Lock order of an erasure: consent lock (per user) → invitation codes of the user's active communities → profile → `auth.users` row → community role locks (id order) → the user's memberships → other active organizers' memberships (share) → scheduled / authored announcements → the sessions it writes plus the open (`scheduled` / `confirmed`) sessions of the user's communities (id order). This matches every writer's order, and it makes every notification fan-out that already saw the user as a member commit before the deletion (whose deferred trigger on `profiles` then removes the new notification). `create_training` now locks the caller's organizer membership (`FOR NO KEY UPDATE`, like `create_announcement`) for this reason (same signature, grants and errors; the organizer role is re-checked under that lock). Tested in both orders against `set_rsvp` (own and another member's), `record_attendance` (own attendance and on a session the user organized), `update_training` (open and confirmed), `create_training`, `publish_due_announcements`, `set_member_role`, `record_consent`, `export_my_data`, a join into the user's last-member community, plus a mixed storm: no deadlock, no raw constraint error, no row left referring to the user, `going_count` always equal to the going rows. A join racing the deletion of a last-member community either finds the code gone (`invalid_code`) or, if it committed first, turns the deletion into `last_organizer`.
+
+**`private.erase_user(p_user_id uuid) → jsonb`** (no API role can execute it): takes the locks itself, refuses with `last_organizer` whoever calls it, returns null when the auth user no longer exists. The G3 inactive-account job will call it for the accounts it selects (no caller identity needed); it adds no checks of its own.
+
+**Hosted note (unverified).** Deleting the auth user is a plain `delete from auth.users where id = …` inside the security definer function (owner `postgres`), preceded by a `select … for update` of that row. This is the approach the Supabase docs show for self-service account deletion, and the tests run it against the embedded Postgres, but it has **not been run on the hosted project**: there `auth.users` belongs to `supabase_auth_admin`, `postgres` must hold SELECT / UPDATE / DELETE on it (it does on current projects, as far as known), and Auth's own tables (identities, sessions, refresh tokens, MFA factors) must cascade from it. Check once after deploying: delete a throwaway account in the app, then `select count(*) from auth.users where id = '<id>'` and `select count(*) from auth.identities where user_id = '<id>'` return 0. **Fallback if it is refused:** keep `delete_my_account` for the data (`private.erase_user` without its last statement) and delete the auth user from an Edge Function that verifies the caller's JWT, calls the RPC with the caller's token, then `supabase.auth.admin.deleteUser(uid)` with the service role key (the consent ledger rows then go with that cascade). Not built.
+
+**Retention hook (G3).** Inactive-account deletion reuses `private.erase_user`.
+
+New error codes: `last_organizer`, `cannot_change_own_role`, `cannot_remove_self`, `validation_failed:role`, `rate_limited` (export). Existing ones used: `not_authenticated`, `not_a_member`, `forbidden`, `not_found`, `validation_failed:user_id`.
+
+TypeScript (`src/lib/database.types.ts`): `LeaveCommunityResult`, `DeletionBlocker`, `MyDeletionBlockers`, `DeletionBlockedDetail`, `DeleteMyAccountResult`, `MyDataExport`; `AttendanceSheet` gains `former_members`; `attendance_records.user_id` and `attendance_audit_log.user_id` are `string | null`.

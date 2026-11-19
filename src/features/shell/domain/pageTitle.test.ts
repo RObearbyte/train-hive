@@ -21,6 +21,7 @@ describe('titleForPath', () => {
     ['/add-community/join-code', 'Join a community · TrainHive'],
     ['/join', 'Join a community · TrainHive'],
     ['/privacy', 'Privacy · TrainHive'],
+    ['/members', 'Members · TrainHive'],
     ['/consent', 'Before you start · TrainHive'],
     ['/legal/privacy', 'Privacy Notice · TrainHive'],
     ['/legal/terms', 'Terms of Use · TrainHive'],

@@ -118,6 +118,7 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
             type: 'list',
             items: [
               'Members of your community see your display name and, in event pages, whether you said you are going.',
+              "Organizers of your community can change members' roles and remove a member from the community. A member can also leave at any time. Removed and departed members lose access, and their attendance history stays in the community's records.",
               'Organizers of your community also see your membership, your RSVPs and your attendance records.',
               'Your emergency contact and T-shirt size are visible to organizers of your community only if you consented to share them.',
               'Birth year and gender are never shown to organizers one by one. Organizers see only grouped statistics, and only for groups of 5 or more people.',
@@ -169,7 +170,7 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
               `In-app notifications: deleted ${RETENTION.readNotificationsDays} days after you read them, and ${RETENTION.unreadNotificationsDays} days after they were created if you never read them.`,
               `Records of failed code attempts (used to stop guessing): deleted after ${RETENTION.failedAttemptsHours} hours.`,
               'Push tokens: deleted when you turn push notifications off, when the token stops working, or when your account is deleted.',
-              'Account data (name, membership, RSVPs, attendance, posts, optional data you gave, your consent records): kept until you delete your account.',
+              'Account data (name, membership, RSVPs, attendance, posts, optional data you gave, your consent records): kept until you delete your account. When you delete it, attendance counts and the attendance change history stay without your name or identifier.',
               'Consent records are kept as proof of what you agreed to and when, for as long as your account exists.',
             ],
           },
@@ -192,7 +193,10 @@ export function buildPrivacyNotice(config: LegalConfig): LegalDocument {
             items: [
               'Withdraw or give consent: Profile, then Privacy. Each optional consent has its own switch, and turning one off takes effect at once.',
               'Correct your name: Profile, then Change name.',
-              `Download your data, delete your account, restrict or object to processing: these are not yet available in the app. Until they are, contact us at ${config.privacyEmail}. Because accounts are anonymous, we can only act on a request if you can show that the account is yours, for example by creating a code inside the app when we ask.`,
+              'Download your data: Profile, then Privacy, then Download my data. You get a file with everything we hold about you. You can do this up to 10 times per hour.',
+              'Delete your account: Profile, then Privacy, then Delete my account. This deletes your profile, memberships, RSVPs, notifications, push devices and consent records, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you wrote stay and show "Former member" as the author. In a very small community these anonymous counts can still point to a person. If you are the only organizer of a community that still has other members, hand over to another organizer first (Profile, then Members). A community in which you are the only member is deleted together with your account.',
+              'Leave a community: Profile, then Leave this community. You lose access to it, and your attendance history stays in its records until you delete your account.',
+              `Restrict or object to processing: contact us at ${config.privacyEmail}. Because accounts are anonymous, we can only act on a request if you can show that the account is yours, for example by creating a code inside the app when we ask.`,
               'We answer within one month.',
             ],
           },

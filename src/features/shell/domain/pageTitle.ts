@@ -23,6 +23,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/profile$/, 'Profile'],
   [/^\/invitations$/, 'Invitations'],
   [/^\/community-settings$/, 'Community settings'],
+  [/^\/members$/, 'Members'],
   [/^\/attendance-history$/, 'Attendance history'],
   [/^\/privacy$/, 'Privacy'],
   [/^\/consent$/, 'Before you start'],

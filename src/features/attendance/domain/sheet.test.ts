@@ -6,6 +6,7 @@ import {
   countEntries,
   countsText,
   deviceSaysEnded,
+  formerMembersText,
   isEditableMode,
   canMarkAllRow,
   markAllTargets,
@@ -193,5 +194,16 @@ describe('needsEndRefetch', () => {
     expect(needsEndRefetch(open, session, after, loadedAfter)).toBe(false);
     expect(needsEndRefetch({ status: 'confirmed', ended: true }, session, after, loadedBefore)).toBe(false);
     expect(needsEndRefetch({ status: 'cancelled', ended: false }, session, after, loadedBefore)).toBe(false);
+  });
+});
+
+describe('formerMembersText', () => {
+  it('lists only the non-zero counts', () => {
+    expect(formerMembersText({ present: 2, absent: 1, unrecorded: 0 })).toBe('Former members: 2 present, 1 absent');
+    expect(formerMembersText({ present: 0, absent: 0, unrecorded: 3 })).toBe('Former members: 3 unrecorded');
+  });
+  it('is null when there are none or the server sent nothing', () => {
+    expect(formerMembersText({ present: 0, absent: 0, unrecorded: 0 })).toBeNull();
+    expect(formerMembersText(undefined)).toBeNull();
   });
 });

@@ -202,6 +202,9 @@ describe('QA contract: RPCs called by the app', () => {
         'record_consent',
         'withdraw_consent',
         'unregister_push_token',
+        'set_member_role',
+        'remove_member',
+        'leave_community',
       ]),
     );
   });

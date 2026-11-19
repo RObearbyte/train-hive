@@ -133,6 +133,26 @@ describe('reconcileMark / upsertWalkIn', () => {
     });
   });
 
+  it('leaves the sheet unchanged for an anonymous (former member) record', () => {
+    const qc = seed();
+    const before = sheetOf(qc);
+    reconcileMark(qc, SESSION, record('u2', 'present', { user_id: null }));
+    upsertWalkIn(qc, SESSION, record('u2', 'present', { user_id: null }), 'Nobody');
+    expect(sheetOf(qc)).toBe(before);
+  });
+
+  it('keeps a sheet with former members intact through an optimistic mark and rollback', () => {
+    const qc = seed();
+    qc.setQueryData(attendanceKeys.sheet(SESSION), {
+      ...makeSheet(),
+      former_members: { present: 2, absent: 1, unrecorded: 0 },
+    });
+    const snapshot = applyOptimisticMark(qc, SESSION, { userId: 'u1', next: 'present' });
+    rollbackMark(qc, snapshot);
+    expect(sheetOf(qc).former_members).toEqual({ present: 2, absent: 1, unrecorded: 0 });
+    expect(statusOf(qc, 'u1')).toBe('unrecorded');
+  });
+
   it('adds a walk-in row with the known name, or updates an existing row', () => {
     const qc = seed();
     upsertWalkIn(qc, SESSION, record('w1', 'present', { had_rsvp_going: false, is_walk_in: true }), 'Walt');

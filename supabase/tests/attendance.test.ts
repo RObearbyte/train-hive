@@ -502,15 +502,20 @@ describe('database guarantees', () => {
     await expect(insert('present', 'absent', 'unfinalize')).rejects.toMatchObject({ code: '23514' });
   });
 
-  it('deleting accounts: the attendee\'s rows go, the organizer\'s authorship becomes null', async () => {
+  // GDPR G2 (supersedes M2): an attendee's rows stay, anonymous (user_id null), so session
+  // statistics keep counting them; the organizer's authorship becomes null.
+  it('deleting accounts: the attendee\'s rows become anonymous, the organizer\'s authorship becomes null', async () => {
     const { organizerId, memberIds, session } = await confirmedSession(2, 2);
     await recordAttendance(organizerId, session.id, memberIds[0], 'present');
     await recordAttendance(organizerId, session.id, memberIds[1], 'absent');
     await finalizeAttendance(organizerId, session.id);
 
     await admin.query('delete from auth.users where id = $1', [memberIds[0]]);
-    expect((await recordsOf(session.id)).map((r) => r.user_id)).toEqual([memberIds[1]]);
-    expect((await auditOf(session.id)).map((a) => a.user_id)).toEqual([memberIds[1]]);
+    expect((await recordsOf(session.id)).map((r) => [r.user_id, r.status])).toEqual([
+      [memberIds[1], 'absent'],
+      [null, 'present'],
+    ]);
+    expect((await auditOf(session.id)).map((a) => a.user_id)).toEqual([null, memberIds[1]]);
 
     await admin.query('delete from auth.users where id = $1', [organizerId]);
     expect((await recordsOf(session.id))[0]).toMatchObject({ recorded_by: null, status: 'absent' });

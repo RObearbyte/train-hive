@@ -60,6 +60,19 @@ export async function runSignOut(
     return { ok: false, error };
   }
 
+  return { ok: true, warnings: await runLocalCleanup(effects, input) };
+}
+
+/**
+ * The local half of leaving an account (after sign-out, or after the server
+ * deleted it): stored session and per-device records, query cache, in-memory
+ * onboarding state. A failing step is counted, reported and never stops the
+ * rest. Returns the number of failed steps.
+ */
+export async function runLocalCleanup(
+  effects: Pick<SignOutEffects, 'removeStored' | 'clearQueryCache' | 'resetInMemoryState' | 'report'>,
+  input: { userId: string | null; authStorageKey: string },
+): Promise<number> {
   let warnings = 0;
   for (const key of storedKeysToClear(input)) {
     try {
@@ -77,5 +90,5 @@ export async function runSignOut(
       effects.report('signOut.cleanup', error);
     }
   }
-  return { ok: true, warnings };
+  return warnings;
 }

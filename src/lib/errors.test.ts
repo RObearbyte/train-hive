@@ -26,6 +26,8 @@ describe('contract coverage', () => {
         'announcement_not_editable',
         'attendee_has_going_rsvp',
         'attendee_not_a_member',
+        'cannot_change_own_role',
+        'cannot_remove_self',
         'community_limit_reached',
         'consent_required',
         'exhausted',
@@ -33,6 +35,7 @@ describe('contract coverage', () => {
         'forbidden',
         'invalid_code',
         'invalid_display_name',
+        'last_organizer',
         'not_a_member',
         'not_authenticated',
         'no_going_rsvp',
@@ -279,5 +282,22 @@ describe('GDPR G1 consent codes', () => {
     expect(consent).not.toContain('consent_required');
     expect(withdrawable).not.toContain('not_withdrawable');
     expect(userMessage('app_update_required')).toMatch(/update the app/i);
+  });
+});
+
+describe('GDPR G2 organizer tools', () => {
+  it('parses the member-management codes', () => {
+    for (const code of ['last_organizer', 'cannot_change_own_role', 'cannot_remove_self'] as const) {
+      expect(toAppError(pgError(code)).code).toBe(code);
+      expect(userMessage(code)).not.toBe(GENERIC);
+      expect(userMessage(code)).not.toContain(code);
+    }
+  });
+
+  it('says what to do about each', () => {
+    expect(userMessage('last_organizer')).toMatch(/at least one organizer/i);
+    expect(userMessage('cannot_change_own_role')).toMatch(/own role/i);
+    expect(userMessage('cannot_remove_self')).toMatch(/leave this community/i);
+    expect(userMessage('validation_failed', 'role')).toContain('role');
   });
 });

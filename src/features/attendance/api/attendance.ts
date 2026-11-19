@@ -67,7 +67,8 @@ export async function finalizeAttendance(sessionId: string): Promise<TrainingSes
 
 export type AuditTrailItem = {
   id: string;
-  userId: string;
+  /** Null when the member's account was deleted (shown as "Former member"). */
+  userId: string | null;
   /** Null when the organizer's account was deleted. */
   changedByName: string | null;
   changedAt: string;

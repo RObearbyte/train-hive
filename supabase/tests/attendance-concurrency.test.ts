@@ -196,7 +196,8 @@ describe('attendance concurrency', () => {
       gate.release();
     }
     expect(await Promise.all([finalizeResult, deletion])).toEqual(['ok', 'ok']);
-    expect((await recordsOf(session.id)).map((r) => r.user_id)).toEqual([memberIds[1]]);
+    // GDPR G2: the deleted member's row stays, anonymous (user_id null; sorted last).
+    expect((await recordsOf(session.id)).map((r) => r.user_id)).toEqual([memberIds[1], null]);
     expect((await getSession(session.id)).status).toBe('completed');
   });
 
@@ -220,8 +221,10 @@ describe('attendance concurrency', () => {
       gate.release();
     }
     expect(await Promise.all([recordResult, deletion])).toEqual(['ok', 'ok']);
-    expect(await countRows('attendance_records')).toBe(0);
-    expect(await countRows('attendance_audit_log')).toBe(0);
+    // GDPR G2: the record and its audit row stay, anonymous.
+    expect(await countRows('attendance_records', 'user_id is null')).toBe(1);
+    expect(await countRows('attendance_audit_log', 'user_id is null')).toBe(1);
+    expect(await countRows('attendance_records', 'user_id is not null')).toBe(0);
   });
 
   it('record vs removing the attendee: serialized on the membership row in both orders', async () => {

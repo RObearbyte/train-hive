@@ -29,6 +29,8 @@ export function activeNavKey(pathname: string): NavKey | null {
     case 'profile':
     case 'invitations':
     case 'community-settings':
+    case 'members':
+    case 'privacy':
     case 'attendance-history':
     case 'add-community':
       return 'profile';

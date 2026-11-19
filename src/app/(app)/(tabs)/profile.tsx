@@ -7,6 +7,7 @@ import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembe
 import { YourCommunities } from '@/features/communities/components/YourCommunities';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { NotificationSettings } from '@/features/notifications/components/NotificationSettings';
+import { LeaveCommunitySection } from '@/features/members/components/LeaveCommunitySection';
 import { LegalLinks } from '@/features/legal/components/LegalLinks';
 import { DisplayNameForm } from '@/features/profile/components/DisplayNameForm';
 import { SignOutSection } from '@/features/profile/components/SignOutSection';
@@ -141,6 +142,13 @@ export default function ProfileScreen() {
               />
               <Divider />
               <ListItem
+                title="Members"
+                subtitle="See everyone, change roles or remove people"
+                leading={<Icon name="person" size={22} color="primary" />}
+                onPress={() => router.push('/members' as Href)}
+              />
+              <Divider />
+              <ListItem
                 title="Community settings"
                 subtitle="Change the name and time zone"
                 leading={<Icon name="edit" size={22} color="primary" />}
@@ -148,6 +156,8 @@ export default function ProfileScreen() {
               />
             </>
           ) : null}
+          <Divider />
+          <LeaveCommunitySection communityId={community.id} communityName={community.name} />
         </Card>
       </View>
 

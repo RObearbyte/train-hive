@@ -34,6 +34,13 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   my_consents: 'authenticated',
   record_consent: 'authenticated',
   withdraw_consent: 'authenticated',
+  // GDPR G2: role management, export and deletion.
+  delete_my_account: 'authenticated',
+  export_my_data: 'authenticated',
+  leave_community: 'authenticated',
+  my_deletion_blockers: 'authenticated',
+  remove_member: 'authenticated',
+  set_member_role: 'authenticated',
   cancel_announcement: 'authenticated',
   cancel_training: 'authenticated',
   claim_notification_jobs: 'service_role',
@@ -85,6 +92,9 @@ const TARGET_USER_ARGS: Record<string, string[]> = {
   // M4: an organizer reads one member's statistics (read-only).
   get_member_attendance_history: ['p_user_id'],
   get_member_statistics: ['p_user_id'],
+  // G2: an organizer changes another member's role or removes them. `p_role` is the new role.
+  remove_member: ['p_user_id'],
+  set_member_role: ['p_user_id', 'p_role'],
 };
 
 /** Where each target-member function checks that the caller is an active organizer. */
@@ -93,6 +103,9 @@ const ORGANIZER_CHECK: Record<string, string> = {
   record_attendance: 'private.authorize_attendance(p_session_id)',
   get_member_attendance_history: 'not public.is_organizer(p_community_id)',
   get_member_statistics: 'not public.is_organizer(p_community_id)',
+  // G2: checked before the locks and again after them (private.lock_caller_organizer).
+  remove_member: 'not public.is_organizer(p_community_id)',
+  set_member_role: 'not public.is_organizer(p_community_id)',
 };
 
 interface FunctionRow {
@@ -258,6 +271,12 @@ describe('QA function privileges', () => {
       ['select public.record_consent($1)', ['age_16']],
       ['select public.withdraw_consent($1)', ['workout_logs']],
       ['select public.my_consents()', []],
+      ['select public.set_member_role($1, $2, $3)', [communityId, organizerId, 'member']],
+      ['select public.remove_member($1, $2)', [communityId, organizerId]],
+      ['select public.leave_community($1)', [communityId]],
+      ['select public.export_my_data()', []],
+      ['select public.my_deletion_blockers()', []],
+      ['select public.delete_my_account()', []],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
@@ -328,6 +347,18 @@ describe('QA table privileges', () => {
                   and has_any_column_privilege(r.role, 'public.' || t.name, p.privilege)))
          and not (r.role = 'authenticated' and p.privilege = 'SELECT')
        order by 1, 2, 3`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('the data-export log in private grants nothing to any API role (G2)', async () => {
+    const { rows } = await admin.query<{ role: string; privilege: string }>(
+      `select r.role, p.privilege
+       from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
+       cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
+       where has_table_privilege(r.role, 'private.data_export_log', p.privilege)
+          or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+              and has_any_column_privilege(r.role, 'private.data_export_log', p.privilege))`,
     );
     expect(rows).toEqual([]);
   });

@@ -22,6 +22,8 @@ describe('activeNavKey', () => {
     ['/statistics/u1', 'statistics'],
     ['/profile', 'profile'],
     ['/invitations', 'profile'],
+    ['/members', 'profile'],
+    ['/privacy', 'profile'],
     ['/community-settings', 'profile'],
     ['/attendance-history', 'profile'],
     ['/add-community/join-code', 'profile'],

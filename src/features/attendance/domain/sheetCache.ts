@@ -106,8 +106,11 @@ export function reconcileMark(
   sessionId: string,
   record: AttendanceRecord,
 ): void {
+  // Records returned by the RPCs always belong to a user; an anonymous (former member) row never maps to an entry.
+  const userId = record.user_id;
+  if (userId === null) return;
   queryClient.setQueryData<AttendanceSheet>(attendanceKeys.sheet(sessionId), (sheet) =>
-    sheet ? mapEntry(sheet, record.user_id, (entry) => entryFromRecord(entry, record)) : sheet,
+    sheet ? mapEntry(sheet, userId, (entry) => entryFromRecord(entry, record)) : sheet,
   );
 }
 
@@ -121,14 +124,16 @@ export function upsertWalkIn(
   record: AttendanceRecord,
   displayName: string,
 ): void {
+  const userId = record.user_id;
+  if (userId === null) return;
   queryClient.setQueryData<AttendanceSheet>(attendanceKeys.sheet(sessionId), (sheet) => {
     if (!sheet) return sheet;
-    if (sheet.entries.some((entry) => entry.user_id === record.user_id)) {
-      return mapEntry(sheet, record.user_id, (entry) => entryFromRecord(entry, record));
+    if (sheet.entries.some((entry) => entry.user_id === userId)) {
+      return mapEntry(sheet, userId, (entry) => entryFromRecord(entry, record));
     }
     const created: AttendanceSheetEntry = entryFromRecord(
       {
-        user_id: record.user_id,
+        user_id: userId,
         display_name: displayName,
         membership_status: 'active',
         rsvp_response: 'no_response',

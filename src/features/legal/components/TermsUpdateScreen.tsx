@@ -14,8 +14,8 @@ import { LegalLinks } from './LegalLinks';
  * "We updated our terms and privacy notice": shown to a signed-in member whose
  * server record is missing or out of date (every member from before the consent
  * ledger, and everyone after a new version). The only way on is to accept; the
- * only alternative is leaving the app. Deleting the account is planned for a
- * later release, so it is described as "coming soon", not offered as a button.
+ * only alternative is leaving the app. Deleting the account lives in Profile ->
+ * Privacy, which this gate keeps out of reach, so the text points there.
  */
 export function TermsUpdateScreen() {
   const { spacing } = useTheme();
@@ -75,9 +75,9 @@ export function TermsUpdateScreen() {
       )}
 
       <Text variant="caption" color="textMuted">
-        If you do not agree, you can close the app. Deleting your account from within the app (Profile,
-        Privacy, Delete my account) is coming soon; until then, ask us through the privacy contact in
-        the Privacy Notice.
+        If you do not agree, you can close the app. If you want your account deleted, accept first and
+        then use Profile, Privacy, Delete my account, or ask us through the privacy contact in the
+        Privacy Notice.
       </Text>
     </Screen>
   );

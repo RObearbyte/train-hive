@@ -119,6 +119,12 @@ export function useTrainingsRealtime(): void {
         { event: '*', schema: 'public', table: 'memberships', filter: `user_id=eq.${userId}` },
         onChange('memberships'),
       )
+      // Role changes, removals and departures of other members (the organizers' Members screen).
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'memberships', filter: `community_id=eq.${communityId}` },
+        onChange('memberships'),
+      )
       .subscribe((status, error) => {
         if (closedByUs) return;
         if (status === 'SUBSCRIBED') {

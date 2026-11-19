@@ -3,6 +3,9 @@ import { useState } from 'react';
 import { Switch, View } from 'react-native';
 
 import { ConfirmDialog } from '@/features/community/components/ConfirmDialog';
+import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { DeleteAccountFlow } from '@/features/dataRights/components/DeleteAccountFlow';
+import { DownloadMyData } from '@/features/dataRights/components/DownloadMyData';
 import { usePush } from '@/features/notifications/hooks/PushProvider';
 import { deviceTimeZone, formatLongDate, isValidTimeZone } from '@/lib/datetime';
 import type { ConsentPurpose } from '@/lib/database.types';
@@ -81,6 +84,8 @@ export function PrivacySettingsScreen() {
   const { consents, isLoading, error, refetch } = useMyConsents();
   const set = useSetConsent();
   const push = usePush();
+  const { selectCommunity } = useCurrentMembership();
+  const [deleting, setDeleting] = useState(false);
   const [withdrawing, setWithdrawing] = useState<OptionalConsentRow | null>(null);
   const [grantError, setGrantError] = useState<string | null>(null);
 
@@ -206,14 +211,45 @@ export function PrivacySettingsScreen() {
 
       <View style={{ gap: spacing.sm }}>
         <Text variant="heading">Your data</Text>
-        <Card style={{ gap: spacing.sm }}>
+        <Card style={{ gap: spacing.md }}>
           <Text color="textMuted">
-            Downloading a copy of your data and deleting your account are coming soon. Until then, or
-            for any other question about your data, contact us.
+            You can get a copy of everything TrainHive holds about you, or delete your account. For
+            any other question about your data, contact us.
           </Text>
+          <DownloadMyData />
           <PrivacyContact />
         </Card>
       </View>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text variant="heading">Delete my account</Text>
+        <Card style={{ gap: spacing.sm }}>
+          <Text color="textMuted">
+            Deleting your account removes your profile, memberships and RSVPs for good. It cannot be
+            undone. You will see what is deleted and what stays before anything happens.
+          </Text>
+          <Button
+            label="Delete my account"
+            variant="danger"
+            icon="trash"
+            fullWidth
+            accessibilityHint="Opens the steps to delete your account. Nothing is deleted yet."
+            onPress={() => setDeleting(true)}
+            testID="delete-account-open"
+          />
+        </Card>
+      </View>
+
+      <DeleteAccountFlow
+        visible={deleting}
+        onClose={() => setDeleting(false)}
+        onOpenMembers={(communityId) => {
+          // The Members screen shows the active community: make the blocking one active first.
+          selectCommunity(communityId);
+          setDeleting(false);
+          router.push('/members' as Href);
+        }}
+      />
 
       <ConfirmDialog
         visible={withdrawing !== null}

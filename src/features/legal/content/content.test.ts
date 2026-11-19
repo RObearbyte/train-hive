@@ -191,11 +191,25 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
     expect(text).toMatch(pattern);
   });
 
-  it('describes only features that exist as available, and points to the contact for the rest', () => {
+  it('describes the data rights that exist in the app, and points to the contact for the rest', () => {
     expect(text).toMatch(/Profile, then Privacy/);
-    expect(text).toMatch(/not yet available in the app/);
-    expect(text).not.toMatch(/Profile, then (?:Download|Delete)/i);
-    expect(text).not.toMatch(/Download my data/i);
+    expect(text).toMatch(/Profile, then Privacy, then Download my data/);
+    expect(text).toMatch(/Profile, then Privacy, then Delete my account/);
+    expect(text).not.toMatch(/not yet available in the app/);
+    expect(text).not.toMatch(/coming soon/i);
+    expect(text).toMatch(/Restrict or object to processing: contact us at/);
+  });
+
+  it('says what deletion keeps anonymously and what blocks it', () => {
+    expect(text).toMatch(/Attendance counts and the attendance change history stay without your name/);
+    expect(text).toMatch(/"Former member"/);
+    expect(text).toMatch(/only organizer of a community that still has other members/);
+    expect(text).toMatch(/deleted together with your account/);
+  });
+
+  it('mentions organizers removing members and leaving a community', () => {
+    expect(text).toMatch(/remove a member from the community/);
+    expect(text).toMatch(/Leave this community/);
   });
 
   it('terms cover the required topics and the governing law', () => {
@@ -208,6 +222,9 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
       /Availability/,
       /liability/i,
       /Ending your use/,
+      /Delete my account/,
+      /leave a single community/,
+      /cannot rejoin with an invitation code/,
       /law of Romania/,
     ]) {
       expect(terms).toMatch(pattern);

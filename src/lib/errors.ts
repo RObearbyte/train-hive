@@ -36,6 +36,9 @@ export const BACKEND_ERROR_CODES = [
   'stale_data',
   'consent_required',
   'not_withdrawable',
+  'last_organizer',
+  'cannot_change_own_role',
+  'cannot_remove_self',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -213,6 +216,11 @@ const MESSAGES: Record<AppErrorCode, string> = {
     'Please confirm the Terms of Use, the Privacy Notice and your age first, then try again.',
   not_withdrawable:
     'That agreement is needed to use TrainHive and cannot be withdrawn. To stop, delete your account.',
+  last_organizer:
+    'A community needs at least one organizer. Make another member an organizer first.',
+  cannot_change_own_role: 'You cannot change your own role. Ask another organizer to do it.',
+  cannot_remove_self:
+    'You cannot remove yourself here. Use "Leave this community" in your profile instead.',
   app_update_required:
     'Our terms or privacy notice changed and this version of TrainHive cannot show the new text. Please update the app and try again.',
   network_error: 'No connection. Check your internet and try again.',
@@ -243,6 +251,7 @@ const FIELD_LABELS: Record<string, string> = {
   request_id: 'request',
   reason: 'reason (200 characters at most)',
   user_id: 'member',
+  role: 'role',
   status: 'attendance status',
   body: 'message',
   scheduled_for: 'publish time (it must be in the future, within a year)',

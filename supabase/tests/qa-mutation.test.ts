@@ -111,6 +111,15 @@ const memberCannotCreateTraining: Probe = async () => {
   );
 };
 
+// G2: create_training now re-checks the organizer role itself under its membership lock, so the
+// is_organizer mutant is probed through a function that relies on is_organizer alone.
+const memberCannotCreateInvitation: Probe = async () => {
+  const { communityId, memberIds } = await createPack(1);
+  return rejectsWith('P0001:forbidden', () =>
+    asUser(memberIds[0], (db) => rpcRow(db, 'create_invitation', [communityId])),
+  );
+};
+
 const underMinimumIsCancelled: Probe = async () => {
   const { communityId, organizerId, memberIds } = await createPack(1);
   const session = await createTraining(organizerId, communityId, { min_participants: 2 });
@@ -221,8 +230,21 @@ const MUTANTS: [string, Probe, (probe: Probe) => Promise<boolean>][] = [
       withMutatedFunction(SET_RSVP, "and m.status = 'active'", '', probe),
   ],
   [
-    'is_organizer without the role check',
+    'create_training with neither role check (is_organizer and the membership lock)',
     memberCannotCreateTraining,
+    (probe) =>
+      withMutatedFunction('public.is_organizer(uuid)', "and m.role = 'organizer'", '', () =>
+        withMutatedFunction(
+          'public.create_training(uuid, jsonb)',
+          "and m.role = 'organizer'\n  for no key update;",
+          '\n  for no key update;',
+          probe,
+        ),
+      ),
+  ],
+  [
+    'is_organizer without the role check',
+    memberCannotCreateInvitation,
     (probe) => withMutatedFunction('public.is_organizer(uuid)', "and m.role = 'organizer'", '', probe),
   ],
   [

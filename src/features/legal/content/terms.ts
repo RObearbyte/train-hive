@@ -115,7 +115,7 @@ export function buildTerms(config: LegalConfig): LegalDocument {
         blocks: [
           {
             type: 'paragraph',
-            text: 'You can stop using TrainHive at any time. Deleting your account is not yet available in the app: until it is, ask us at the contact above. We may suspend or end access for someone who seriously or repeatedly breaks these Terms, and an organizer may remove a member from their community.',
+            text: 'You can stop using TrainHive at any time. You can delete your account in the app (Profile, then Privacy, then Delete my account), or leave a single community from your Profile. We may suspend or end access for someone who seriously or repeatedly breaks these Terms, and an organizer may remove a member from their community. A removed member cannot rejoin with an invitation code and needs an organizer to invite them again.',
           },
         ],
       },

@@ -73,6 +73,21 @@ export function countsText(counts: SheetCounts): string {
 }
 
 /**
+ * "Former members: 2 present, 1 absent": anonymous records of deleted accounts, never listed as
+ * entries. Null when there are none (or the server did not send the counts).
+ */
+export function formerMembersText(
+  former: { present: number; absent: number; unrecorded: number } | undefined,
+): string | null {
+  if (!former) return null;
+  const parts: string[] = [];
+  if (former.present > 0) parts.push(`${former.present} present`);
+  if (former.absent > 0) parts.push(`${former.absent} absent`);
+  if (former.unrecorded > 0) parts.push(`${former.unrecorded} unrecorded`);
+  return parts.length === 0 ? null : `Former members: ${parts.join(', ')}`;
+}
+
+/**
  * What the screen shows for a session.
  * - `record`: confirmed and ended, attendance not finalized yet.
  * - `correct`: completed; every change is audited.

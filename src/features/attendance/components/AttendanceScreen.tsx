@@ -20,6 +20,7 @@ import {
   countEntries,
   countsText,
   deviceSaysEnded,
+  formerMembersText,
   isEditableMode,
   markAllTargets,
   needsEndRefetch,
@@ -291,6 +292,11 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
         <Text variant="label" accessibilityLabel={countsText(counts)}>
           {countsText(counts)}
         </Text>
+        {formerMembersText(sheet.former_members) ? (
+          <Text variant="caption" color="textMuted">
+            {formerMembersText(sheet.former_members)}
+          </Text>
+        ) : null}
         <Text variant="caption" color="textMuted">
           Not recorded means nobody marked the member. It is never counted as absent.
         </Text>
