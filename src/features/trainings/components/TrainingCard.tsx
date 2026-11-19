@@ -30,6 +30,8 @@ export interface TrainingCardProps {
   featured?: boolean;
   /** Organizer cue: confirmed, over, attendance not finalized. Display only. */
   needsAttendance?: boolean;
+  /** Home feed list: no progress bar, course line or need / spots details (the details screen has them). */
+  compact?: boolean;
 }
 
 /**
@@ -45,6 +47,7 @@ export function TrainingCard({
   showRsvp = true,
   featured = false,
   needsAttendance = false,
+  compact = false,
 }: TrainingCardProps) {
   const { spacing, radii } = useTheme();
   const subtypeText = useSubtypeLabel();
@@ -103,7 +106,7 @@ export function TrainingCard({
             kind={session.event_kind}
             subtypeText={subtypeText(session.event_kind, session.event_subtype)}
           />
-          {course ? (
+          {course && !compact ? (
             <Text variant="label" color="textMuted">
               {course}
             </Text>
@@ -112,7 +115,7 @@ export function TrainingCard({
 
         {/* How many */}
         <View style={{ gap: spacing.xs }}>
-          {summary.min !== null || summary.max !== null ? (
+          {!compact && (summary.min !== null || summary.max !== null) ? (
             <ProgressBar
               value={summary.going}
               target={summary.max ?? Math.max(summary.min ?? 0, summary.going)}
@@ -123,8 +126,8 @@ export function TrainingCard({
           ) : null}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md }}>
             <Text variant="label">{lines.count}</Text>
-            {lines.need ? <Text color="textMuted">{lines.need}</Text> : null}
-            {lines.spots ? <Text color="textMuted">{lines.spots}</Text> : null}
+            {lines.need && !compact ? <Text color="textMuted">{lines.need}</Text> : null}
+            {lines.spots && !compact ? <Text color="textMuted">{lines.spots}</Text> : null}
           </View>
         </View>
 

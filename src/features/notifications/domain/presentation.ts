@@ -1,5 +1,5 @@
 /**
- * Wording for the Activity tab. Times are shown in the community's zone, never
+ * Wording for announcements and notifications. Times are shown in the community's zone, never
  * the device's, and never imply the client publishes anything.
  */
 import type { Announcement, AnnouncementStatus } from '@/lib/database.types';

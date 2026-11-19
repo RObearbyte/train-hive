@@ -110,7 +110,7 @@ describe('derivePushState with the push consent (GDPR G1)', () => {
   it('offers to turn it on again from settings, without showing the in-context card', () => {
     const view = pushStateView('consent_needed');
     expect(view.action).toBe('enable');
-    expect(view.description).toMatch(/Activity/);
+    expect(view.description).toMatch(/notifications/);
     expect(shouldOfferPrompt('consent_needed', false)).toBe(false);
   });
 

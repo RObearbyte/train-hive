@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { ScreenHeader } from '@/features/shell/components/ScreenHeader';
 import type { StatisticsWindow } from '@/lib/database.types';
 import { toAppError, userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -96,7 +97,7 @@ export function StatisticsScreen() {
 
   return (
     <Screen scroll onRefresh={refresh} refreshing={refreshing} edges={['top', 'left', 'right']}>
-      <Text variant="title">Statistics</Text>
+      <ScreenHeader title="Statistics" />
 
       {isOrganizer ? (
         <SegmentedControl

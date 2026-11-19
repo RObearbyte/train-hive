@@ -12,7 +12,7 @@ import { Banner, Button, Card, EmptyState, ErrorState, LoadingState, Screen, Tex
 import { scheduledNote } from '../domain/presentation';
 import { useAnnouncement } from '../hooks/useActivity';
 import { useCancelAnnouncement, useMarkAnnouncementRead } from '../hooks/useActivityMutations';
-import { announcementEditHref } from './routes';
+import { announcementEditHref, announcementsListHref } from './routes';
 import { StatusChip } from './parts';
 
 /** One announcement. Opening a published one marks it read (and its notification). */
@@ -39,7 +39,7 @@ export function AnnouncementDetailScreen({ id }: { id: string }) {
 
   const back = () => {
     if (router.canGoBack()) router.back();
-    else router.replace('/activity');
+    else router.replace(announcementsListHref);
   };
 
   let body;
@@ -116,7 +116,7 @@ export function AnnouncementDetailScreen({ id }: { id: string }) {
       <EmptyState
         title="Announcement not found"
         message="It may have been cancelled, or you no longer have access to it."
-        action={{ label: 'See all announcements', onPress: () => router.replace('/activity') }}
+        action={{ label: 'See all announcements', onPress: () => router.replace(announcementsListHref) }}
         style={{ flex: 1 }}
       />
     );

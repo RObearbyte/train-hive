@@ -1,5 +1,5 @@
 /**
- * Unread state for the Activity tab. Pure; the server stays the authority
+ * Unread state for the bell and the announcement dots. Pure; the server stays the authority
  * (`announcement_reads`, `notifications.read_at`), this only counts what the
  * client has loaded.
  */
@@ -30,7 +30,7 @@ export function unreadNotifications(list: readonly AppNotification[]): AppNotifi
 }
 
 /**
- * The number on the tab icon. A new announcement creates BOTH an unread
+ * The number on the bell. A new announcement creates BOTH an unread
  * announcement and an unread `announcement_published` notification (and
  * reading either one marks the other read), so it must count once.
  */
@@ -56,7 +56,7 @@ export function combinedUnreadCount(input: {
   return unreadNotes.length + extra.length;
 }
 
-/** "9", "99+" for the tab badge; null hides it. */
+/** "9", "99+"; null hides it. */
 export function badgeText(count: number): string | null {
   if (!Number.isFinite(count) || count <= 0) return null;
   return count > 99 ? '99+' : String(Math.floor(count));

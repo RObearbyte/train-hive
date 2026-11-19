@@ -8,7 +8,7 @@ import { usePush } from '../hooks/PushProvider';
  * In-context ask for push permission. Shown only while the system permission
  * is undecided and the member has not chosen "Not now"; the settings screen
  * keeps offering it afterwards. Never shown at first launch: it lives on Home
- * (after the first RSVP) and in the Activity tab.
+ * (after the first RSVP) and in the notification centre.
  */
 export function PushPromptCard() {
   const { spacing } = useTheme();

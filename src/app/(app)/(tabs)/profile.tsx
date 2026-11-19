@@ -11,6 +11,7 @@ import { LeaveCommunitySection } from '@/features/members/components/LeaveCommun
 import { LegalLinks } from '@/features/legal/components/LegalLinks';
 import { DisplayNameForm } from '@/features/profile/components/DisplayNameForm';
 import { SignOutSection } from '@/features/profile/components/SignOutSection';
+import { ScreenHeader } from '@/features/shell/components/ScreenHeader';
 import { formatLongDate, isValidTimeZone, zoneCityName } from '@/lib/datetime';
 import { userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -44,7 +45,7 @@ export default function ProfileScreen() {
   if (!community || !membership) {
     return (
       <Screen edges={['top', 'left', 'right']}>
-        <Text variant="title">Profile</Text>
+        <ScreenHeader title="Profile" />
         {current.error ? (
           <ErrorState
             message={userMessage(current.error.code, current.error.field)}
@@ -68,7 +69,7 @@ export default function ProfileScreen() {
       onRefresh={refresh}
       refreshing={current.isRefetching}
     >
-      <Text variant="title">Profile</Text>
+      <ScreenHeader title="Profile" />
 
       {/* Showing cached data while the latest refresh failed. */}
       {current.error ? (

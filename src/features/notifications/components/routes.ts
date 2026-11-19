@@ -8,3 +8,5 @@ import type { Href } from 'expo-router';
  */
 export const announcementHref = (id: string) => `/announcements/${id}` as Href;
 export const announcementEditHref = (id: string) => `/announcements/${id}/edit` as Href;
+/** The list of all announcements (Home feed: "See all announcements"). */
+export const announcementsListHref = '/announcements' as Href;

@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { activeNavKey, NAV_ITEMS } from './navItems';
 
 describe('NAV_ITEMS', () => {
-  it('are the five tabs in order, each with a unique path', () => {
-    expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Home', 'Events', 'Activity', 'Statistics', 'Profile']);
-    expect(new Set(NAV_ITEMS.map((item) => item.href)).size).toBe(5);
+  it('are the four tabs in order, each with a unique path, and no Activity tab', () => {
+    expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Home', 'Events', 'Statistics', 'Profile']);
+    expect(new Set(NAV_ITEMS.map((item) => item.href)).size).toBe(4);
+    expect(NAV_ITEMS.some((item) => item.href === '/activity')).toBe(false);
   });
 });
 
@@ -17,8 +18,10 @@ describe('activeNavKey', () => {
     ['/trainings/', 'trainings'],
     ['/trainings/new', 'trainings'],
     ['/trainings/5/attendance', 'trainings'],
-    ['/activity', 'activity'],
-    ['/announcements/new', 'activity'],
+    ['/activity', 'home'],
+    ['/notifications', 'home'],
+    ['/announcements', 'home'],
+    ['/announcements/new', 'home'],
     ['/statistics/u1', 'statistics'],
     ['/profile', 'profile'],
     ['/invitations', 'profile'],

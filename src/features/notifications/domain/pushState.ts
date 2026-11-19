@@ -101,7 +101,7 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
   unsupported_platform: {
     title: 'Push notifications are available in the mobile app',
     description:
-      'Announcements and notifications still appear here, in the Activity tab.',
+      'Announcements and notifications still appear here, in notifications (bell icon).',
     tone: 'info',
     action: null,
     actionLabel: null,
@@ -109,7 +109,7 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
   unsupported_expo_go: {
     title: 'Push needs a development build',
     description:
-      'Android push notifications do not work inside Expo Go. Install a development build of TrainHive to receive them. Your notifications are still saved in the Activity tab.',
+      'Android push notifications do not work inside Expo Go. Install a development build of TrainHive to receive them. Your notifications are still saved in notifications (bell icon).',
     tone: 'info',
     action: null,
     actionLabel: null,
@@ -117,7 +117,7 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
   not_configured: {
     title: 'Push is not configured yet',
     description:
-      'This build has no push project set up, so the app cannot register this device. Your notifications are still saved in the Activity tab.',
+      'This build has no push project set up, so the app cannot register this device. Your notifications are still saved in notifications (bell icon).',
     tone: 'warning',
     action: null,
     actionLabel: null,
@@ -132,7 +132,7 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
   consent_needed: {
     title: 'Push notifications are off',
     description:
-      'You have not allowed TrainHive to send push notifications. Turn them on to get reminders on this device. Everything still appears in the Activity tab.',
+      'You have not allowed TrainHive to send push notifications. Turn them on to get reminders on this device. Everything still appears in notifications (bell icon).',
     tone: 'info',
     action: 'enable',
     actionLabel: 'Turn on notifications',
@@ -147,7 +147,7 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
   denied_can_ask: {
     title: 'Push notifications are off',
     description:
-      'Notifications are not allowed for TrainHive on this device. You can still read everything in the Activity tab.',
+      'Notifications are not allowed for TrainHive on this device. You can still read everything in notifications (bell icon).',
     tone: 'warning',
     action: 'enable',
     actionLabel: 'Enable notifications',
@@ -155,7 +155,7 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
   denied_blocked: {
     title: 'Notifications are blocked in system settings',
     description:
-      'To get push notifications, allow notifications for TrainHive in your device settings. You can still read everything in the Activity tab.',
+      'To get push notifications, allow notifications for TrainHive in your device settings. You can still read everything in notifications (bell icon).',
     tone: 'warning',
     action: 'open_settings',
     actionLabel: 'Open system settings',
@@ -177,7 +177,7 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
   registration_failed: {
     title: 'Could not set up push notifications',
     description:
-      'This device could not be registered. Check your connection and try again. Your notifications are still saved in the Activity tab.',
+      'This device could not be registered. Check your connection and try again. Your notifications are still saved in notifications (bell icon).',
     tone: 'error',
     action: 'retry',
     actionLabel: 'Try again',

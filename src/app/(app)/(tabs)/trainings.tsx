@@ -4,6 +4,9 @@ import { FlatList, RefreshControl, View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { needsAttendance } from '@/features/attendance/domain/sheet';
+import { QuickInvite } from '@/features/invitations/components/QuickInvite';
+import { FAB_CLEARANCE } from '@/features/invitations/domain/quickInvite';
+import { ScreenHeader } from '@/features/shell/components/ScreenHeader';
 import { TrainingCard } from '@/features/trainings/components/TrainingCard';
 import {
   KIND_FILTER_OPTIONS,
@@ -22,7 +25,6 @@ import {
   LoadingState,
   Screen,
   SegmentedControl,
-  Text,
   useTheme,
 } from '@/ui';
 
@@ -54,19 +56,19 @@ export default function TrainingsScreen() {
 
   const header = (
     <View style={{ gap: spacing.lg }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-        <Text variant="title" style={{ flex: 1 }}>
-          Events
-        </Text>
-        {isOrganizer ? (
-          <Button
-            label="New event"
-            icon="plus"
-            size="sm"
-            onPress={() => router.push('/trainings/new')}
-          />
-        ) : null}
-      </View>
+      <ScreenHeader
+        title="Events"
+        actions={
+          isOrganizer ? (
+            <Button
+              label="New event"
+              icon="plus"
+              size="sm"
+              onPress={() => router.push('/trainings/new')}
+            />
+          ) : undefined
+        }
+      />
       <SegmentedControl
         options={SECTIONS}
         value={section}
@@ -139,32 +141,40 @@ export default function TrainingsScreen() {
   }
 
   return (
-    <Screen padded={false} edges={['top', 'left', 'right']}>
-      <FlatList
-        data={sessions}
-        keyExtractor={(session) => session.id}
-        renderItem={({ item }) => (
-          <TrainingCard
-            session={item}
-            myResponse={trainings.myResponse(item.id)}
-            now={now}
-            showRsvp={section === 'upcoming'}
-            needsAttendance={isOrganizer && needsAttendance(item, now)}
-            onPress={() => router.push(`/trainings/${item.id}`)}
-          />
-        )}
-        ListHeaderComponent={header}
-        ListEmptyComponent={empty}
-        contentContainerStyle={{ flexGrow: 1, padding: spacing.lg, gap: spacing.lg }}
-        refreshControl={
-          <RefreshControl
-            refreshing={trainings.isRefetching}
-            onRefresh={trainings.refetch}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-      />
-    </Screen>
+    <View style={{ flex: 1 }}>
+      <Screen padded={false} edges={['top', 'left', 'right']}>
+        <FlatList
+          data={sessions}
+          keyExtractor={(session) => session.id}
+          renderItem={({ item }) => (
+            <TrainingCard
+              session={item}
+              myResponse={trainings.myResponse(item.id)}
+              now={now}
+              showRsvp={section === 'upcoming'}
+              needsAttendance={isOrganizer && needsAttendance(item, now)}
+              onPress={() => router.push(`/trainings/${item.id}`)}
+            />
+          )}
+          ListHeaderComponent={header}
+          ListEmptyComponent={empty}
+          contentContainerStyle={{
+            flexGrow: 1,
+            padding: spacing.lg,
+            paddingBottom: spacing.lg + (isOrganizer ? FAB_CLEARANCE : 0),
+            gap: spacing.lg,
+          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={trainings.isRefetching}
+              onRefresh={trainings.refetch}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        />
+      </Screen>
+    <QuickInvite />
+    </View>
   );
 }

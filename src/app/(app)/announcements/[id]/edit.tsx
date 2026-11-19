@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { EditAnnouncementForm } from '@/features/notifications/components/AnnouncementForm';
 import { useAnnouncement } from '@/features/notifications/hooks/useActivity';
-import { announcementHref } from '@/features/notifications/components/routes';
+import { announcementHref, announcementsListHref } from '@/features/notifications/components/routes';
 import { isValidTimeZone } from '@/lib/datetime';
 import { toAppError, userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -78,7 +78,7 @@ export default function EditAnnouncementScreen() {
       <EmptyState
         title="Announcement not found"
         message="It may have been removed, or you no longer have access to it."
-        action={{ label: 'See all announcements', onPress: () => router.replace('/activity') }}
+        action={{ label: 'See all announcements', onPress: () => router.replace(announcementsListHref) }}
         style={{ flex: 1 }}
       />
     );

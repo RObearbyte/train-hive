@@ -113,7 +113,7 @@ export function NotificationSettings() {
           <Card>
             <ToggleRow
               label="Push notifications"
-              hint="Turn off to stop all push messages. They still appear in Activity."
+              hint="Turn off to stop all push messages. They still appear in notifications (bell icon)."
               value={prefs.push_enabled}
               onChange={(value) => save.mutate({ push_enabled: value })}
             />
@@ -131,7 +131,7 @@ export function NotificationSettings() {
             ))}
           </Card>
           <Text variant="caption" color="textMuted">
-            These choices only affect push messages. Everything is always kept in the Activity tab.
+            These choices only affect push messages. Everything is always kept in notifications (bell icon).
           </Text>
         </>
       ) : null}

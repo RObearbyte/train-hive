@@ -34,10 +34,10 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
   push_notifications: {
     title: 'Push notifications',
     description:
-      'Send reminders and updates to your phone. Your push token and the notification text pass through Expo and Google to reach your device. Everything still appears in the Activity tab without this.',
+      'Send reminders and updates to your phone. Your push token and the notification text pass through Expo and Google to reach your device. Everything still appears in notifications (bell icon) without this.',
     withdrawTitle: 'Turn off push notifications?',
     withdrawMessage:
-      'We will delete the push tokens saved for your account, so your devices stop receiving push messages. Notifications still appear in the Activity tab. You can turn this on again at any time.',
+      'We will delete the push tokens saved for your account, so your devices stop receiving push messages. Notifications still appear in notifications (bell icon). You can turn this on again at any time.',
   },
   profile_demographics: {
     title: 'Birth year and gender',

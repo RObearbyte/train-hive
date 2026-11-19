@@ -2,6 +2,7 @@ import { Redirect, useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { announcementsListHref } from '@/features/notifications/components/routes';
 import { CreateAnnouncementForm } from '@/features/notifications/components/AnnouncementForm';
 import { isValidTimeZone } from '@/lib/datetime';
 import { userMessage } from '@/lib/errors';
@@ -15,10 +16,10 @@ export default function NewAnnouncementScreen() {
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
-    else router.replace('/activity');
+    else router.replace(announcementsListHref);
   };
 
-  if (community && !isOrganizer) return <Redirect href="/activity" />;
+  if (community && !isOrganizer) return <Redirect href={announcementsListHref} />;
 
   if (community && isValidTimeZone(community.timezone)) {
     return (

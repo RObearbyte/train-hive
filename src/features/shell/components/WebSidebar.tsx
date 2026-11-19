@@ -2,20 +2,18 @@ import { usePathname, useRouter, type Href } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { badgeText } from '@/features/notifications/domain/unread';
-import { useActivity } from '@/features/notifications/hooks/useActivity';
 import { Icon, Text, useTheme } from '@/ui';
 
 import { activeNavKey, NAV_ITEMS, type NavItem } from '../domain/navItems';
 
-function SidebarLink({ item, active, badge }: { item: NavItem; active: boolean; badge: string | null }) {
+function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
   const { colors, radii, spacing } = useTheme();
   const router = useRouter();
   return (
       <Pressable
         onPress={() => router.navigate(item.href as Href)}
         accessibilityRole="link"
-        accessibilityLabel={badge ? `${item.label}, ${badge} unread` : item.label}
+        accessibilityLabel={item.label}
         accessibilityState={{ selected: active }}
         // The accessibility role "link" renders an anchor; "current page" marks the active one.
         aria-current={active ? 'page' : undefined}
@@ -35,24 +33,6 @@ function SidebarLink({ item, active, badge }: { item: NavItem; active: boolean; 
         <Text variant="label" color={active ? 'onPrimarySoft' : 'text'} style={{ flex: 1 }}>
           {item.label}
         </Text>
-        {badge ? (
-          <View
-            accessibilityElementsHidden
-            style={{
-              minWidth: 22,
-              height: 22,
-              paddingHorizontal: spacing.xs,
-              borderRadius: radii.pill,
-              backgroundColor: colors.accent,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text variant="caption" color="onAccent" style={{ fontWeight: '700' }}>
-              {badge}
-            </Text>
-          </View>
-        ) : null}
       </Pressable>
   );
 }
@@ -61,7 +41,6 @@ function SidebarLink({ item, active, badge }: { item: NavItem; active: boolean; 
 export function WebSidebar({ width }: { width: number }) {
   const { colors, spacing } = useTheme();
   const active = activeNavKey(usePathname());
-  const unread = badgeText(useActivity().unreadCount);
 
   return (
     <SafeAreaView
@@ -77,7 +56,6 @@ export function WebSidebar({ width }: { width: number }) {
             key={item.key}
             item={item}
             active={active === item.key}
-            badge={item.key === 'activity' ? unread : null}
           />
         ))}
       </View>
