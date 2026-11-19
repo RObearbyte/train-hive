@@ -22,7 +22,7 @@ export function PushPromptCard() {
         <View style={{ flex: 1, gap: spacing.xxs }}>
           <Text variant="heading">Stay in the loop</Text>
           <Text color="textMuted">
-            Get notified when trainings are confirmed or cancelled. Tapping Enable records your consent to
+            Get notified when events are confirmed or cancelled. Tapping Enable records your consent to
             push notifications; you can withdraw it any time in Profile, Privacy.
           </Text>
         </View>

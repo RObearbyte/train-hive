@@ -1,5 +1,5 @@
 import type {
-  ActivityType,
+  EventSubtype,
   RsvpResponse,
   TrainingInput,
   TrainingSession,
@@ -98,7 +98,7 @@ export async function fetchOrganizerName(sessionId: string): Promise<string | nu
 }
 
 /**
- * Creates a training (organizer only). Throws AppError: `forbidden`,
+ * Creates an event of any kind (organizer only). Throws AppError: `forbidden`,
  * `validation_failed` with the column in `field`, `network_error`, ...
  */
 export async function createTraining(
@@ -140,10 +140,10 @@ export async function cancelTraining(sessionId: string): Promise<TrainingSession
   return data;
 }
 
-/** The activity type lookup table, in display order. */
-export async function fetchActivityTypes(): Promise<ActivityType[]> {
+/** The event subtype lookup table (all kinds), in display order. */
+export async function fetchEventSubtypes(): Promise<EventSubtype[]> {
   const { data, error } = await getSupabase()
-    .from('activity_types')
+    .from('event_subtypes')
     .select('*')
     .order('sort_order', { ascending: true });
   if (error) throw toAppError(error);

@@ -5,11 +5,11 @@ import { titleForPath } from './pageTitle';
 describe('titleForPath', () => {
   it.each([
     ['/', 'Home · TrainHive'],
-    ['/trainings', 'Trainings · TrainHive'],
-    ['/trainings/', 'Trainings · TrainHive'],
-    ['/trainings/new', 'New training · TrainHive'],
-    ['/trainings/abc-123', 'Training · TrainHive'],
-    ['/trainings/abc-123/edit', 'Edit training · TrainHive'],
+    ['/trainings', 'Events · TrainHive'],
+    ['/trainings/', 'Events · TrainHive'],
+    ['/trainings/new', 'New event · TrainHive'],
+    ['/trainings/abc-123', 'Event · TrainHive'],
+    ['/trainings/abc-123/edit', 'Edit event · TrainHive'],
     ['/trainings/abc-123/attendance', 'Attendance · TrainHive'],
     ['/activity', 'Activity · TrainHive'],
     ['/announcements/9', 'Announcement · TrainHive'],

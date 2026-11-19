@@ -13,7 +13,7 @@ import { useSetRsvp } from '../hooks/useSetRsvp';
 export interface RsvpControlProps {
   session: Pick<
     TrainingSession,
-    'id' | 'status' | 'rsvp_deadline' | 'going_count' | 'max_participants'
+    'id' | 'status' | 'rsvp_deadline' | 'going_count' | 'max_participants' | 'event_kind'
   >;
   myResponse: RsvpResponse;
   /** For display only: the server decides whether a change is accepted. */
@@ -38,7 +38,7 @@ export function RsvpControl({ session, myResponse, now }: RsvpControlProps) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         <Icon name={open.reason === 'closed' ? 'clock' : 'info'} size={18} color="textMuted" />
         <Text variant="label" color="textMuted" style={{ flex: 1 }}>
-          {rsvpBlockedMessage(open.reason)}
+          {rsvpBlockedMessage(open.reason, session.event_kind)}
           {answers.status === 'ready' ? ` ${myRsvpText(myResponse)}.` : ''}
         </Text>
       </View>

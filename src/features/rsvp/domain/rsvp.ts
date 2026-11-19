@@ -5,14 +5,14 @@
  * what to say when they are disabled. The server (`set_rsvp`) is the
  * authority and uses its own clock; `now` here is for display only.
  */
-import type { RsvpResponse, TrainingSession } from '@/lib/database.types';
+import type { EventKind, RsvpResponse, TrainingSession } from '@/lib/database.types';
 
 export type RsvpBlockedReason =
   /** Session was cancelled. */
   | 'cancelled'
   /** Session is over. */
   | 'completed'
-  /** Deadline passed or the session is already confirmed. */
+  /** Deadline passed, or a training that is already decided (confirmed). */
   | 'closed'
   /** No spots left; only blocks switching TO going. */
   | 'full';
@@ -21,7 +21,7 @@ export type RsvpChangeCheck = { allowed: true } | { allowed: false; reason: Rsvp
 
 type RsvpSessionFields = Pick<
   TrainingSession,
-  'status' | 'rsvp_deadline' | 'going_count' | 'max_participants'
+  'status' | 'rsvp_deadline' | 'going_count' | 'max_participants' | 'event_kind'
 >;
 
 /**
@@ -39,7 +39,10 @@ export function canChangeRsvp(
 ): RsvpChangeCheck {
   if (session.status === 'cancelled') return { allowed: false, reason: 'cancelled' };
   if (session.status === 'completed') return { allowed: false, reason: 'completed' };
-  if (session.status !== 'scheduled') return { allowed: false, reason: 'closed' };
+  // A training takes answers while scheduled (a confirmed one is decided: closed). Every other kind is
+  // created confirmed and takes answers while confirmed (docs/API_CONTRACT.md, Events P1).
+  const openStatus = session.event_kind === 'training' ? 'scheduled' : 'confirmed';
+  if (session.status !== openStatus) return { allowed: false, reason: 'closed' };
   // Q2-10: the DEVICE clock gates the buttons here (display only). A phone whose clock runs fast
   // hides them while the server would still accept an answer. Open decision: always show them for a
   // 'scheduled' session and let the server's `rsvp_closed` explain.
@@ -60,16 +63,19 @@ export function canChangeRsvp(
 }
 
 /** Short text for a disabled RSVP control. */
-export function rsvpBlockedMessage(reason: RsvpBlockedReason): string {
+export function rsvpBlockedMessage(
+  reason: RsvpBlockedReason,
+  kind: EventKind = 'training',
+): string {
   switch (reason) {
     case 'cancelled':
-      return 'This training was cancelled.';
+      return 'This event was cancelled.';
     case 'completed':
-      return 'This training is over.';
+      return 'This event is over.';
     case 'closed':
-      return 'Responses are closed.';
+      return kind === 'training' ? 'Responses are closed.' : 'Registration is closed.';
     case 'full':
-      return 'This training is full.';
+      return 'This event is full.';
   }
 }
 

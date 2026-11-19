@@ -9,7 +9,9 @@ import {
   MyAttendanceOutcome,
 } from '@/features/attendance/components/AttendanceEntryPoint';
 import { RsvpControl } from '@/features/rsvp/components/RsvpControl';
+import { KindChip } from '@/features/trainings/components/KindChip';
 import { OrganizerActions } from '@/features/trainings/components/OrganizerActions';
+import { courseLine } from '@/features/trainings/domain/events';
 import { buildMapsLink, type MapsPlatform } from '@/features/trainings/domain/maps';
 import {
   groupParticipants,
@@ -24,10 +26,10 @@ import {
   type TrainingDisplayStatus,
 } from '@/features/trainings/domain/status';
 import {
-  useActivityLabel,
   useMyResponse,
   useOrganizerName,
   useParticipants,
+  useSubtypeLabel,
   useTraining,
 } from '@/features/trainings/hooks/useTrainings';
 import type { TrainingSession } from '@/lib/database.types';
@@ -151,7 +153,7 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
   const isOrganizer = isOrganizerOf(communities, session.community_id);
   const myResponse = useMyResponse(session.id, session.community_id);
   const organizer = useOrganizerName(session.id, session.organizer_id);
-  const activity = useActivityLabel();
+  const subtypeText = useSubtypeLabel();
   const [mapsFailed, setMapsFailed] = useState(false);
 
   const zone = isValidTimeZone(session.timezone) ? session.timezone : 'UTC';
@@ -159,6 +161,8 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
   const summary = participationSummary(session);
   const lines = participationLines(summary, status);
   const deadlineText = formatDateTime(session.rsvp_deadline, zone);
+  const course = courseLine(session);
+  const hasMinimum = summary.min !== null;
   const relativeDay = relativeDayLabel(session.starts_at, zone, now);
   const device = deviceTimeZone();
   const showZoneNote = device !== null && zonesDifferAt(session.starts_at, zone, device);
@@ -184,9 +188,10 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
     <>
       <View style={{ gap: spacing.sm }}>
         <Text variant="title">{session.title}</Text>
-        <Text variant="caption" color="textMuted">
-          {activity(session.activity_type)}
-        </Text>
+        <KindChip
+          kind={session.event_kind}
+          subtypeText={subtypeText(session.event_kind, session.event_subtype)}
+        />
       </View>
 
       {/* Will it happen? */}
@@ -242,6 +247,13 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
           </InfoRow>
         ) : null}
 
+        {course ? (
+          <InfoRow icon="flag">
+            <Text variant="label">Course</Text>
+            <Text>{course}</Text>
+          </InfoRow>
+        ) : null}
+
         <InfoRow icon="person">
           <Text variant="label">Organizer</Text>
           <Text color="textMuted">
@@ -261,25 +273,37 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
         </View>
       ) : null}
 
+      {session.event_notes ? (
+        <View style={{ gap: spacing.sm }}>
+          <Text variant="heading">Event notes</Text>
+          <Text>{session.event_notes}</Text>
+        </View>
+      ) : null}
+
       {/* How many, and am I going? */}
       <Card style={{ gap: spacing.md }}>
-        <ProgressBar
-          value={summary.going}
-          target={summary.max ?? Math.max(summary.min, summary.going)}
-          minimum={summary.min}
-          showText={false}
-        />
+        {hasMinimum || summary.max !== null ? (
+          <ProgressBar
+            value={summary.going}
+            target={summary.max ?? Math.max(summary.min ?? 0, summary.going)}
+            minimum={summary.min ?? undefined}
+            unit={hasMinimum ? 'confirmed' : 'going'}
+            showText={false}
+          />
+        ) : null}
         <View style={{ gap: spacing.xxs }}>
           <Text variant="label">{lines.count}</Text>
           {lines.need ? <Text color="textMuted">{lines.need}</Text> : null}
           <Text color="textMuted">
-            Minimum {summary.min}
+            {hasMinimum ? `Minimum ${summary.min}` : 'No minimum'}
             {summary.max === null ? ', no maximum' : `, maximum ${summary.max}`}
             {lines.spots ? ` (${lines.spots.toLowerCase()})` : ''}
           </Text>
         </View>
         <InfoRow icon="clock">
-          <Text variant="label">Answer by {deadlineText}</Text>
+          <Text variant="label">
+            {hasMinimum ? 'Answer by' : 'Registration closes'} {deadlineText}
+          </Text>
         </InfoRow>
         <Divider />
         <RsvpControl session={session} myResponse={myResponse} now={now} />
@@ -314,11 +338,11 @@ export default function TrainingDetailsScreen() {
   };
 
   let body;
-  // A training of a community I am not an active member of is not mine to see.
+  // An event of a community I am not an active member of is not mine to see.
   if (training.data && roleInCommunity(communities, training.data.community_id) !== null) {
     body = <TrainingDetails session={training.data} now={now} />;
   } else if (training.isPending) {
-    body = <LoadingState message="Loading training" style={{ flex: 1 }} />;
+    body = <LoadingState message="Loading event" style={{ flex: 1 }} />;
   } else if (training.isError) {
     body = (
       <ErrorState
@@ -332,9 +356,9 @@ export default function TrainingDetailsScreen() {
     // am no longer a member (RLS hides it, the two look the same).
     body = (
       <EmptyState
-        title="Training not found"
+        title="Event not found"
         message="It may have been removed, or you no longer have access to it."
-        action={{ label: 'See all trainings', onPress: () => router.replace('/trainings') }}
+        action={{ label: 'See all events', onPress: () => router.replace('/trainings') }}
         style={{ flex: 1 }}
       />
     );

@@ -12,7 +12,7 @@ import {
 import { BackHandler, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 
 import { ConfirmDialog } from '@/features/community/components/ConfirmDialog';
-import type { TrainingInput, TrainingSession } from '@/lib/database.types';
+import type { EventKind, TrainingInput, TrainingSession } from '@/lib/database.types';
 import { zoneCityName } from '@/lib/datetime';
 import { userMessage, type AppError } from '@/lib/errors';
 import { useNow } from '@/lib/useNow';
@@ -27,7 +27,13 @@ import {
   type TextFieldProps,
 } from '@/ui';
 
-import { defaultDeadline, frozenFormFields, serverFieldError } from '../domain/formState';
+import { isTraining, kindInfo } from '../domain/events';
+import {
+  defaultDeadline,
+  frozenFormFields,
+  serverFieldError,
+  visibleFormFields,
+} from '../domain/formState';
 import {
   emptyTrainingForm,
   fromSession,
@@ -36,13 +42,15 @@ import {
   type TrainingFormField,
   type TrainingFormValues,
 } from '../domain/schema';
-import { useActivityOptions } from '../hooks/useTrainings';
+import { useSubtypeOptions } from '../hooks/useTrainings';
 import { useCreateTraining, useUpdateTraining } from '../hooks/useTrainingMutations';
-import { ActivityPicker } from './ActivityPicker';
 import { DateTimeField } from './DateTimeField';
+import { KindChip } from './KindChip';
+import { SubtypePicker } from './SubtypePicker';
 
 const MORE_FIELDS: readonly TrainingFormField[] = [
   'description',
+  'eventNotes',
   'meetingInstructions',
   'maxParticipants',
   'latitude',
@@ -52,12 +60,13 @@ const MORE_FIELDS: readonly TrainingFormField[] = [
 const FIELD_LABELS: Record<TrainingFormField, string> = {
   title: 'Title',
   description: 'Description',
-  activityType: 'Activity',
+  eventKind: 'Kind',
+  eventSubtype: 'Type',
   date: 'Date',
   startTime: 'Start time',
   endTime: 'End time',
-  deadlineDate: 'RSVP deadline',
-  deadlineTime: 'RSVP deadline time',
+  deadlineDate: 'Deadline',
+  deadlineTime: 'Deadline time',
   locationName: 'Location',
   address: 'Address',
   latitude: 'Latitude',
@@ -66,6 +75,10 @@ const FIELD_LABELS: Record<TrainingFormField, string> = {
   meetingInstructions: 'Meeting instructions',
   minParticipants: 'Minimum participants',
   maxParticipants: 'Maximum participants',
+  distanceKm: 'Distance (km)',
+  elevationGainM: 'Elevation gain, D+ (m)',
+  obstacleCount: 'Number of obstacles',
+  eventNotes: 'Event notes',
 };
 
 type SaveMutation = UseMutationResult<TrainingSession, AppError, TrainingInput>;
@@ -145,11 +158,16 @@ function TrainingFormView({
   });
   const { errors, isDirty, submitCount } = formState;
 
-  const [date, startTime, activityType, deadlineDate, deadlineTime] = useWatch({
+  const [date, startTime, eventKindValue, eventSubtype, deadlineDate, deadlineTime] = useWatch({
     control,
-    name: ['date', 'startTime', 'activityType', 'deadlineDate', 'deadlineTime'],
+    name: ['date', 'startTime', 'eventKind', 'eventSubtype', 'deadlineDate', 'deadlineTime'],
   });
-  const activityOptions = useActivityOptions(activityType);
+  // The kind is fixed when the form opens (picked in the create flow, locked on edit).
+  const kind = eventKindValue as EventKind;
+  const training = isTraining(kind);
+  const subtypeChoices = useSubtypeOptions(kind, eventSubtype);
+  const visible = visibleFormFields(kind, eventSubtype);
+  const deadlineName = training ? 'RSVP deadline' : 'Registration closes';
 
   const [moreOpen, setMoreOpen] = useState(() =>
     MORE_FIELDS.some((field) => defaultValues[field] !== ''),
@@ -170,13 +188,14 @@ function TrainingFormView({
   const customDeadline = deadlineDate !== '' || deadlineTime !== '';
   const fallbackDeadline = defaultDeadline({ date, startTime }, timezone);
   const showMore = moreOpen || MORE_FIELDS.some((field) => errors[field] !== undefined);
-  const invalidLabels = (Object.keys(errors) as TrainingFormField[]).map(
-    (field) => FIELD_LABELS[field],
+  const invalidLabels = (Object.keys(errors) as TrainingFormField[]).map((field) =>
+    field === 'deadlineDate' || field === 'deadlineTime' ? deadlineName : FIELD_LABELS[field],
   );
 
   const saving = mutation.isPending;
   const serverError = mutation.error;
-  const serverErrorOnField = serverError !== null && serverFieldError(serverError) !== null;
+  const serverErrorOnField =
+    serverError !== null && serverFieldError(serverError, visible) !== null;
 
   // Android back button: ask before throwing away what was typed.
   useEffect(() => {
@@ -199,7 +218,7 @@ function TrainingFormView({
     mutation.mutate(toTrainingInput(values, timezone, session), {
       onSuccess: onSaved,
       onError: (error) => {
-        const fieldError = serverFieldError(error);
+        const fieldError = serverFieldError(error, visible);
         if (fieldError) setError(fieldError.field, { type: 'server', message: fieldError.message });
       },
     });
@@ -233,28 +252,44 @@ function TrainingFormView({
           </View>
           <Text variant="title">{heading}</Text>
 
-          {session?.status === 'confirmed' ? (
+          {session?.status === 'confirmed' && training ? (
             <Banner
               tone="info"
               message="This training is confirmed. You can still change its details and time, but not the RSVP deadline or the participant limits."
             />
           ) : null}
+          {session?.status === 'confirmed' && !training && deadlineLocked ? (
+            <Banner
+              tone="info"
+              message="Registration has closed. You can still change the details, the time and the maximum, but not the registration deadline."
+            />
+          ) : null}
+
+          <View style={{ gap: spacing.xs }}>
+            <KindChip kind={kind} />
+            {session ? (
+              <Text variant="caption" color="textMuted">
+                The kind of an event cannot be changed after it is created. You can change its type
+                below.
+              </Text>
+            ) : null}
+          </View>
 
           <FormTextField
             control={control}
             name="title"
-            placeholder="Saturday long run"
+            placeholder={training ? 'Saturday long run' : 'Name of the event'}
             autoCapitalize="sentences"
             returnKeyType="next"
           />
 
           <Controller
             control={control}
-            name="activityType"
+            name="eventSubtype"
             render={({ field, fieldState }) => (
-              <ActivityPicker
-                label={FIELD_LABELS.activityType}
-                options={activityOptions}
+              <SubtypePicker
+                label={FIELD_LABELS.eventSubtype}
+                options={subtypeChoices}
                 value={field.value}
                 onChange={field.onChange}
                 error={fieldState.error?.message}
@@ -352,21 +387,64 @@ function TrainingFormView({
             inputMode="url"
           />
 
+          {visible.has('distanceKm') ? (
+            <>
+              <Divider />
+              <Text variant="heading">Course</Text>
+              <FormTextField
+                control={control}
+                name="distanceKm"
+                helper="Optional. Use a dot or a comma, up to 2 decimals"
+                placeholder="21.1"
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                autoCorrect={false}
+              />
+              <FormTextField
+                control={control}
+                name="elevationGainM"
+                helper="Optional. Total climb in whole metres"
+                placeholder="450"
+                keyboardType="number-pad"
+                inputMode="numeric"
+                maxLength={5}
+              />
+              {visible.has('obstacleCount') ? (
+                <FormTextField
+                  control={control}
+                  name="obstacleCount"
+                  helper="Optional"
+                  placeholder="12"
+                  keyboardType="number-pad"
+                  inputMode="numeric"
+                  maxLength={3}
+                />
+              ) : null}
+            </>
+          ) : null}
+
           <Divider />
           <Text variant="heading">Participants</Text>
-          <FormTextField
-            control={control}
-            name="minParticipants"
-            helper="The training is confirmed only if at least this many people are going when the RSVP deadline passes. Otherwise it is cancelled automatically."
-            lockedReason={lockedReason('minParticipants')}
-            placeholder="4"
-            keyboardType="number-pad"
-            inputMode="numeric"
-            maxLength={9}
-          />
+          {training ? (
+            <FormTextField
+              control={control}
+              name="minParticipants"
+              helper="The training is confirmed only if at least this many people are going when the RSVP deadline passes. Otherwise it is cancelled automatically."
+              lockedReason={lockedReason('minParticipants')}
+              placeholder="4"
+              keyboardType="number-pad"
+              inputMode="numeric"
+              maxLength={9}
+            />
+          ) : (
+            <Banner
+              tone="info"
+              message="No minimum: this event is confirmed as soon as you publish it. Registration closes at the deadline."
+            />
+          )}
 
           <View style={{ gap: spacing.sm }}>
-            <Text variant="label">RSVP deadline</Text>
+            <Text variant="label">{deadlineName}</Text>
             {customDeadline || deadlineLocked ? (
               <>
                 <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' }}>
@@ -413,7 +491,9 @@ function TrainingFormView({
                 ) : (
                   <>
                     <Text variant="caption" color="textMuted">
-                      Members can answer until this time. It must be before the start.
+                      {training
+                        ? 'Members can answer until this time. It must be before the start.'
+                        : 'Members can register until this time. It must be before the start.'}
                     </Text>
                     <View style={{ alignItems: 'flex-start' }}>
                       <Button
@@ -433,7 +513,9 @@ function TrainingFormView({
                   {fallbackDeadline ? `: ${fallbackDeadline.text}` : ''} (default).
                 </Text>
                 <Text variant="caption" color="textMuted">
-                  Members can answer until then. After that the training is confirmed or cancelled.
+                  {training
+                    ? 'Members can answer until then. After that the training is confirmed or cancelled.'
+                    : 'Members can register until then. After that registration is closed.'}
                 </Text>
                 {errors.deadlineDate?.message ? (
                   <Banner tone="error" message={errors.deadlineDate.message} />
@@ -455,7 +537,7 @@ function TrainingFormView({
           <View style={{ alignItems: 'flex-start' }}>
             <Button
               label={showMore ? 'Hide more options' : 'More options'}
-              accessibilityHint="Description, meeting instructions, maximum participants and coordinates"
+              accessibilityHint="Description, event notes, meeting instructions, maximum participants and coordinates"
               variant="ghost"
               size="sm"
               icon={showMore ? 'close' : 'plus'}
@@ -471,6 +553,14 @@ function TrainingFormView({
                 multiline
                 autoCapitalize="sentences"
                 style={{ minHeight: 96, textAlignVertical: 'top' }}
+              />
+              <FormTextField
+                control={control}
+                name="eventNotes"
+                helper="Optional. Rules, kit list, parking, anything members should know"
+                multiline
+                autoCapitalize="sentences"
+                style={{ minHeight: 72, textAlignVertical: 'top' }}
               />
               <FormTextField
                 control={control}
@@ -561,19 +651,30 @@ function TrainingFormView({
 
 export interface CreateTrainingFormProps {
   communityId: string;
-  /** The community's zone: new sessions are scheduled in it. Must be valid. */
+  /** The community's zone: new events are scheduled in it. Must be valid. */
   timezone: string;
+  /** Chosen in the create flow before the form opens. */
+  kind: EventKind;
+  subtype: string;
   onSaved: (session: TrainingSession) => void;
   onClose: () => void;
 }
 
-export function CreateTrainingForm({ communityId, timezone, onSaved, onClose }: CreateTrainingFormProps) {
+export function CreateTrainingForm({
+  communityId,
+  timezone,
+  kind,
+  subtype,
+  onSaved,
+  onClose,
+}: CreateTrainingFormProps) {
   const mutation = useCreateTraining(communityId);
-  const [defaultValues] = useState(emptyTrainingForm);
+  const [defaultValues] = useState(() => emptyTrainingForm(kind, subtype));
+  const name = kindInfo(kind).label.toLowerCase();
   return (
     <TrainingFormView
-      heading="New training"
-      submitLabel="Create training"
+      heading={`New ${name}`}
+      submitLabel={`Create ${name}`}
       timezone={timezone}
       defaultValues={defaultValues}
       mutation={mutation}
@@ -596,7 +697,7 @@ export function EditTrainingForm({ session, onSaved, onClose }: EditTrainingForm
   const [defaultValues] = useState(() => fromSession(session));
   return (
     <TrainingFormView
-      heading="Edit training"
+      heading={`Edit ${kindInfo(session.event_kind).label.toLowerCase()}`}
       submitLabel="Save changes"
       timezone={session.timezone}
       defaultValues={defaultValues}

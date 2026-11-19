@@ -153,6 +153,12 @@ describe('editing: untouched timestamps are sent back exactly (no accidental cha
       meeting_instructions: null,
       min_participants: 4,
       max_participants: null,
+      event_kind: 'training',
+      event_subtype: 'running',
+      distance_km: null,
+      elevation_gain_m: null,
+      obstacle_count: null,
+      event_notes: null,
       going_count: 0,
       status: 'scheduled',
       cancel_reason: null,
@@ -217,7 +223,7 @@ describe('server errors land on the right field', () => {
     ['rsvp_deadline', 'deadlineDate'],
     ['min_participants', 'minParticipants'],
     ['max_participants', 'maxParticipants'],
-    ['activity_type', 'activityType'],
+    ['activity_type', 'eventSubtype'],
     ['location_name', 'locationName'],
   ])('validation_failed:%s shows on %s', (column, field) => {
     const placed = serverFieldError({ code: 'validation_failed', field: column });

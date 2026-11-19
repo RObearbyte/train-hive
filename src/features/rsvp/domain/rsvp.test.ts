@@ -14,12 +14,13 @@ const LATE = new Date('2026-11-14T05:00:01Z');
 
 type RsvpSession = Pick<
   TrainingSession,
-  'status' | 'rsvp_deadline' | 'going_count' | 'max_participants'
+  'status' | 'rsvp_deadline' | 'going_count' | 'max_participants' | 'event_kind'
 >;
 
 function makeSession(overrides: Partial<RsvpSession> = {}): RsvpSession {
   return {
     status: 'scheduled',
+    event_kind: 'training',
     rsvp_deadline: DEADLINE,
     going_count: 5,
     max_participants: 10,
@@ -133,7 +134,7 @@ describe('canChangeRsvp', () => {
 
   it('has a message for every reason', () => {
     const reasons: RsvpBlockedReason[] = ['cancelled', 'completed', 'closed', 'full'];
-    const messages = reasons.map(rsvpBlockedMessage);
+    const messages = reasons.map((reason) => rsvpBlockedMessage(reason));
     expect(new Set(messages).size).toBe(reasons.length);
     for (const message of messages) expect(message.length).toBeGreaterThan(5);
   });

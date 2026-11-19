@@ -100,7 +100,7 @@ export function AttendanceHistoryScreen() {
               <View style={{ gap: spacing.xs }}>
                 <Text variant="label">{countsLine(counts)}</Text>
                 <Text variant="caption" color="textMuted">
-                  Only trainings your organizer has finalized appear here. Not recorded means
+                  Only events your organizer has finalized appear here. Not recorded means
                   nobody marked it; it is not counted as a miss.
                 </Text>
               </View>
@@ -110,7 +110,7 @@ export function AttendanceHistoryScreen() {
         ListEmptyComponent={
           <EmptyState
             title="No attendance yet"
-            message="Trainings show up here after your organizer finalizes their attendance."
+            message="Events show up here after your organizer finalizes their attendance."
           />
         }
         renderSectionHeader={({ section }) => (

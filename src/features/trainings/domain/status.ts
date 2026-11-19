@@ -17,18 +17,34 @@ export type TrainingDisplayStatus =
   | 'confirmed'
   | 'cancelled_insufficient'
   | 'cancelled_organizer'
-  | 'completed';
+  | 'completed'
+  /** Non-training events only: confirmed, answers accepted until the deadline. */
+  | 'registration_open'
+  /** Non-training events only: the deadline has passed (device clock, display only). */
+  | 'registration_closed';
 
 type StatusFields = Pick<
   TrainingSession,
-  'status' | 'cancel_reason' | 'going_count' | 'min_participants' | 'rsvp_deadline'
+  'status' | 'cancel_reason' | 'going_count' | 'min_participants' | 'rsvp_deadline' | 'event_kind'
 >;
+
+function registrationStatus(
+  session: Pick<TrainingSession, 'rsvp_deadline'>,
+  now: Date,
+): TrainingDisplayStatus {
+  return now.getTime() >= new Date(session.rsvp_deadline).getTime()
+    ? 'registration_closed'
+    : 'registration_open';
+}
 
 export function deriveDisplayStatus(session: StatusFields, now: Date): TrainingDisplayStatus {
   switch (session.status) {
     case 'completed':
       return 'completed';
     case 'confirmed':
+      // Only a training is "confirmed" by a decision; any other event is created confirmed and
+      // shows whether registration is still open instead.
+      if (session.event_kind !== 'training') return registrationStatus(session, now);
       return 'confirmed';
     case 'cancelled':
       // The table check guarantees a reason on cancelled rows; only an explicit
@@ -37,6 +53,10 @@ export function deriveDisplayStatus(session: StatusFields, now: Date): TrainingD
         ? 'cancelled_insufficient'
         : 'cancelled_organizer';
     case 'scheduled':
+      // A non-training event is never scheduled (the table forbids it); treat it as registration.
+      if (session.event_kind !== 'training' || session.min_participants === null) {
+        return registrationStatus(session, now);
+      }
       // Deadline passed but the server job has not decided yet. Q2-10: judged by the device
       // clock (display only), so a fast clock shows 'Finalizing' early.
       if (now.getTime() >= new Date(session.rsvp_deadline).getTime()) return 'finalizing';
@@ -48,14 +68,15 @@ export function deriveDisplayStatus(session: StatusFields, now: Date): TrainingD
 
 export type ParticipationSummary = {
   going: number;
-  min: number;
+  /** null for events without a minimum (everything but trainings). */
+  min: number | null;
   max: number | null;
   /** Participants still needed to reach the minimum (0 once reached). */
   remainingToMin: number;
   /** Free places under the maximum, or null when there is no maximum. */
   spotsLeft: number | null;
   isFull: boolean;
-  /** e.g. "7 / 10 confirmed": going count against the minimum. */
+  /** e.g. "7 / 10 confirmed" (against the minimum), or "12 going" / "12 of 30 going" without one. */
   text: string;
   /** e.g. "3 more participants needed", or null once the minimum is reached. */
   needText: string | null;
@@ -69,7 +90,7 @@ export function participationSummary(
   const going = Math.max(0, session.going_count);
   const min = session.min_participants;
   const max = session.max_participants;
-  const remainingToMin = Math.max(0, min - going);
+  const remainingToMin = min === null ? 0 : Math.max(0, min - going);
   const spotsLeft = max === null ? null : Math.max(0, max - going);
   const isFull = max !== null && going >= max;
 
@@ -89,7 +110,12 @@ export function participationSummary(
     remainingToMin,
     spotsLeft,
     isFull,
-    text: `${going} / ${min} confirmed`,
+    text:
+      min !== null
+        ? `${going} / ${min} confirmed`
+        : max !== null
+          ? `${going} of ${max} going`
+          : `${going} going`,
     needText,
     spotsText,
   };

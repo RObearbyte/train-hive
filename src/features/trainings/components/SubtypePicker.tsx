@@ -2,11 +2,11 @@ import { Pressable, View } from 'react-native';
 
 import { Icon, Text, useTheme } from '@/ui';
 
-import type { ActivityOption } from '../hooks/useTrainings';
+import type { SubtypeOption } from '../domain/events';
 
-export interface ActivityPickerProps {
+export interface SubtypePickerProps {
   label: string;
-  options: readonly ActivityOption[];
+  options: readonly SubtypeOption[];
   value: string;
   onChange: (key: string) => void;
   error?: string;
@@ -14,14 +14,14 @@ export interface ActivityPickerProps {
 }
 
 /** Single choice from a short list, as wrapping chips. The selected chip has a check, not only a tint. */
-export function ActivityPicker({
+export function SubtypePicker({
   label,
   options,
   value,
   onChange,
   error,
   disabled = false,
-}: ActivityPickerProps) {
+}: SubtypePickerProps) {
   const { colors, radii, spacing, minTouchTarget } = useTheme();
 
   return (

@@ -351,6 +351,23 @@ describe('QA table privileges', () => {
     expect(rows).toEqual([]);
   });
 
+  it('the event subtypes lookup: authenticated SELECT only (RLS on); anon and service_role nothing (P1)', async () => {
+    const { rows } = await admin.query<{ role: string; privilege: string }>(
+      `select r.role, p.privilege
+       from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
+       cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
+       where (has_table_privilege(r.role, 'public.event_subtypes', p.privilege)
+              or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+                  and has_any_column_privilege(r.role, 'public.event_subtypes', p.privilege)))
+       order by 1, 2`,
+    );
+    expect(rows).toEqual([{ role: 'authenticated', privilege: 'SELECT' }]);
+    const { rows: rls } = await admin.query<{ relrowsecurity: boolean }>(
+      "select relrowsecurity from pg_class where oid = 'public.event_subtypes'::regclass",
+    );
+    expect(rls).toEqual([{ relrowsecurity: true }]);
+  });
+
   it('the data-export log in private grants nothing to any API role (G2)', async () => {
     const { rows } = await admin.query<{ role: string; privilege: string }>(
       `select r.role, p.privilege

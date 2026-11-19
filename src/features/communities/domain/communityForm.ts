@@ -82,6 +82,6 @@ export type CommunitySettingsFormValues = z.output<typeof communitySettingsFormS
 
 /** Note shown next to the time zone in settings. */
 export const TIMEZONE_CHANGE_NOTE =
-  'Existing trainings keep their own time zone. Statistics will group months and weeks using the new time zone.';
+  'Existing events keep their own time zone. Statistics will group months and weeks using the new time zone.';
 
 export const SHARED_NAME_NOTE = 'Your name is shared across all your communities.';

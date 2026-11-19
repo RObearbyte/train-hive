@@ -153,6 +153,16 @@ export function Icon({ name, size = 20, color = 'text' }: IconProps) {
     case 'trash':
       content = <Path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" {...common} />;
       break;
+    case 'trophy':
+      content = <Path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v1a4 4 0 0 0 4 4M16 6h4v1a4 4 0 0 1-4 4M12 13v4M8 20h8M10 17h4" {...common} />;
+      break;
+    case 'lock':
+      content = (
+        <>
+          <Path d="M5 11h14v9H5zM8 11V8a4 4 0 0 1 8 0v3" {...common} />
+        </>
+      );
+      break;
   }
 
   return (

@@ -50,6 +50,12 @@ function makeSession(overrides: Partial<TrainingSession> = {}): TrainingSession 
     meeting_instructions: 'Meet at the north gate',
     min_participants: 10,
     max_participants: 20,
+    event_kind: 'training',
+    event_subtype: 'trail_running',
+    distance_km: null,
+    elevation_gain_m: null,
+    obstacle_count: null,
+    event_notes: null,
     going_count: 4,
     status: 'scheduled',
     cancel_reason: null,
@@ -108,7 +114,7 @@ describe('trainingFormSchema: create', () => {
     expect(
       createErrors({
         description: 'Easy pace',
-        activityType: 'trail_running',
+        eventSubtype: 'trail_running',
         endTime: '10:30',
         deadlineDate: '2026-11-13',
         deadlineTime: '18:00',
@@ -350,10 +356,10 @@ describe('trainingFormSchema: create', () => {
     ]);
   });
 
-  it('requires an activity', () => {
-    expect(createErrors({ activityType: '' }).activityType).toBeDefined();
+  it('requires a subtype', () => {
+    expect(createErrors({ eventSubtype: '' }).eventSubtype).toBeDefined();
     // Keys are rows in a lookup table, so unknown ones are allowed.
-    expect(createErrors({ activityType: 'yoga' })).toEqual({});
+    expect(createErrors({ eventSubtype: 'yoga' })).toEqual({});
   });
 
   it('reports several cross-field problems together', () => {
@@ -543,7 +549,6 @@ describe('toTrainingInput', () => {
     expect(toTrainingInput(validForm(), ZONE)).toEqual({
       title: 'Saturday long run',
       description: null,
-      activity_type: 'other',
       starts_at: '2026-11-14T07:00:00.000Z',
       ends_at: null,
       rsvp_deadline: '2026-11-14T05:00:00.000Z',
@@ -556,6 +561,12 @@ describe('toTrainingInput', () => {
       meeting_instructions: null,
       min_participants: 10,
       max_participants: null,
+      event_kind: 'training',
+      event_subtype: 'running',
+      distance_km: null,
+      elevation_gain_m: null,
+      obstacle_count: null,
+      event_notes: null,
     });
   });
 
@@ -564,7 +575,8 @@ describe('toTrainingInput', () => {
       [
         'title',
         'description',
-        'activity_type',
+        'event_kind',
+        'event_subtype',
         'starts_at',
         'ends_at',
         'rsvp_deadline',
@@ -577,6 +589,10 @@ describe('toTrainingInput', () => {
         'meeting_instructions',
         'min_participants',
         'max_participants',
+        'distance_km',
+        'elevation_gain_m',
+        'obstacle_count',
+        'event_notes',
       ].sort(),
     );
   });
@@ -586,7 +602,7 @@ describe('toTrainingInput', () => {
       validForm({
         title: '  Hill repeats ',
         description: ' Bring water ',
-        activityType: 'trail_running',
+        eventSubtype: 'trail_running',
         endTime: '10:30',
         deadlineDate: '2026-11-13',
         deadlineTime: '18:00',
@@ -604,7 +620,6 @@ describe('toTrainingInput', () => {
     expect(input).toEqual({
       title: 'Hill repeats',
       description: 'Bring water',
-      activity_type: 'trail_running',
       starts_at: '2026-11-14T07:00:00.000Z',
       ends_at: '2026-11-14T08:30:00.000Z',
       rsvp_deadline: '2026-11-13T16:00:00.000Z',
@@ -617,6 +632,12 @@ describe('toTrainingInput', () => {
       meeting_instructions: 'North gate',
       min_participants: 8,
       max_participants: 20,
+      event_kind: 'training',
+      event_subtype: 'trail_running',
+      distance_km: null,
+      elevation_gain_m: null,
+      obstacle_count: null,
+      event_notes: null,
     });
   });
 
@@ -666,7 +687,8 @@ describe('fromSession', () => {
     expect(fromSession(makeSession())).toEqual({
       title: 'Saturday long run',
       description: 'Easy pace',
-      activityType: 'trail_running',
+      eventKind: 'training',
+      eventSubtype: 'trail_running',
       date: '2026-11-14',
       startTime: '09:00',
       endTime: '10:30',
@@ -680,6 +702,10 @@ describe('fromSession', () => {
       meetingInstructions: 'Meet at the north gate',
       minParticipants: '10',
       maxParticipants: '20',
+      distanceKm: '',
+      elevationGainM: '',
+      obstacleCount: '',
+      eventNotes: '',
     });
   });
 
@@ -722,7 +748,6 @@ describe('fromSession', () => {
     expect(input).toEqual({
       title: session.title,
       description: session.description,
-      activity_type: session.activity_type,
       starts_at: session.starts_at,
       ends_at: session.ends_at,
       rsvp_deadline: session.rsvp_deadline,
@@ -735,6 +760,12 @@ describe('fromSession', () => {
       meeting_instructions: session.meeting_instructions,
       min_participants: session.min_participants,
       max_participants: session.max_participants,
+      event_kind: 'training',
+      event_subtype: 'trail_running',
+      distance_km: null,
+      elevation_gain_m: null,
+      obstacle_count: null,
+      event_notes: null,
     });
   });
 
@@ -788,7 +819,7 @@ describe('editableFields', () => {
     for (const open of [
       'title',
       'description',
-      'activityType',
+      'eventSubtype',
       'date',
       'startTime',
       'endTime',

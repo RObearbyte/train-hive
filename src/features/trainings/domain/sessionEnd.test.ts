@@ -48,6 +48,7 @@ describe('predicted end boundaries', () => {
 
 describe('frozenFormFields time lock', () => {
   const base = {
+    event_kind: 'training' as const,
     rsvp_deadline: '2026-11-14T05:00:00.000Z',
     starts_at: START,
     ends_at: END,
@@ -57,7 +58,7 @@ describe('frozenFormFields time lock', () => {
   it('locks date and times on a confirmed session that has ended', () => {
     const frozen = frozenFormFields({ ...base, status: 'confirmed' }, at(END, 0));
     for (const field of times) expect(frozen.fields.has(field)).toBe(true);
-    expect(frozen.timeReason).toBe('This training has already ended');
+    expect(frozen.timeReason).toBe('This event has already ended');
     expect(frozen.fields.has('title')).toBe(false);
   });
   it('leaves the times editable one second before the end', () => {

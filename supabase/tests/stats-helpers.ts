@@ -81,8 +81,9 @@ export interface CommunityStats {
     starts_at: string;
     timezone: string;
     present: number;
-    min_participants: number;
+    min_participants: number | null;
     going_count: number;
+    event_kind: 'training' | 'race' | 'sports_event' | 'social';
   }[];
 }
 
@@ -119,6 +120,8 @@ export interface HistoryItem {
   session_id: string;
   title: string;
   activity_type: string;
+  event_kind: 'training' | 'race' | 'sports_event' | 'social';
+  event_subtype: string;
   starts_at: string;
   ends_at: string | null;
   timezone: string;

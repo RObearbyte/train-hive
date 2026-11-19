@@ -47,10 +47,10 @@ const bucket = (
 });
 
 describe('monthlySummary', () => {
-  it('describes each month and says no trainings for empty ones', () => {
+  it('describes each month and says no events for empty ones', () => {
     const text = monthlySummary([month('2026-10', 3, 2, 66.7), month('2026-11', 0, 0, null)]);
     expect(text).toBe(
-      'Monthly attendance rate. October 2026: 66.7 percent, 2 of 3 trainings. November 2026: no finalized trainings.',
+      'Monthly attendance rate. October 2026: 66.7 percent, 2 of 3 events. November 2026: no finalized events.',
     );
   });
 
@@ -58,7 +58,7 @@ describe('monthlySummary', () => {
     expect(monthlySummary([])).toContain('No months');
     const text = monthlySummary([month('2026-10', 0, 0, null), month('2026-11', 1, 0, 0)]);
     expect(text).not.toMatch(/NaN|null|undefined|Infinity/);
-    expect(text).toContain('0 percent, 0 of 1 training');
+    expect(text).toContain('0 percent, 0 of 1 event');
   });
 
   it('keeps a long series short and says so', () => {
@@ -108,6 +108,8 @@ const item = (id: string): AttendanceHistoryItem => ({
   session_id: id,
   title: id,
   activity_type: 'run',
+  event_kind: 'training',
+  event_subtype: 'running',
   starts_at: '2026-10-01T10:00:00Z',
   ends_at: null,
   timezone: 'UTC',
@@ -146,6 +148,7 @@ const top = (id: string, present: number): TopSession => ({
   timezone: 'UTC',
   present,
   min_participants: 3,
+  event_kind: 'training',
   going_count: present,
 });
 
@@ -180,14 +183,14 @@ const row = (over: Partial<MemberStatisticsSummaryRow>): MemberStatisticsSummary
 
 describe('member rows', () => {
   it('shows attended of eligible, and a words-only line when there were none', () => {
-    expect(memberLine(row({}))).toBe('3 of 4 trainings');
-    expect(memberLine(row({ eligible: 0, attended: 0 }))).toBe('No finalized trainings');
+    expect(memberLine(row({}))).toBe('3 of 4 events');
+    expect(memberLine(row({ eligible: 0, attended: 0 }))).toBe('No finalized events');
   });
 
   it('speaks the row, with a null rate as "no rate yet"', () => {
-    expect(memberRowLabel(row({}))).toBe('Ana, 3 of 4 trainings, 75 percent, 1 not recorded');
+    expect(memberRowLabel(row({}))).toBe('Ana, 3 of 4 events, 75 percent, 1 not recorded');
     expect(memberRowLabel(row({ eligible: 0, attended: 0, not_recorded: 0, attendance_rate: null }))).toBe(
-      'Ana, No finalized trainings, no rate yet',
+      'Ana, No finalized events, no rate yet',
     );
   });
 });

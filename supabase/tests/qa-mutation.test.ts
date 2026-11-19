@@ -215,7 +215,14 @@ const MUTANTS: [string, Probe, (probe: Probe) => Promise<boolean>][] = [
   [
     'set_rsvp without the status check',
     rsvpOnDecidedSessionIsRejected,
-    (probe) => withMutatedFunction(SET_RSVP, "v_session.status <> 'scheduled' or", '', probe),
+    // P1: the status rule became "scheduled, or confirmed for a non-training event".
+    (probe) =>
+      withMutatedFunction(
+        SET_RSVP,
+        "v_session.status = 'scheduled'\n       or (v_session.status = 'confirmed' and v_session.event_kind <> 'training')",
+        'true',
+        probe,
+      ),
   ],
   [
     'set_rsvp without the capacity check',
@@ -265,8 +272,9 @@ const MUTANTS: [string, Probe, (probe: Probe) => Promise<boolean>][] = [
     (probe) =>
       withMutatedFunction(
         'public.update_training(uuid, jsonb)',
-        "v_open := v_session.status = 'scheduled' and clock_timestamp() < v_session.rsvp_deadline;",
-        "v_open := v_session.status = 'scheduled';",
+        // P1: the open rule is per kind; dropping the deadline part treats a due training as open.
+        'v_open := clock_timestamp() < v_session.rsvp_deadline\n            and ',
+        'v_open := ',
         probe,
       ),
   ],

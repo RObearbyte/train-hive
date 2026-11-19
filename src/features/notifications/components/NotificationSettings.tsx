@@ -16,10 +16,10 @@ type Toggle = { field: keyof NotificationPrefs; label: string; hint: string };
 const TOGGLES: Toggle[] = [
   {
     field: 'training_updates',
-    label: 'Training updates',
-    hint: 'New, changed, confirmed and cancelled trainings',
+    label: 'Event updates',
+    hint: 'New, changed, confirmed and cancelled events',
   },
-  { field: 'training_reminders', label: 'Reminders', hint: 'A day and two hours before a training' },
+  { field: 'training_reminders', label: 'Event reminders', hint: 'A day and two hours before an event' },
   { field: 'announcements', label: 'Announcements', hint: 'Messages from your organizers' },
 ];
 

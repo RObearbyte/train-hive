@@ -76,9 +76,9 @@ export function buildPrivacyNotice(
               },
               {
                 label:
-                  'Answers to training invitations (RSVP), attendance records and the change history of attendance',
+                  'Answers to event invitations (RSVP), attendance records and the change history of attendance',
                 value:
-                  'To plan trainings and record who took part. Basis: contract, and the legitimate interest of the community in keeping an attendance history. You may object to this at any time (see your rights below).',
+                  'To plan events and record who took part. Basis: contract, and the legitimate interest of the community in keeping an attendance history. You may object to this at any time (see your rights below).',
               },
               features.eventPosts
                 ? {

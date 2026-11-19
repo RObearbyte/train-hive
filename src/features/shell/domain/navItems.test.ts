@@ -4,7 +4,7 @@ import { activeNavKey, NAV_ITEMS } from './navItems';
 
 describe('NAV_ITEMS', () => {
   it('are the five tabs in order, each with a unique path', () => {
-    expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Home', 'Trainings', 'Activity', 'Statistics', 'Profile']);
+    expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Home', 'Events', 'Activity', 'Statistics', 'Profile']);
     expect(new Set(NAV_ITEMS.map((item) => item.href)).size).toBe(5);
   });
 });

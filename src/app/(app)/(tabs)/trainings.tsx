@@ -5,6 +5,12 @@ import { FlatList, RefreshControl, View } from 'react-native';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { needsAttendance } from '@/features/attendance/domain/sheet';
 import { TrainingCard } from '@/features/trainings/components/TrainingCard';
+import {
+  KIND_FILTER_OPTIONS,
+  filterByKind,
+  kindInfo,
+  type KindFilter,
+} from '@/features/trainings/domain/events';
 import { useCommunityTrainings } from '@/features/trainings/hooks/useTrainings';
 import { userMessage } from '@/lib/errors';
 import { useNow } from '@/lib/useNow';
@@ -22,6 +28,12 @@ import {
 
 type Section = 'upcoming' | 'past';
 
+const KIND_OPTIONS = KIND_FILTER_OPTIONS.map((option) =>
+  option.value === 'sports_event'
+    ? { ...option, accessibilityLabel: 'Sports events' }
+    : option,
+);
+
 const SECTIONS = [
   { value: 'upcoming', label: 'Upcoming' },
   { value: 'past', label: 'Past' },
@@ -34,19 +46,21 @@ export default function TrainingsScreen() {
   const { isOrganizer } = useCurrentMembership();
   const trainings = useCommunityTrainings(now);
   const [section, setSection] = useState<Section>('upcoming');
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
 
-  const sessions = section === 'upcoming' ? trainings.upcoming : trainings.past;
+  const inSection = section === 'upcoming' ? trainings.upcoming : trainings.past;
+  const sessions = filterByKind(inSection, kindFilter);
   const hasData = trainings.upcoming.length + trainings.past.length > 0;
 
   const header = (
     <View style={{ gap: spacing.lg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
         <Text variant="title" style={{ flex: 1 }}>
-          Trainings
+          Events
         </Text>
         {isOrganizer ? (
           <Button
-            label="New training"
+            label="New event"
             icon="plus"
             size="sm"
             onPress={() => router.push('/trainings/new')}
@@ -57,7 +71,13 @@ export default function TrainingsScreen() {
         options={SECTIONS}
         value={section}
         onChange={setSection}
-        accessibilityLabel="Which trainings to show"
+        accessibilityLabel="Which events to show"
+      />
+      <SegmentedControl
+        options={KIND_OPTIONS}
+        value={kindFilter}
+        onChange={setKindFilter}
+        accessibilityLabel="Filter by kind of event"
       />
       {/* Showing what is cached while the latest refresh failed. */}
       {trainings.error && hasData ? (
@@ -80,19 +100,29 @@ export default function TrainingsScreen() {
       />
     );
   } else if (trainings.isLoading) {
-    empty = <LoadingState message="Loading trainings" style={{ flex: 1 }} />;
+    empty = <LoadingState message="Loading events" style={{ flex: 1 }} />;
+  } else if (kindFilter !== 'all' && inSection.length > 0) {
+    const plural = kindInfo(kindFilter).plural.toLowerCase();
+    empty = (
+      <EmptyState
+        title={section === 'upcoming' ? `No upcoming ${plural}` : `No past ${plural}`}
+        message="Choose All to see every kind of event."
+        action={{ label: 'Show all', onPress: () => setKindFilter('all') }}
+        style={{ flex: 1 }}
+      />
+    );
   } else if (section === 'upcoming') {
     empty = (
       <EmptyState
         title="Nothing planned yet"
         message={
           isOrganizer
-            ? 'Trainings you plan will show up here for the whole community.'
-            : 'When your organizer plans a training, it will show up here.'
+            ? 'Events you plan will show up here for the whole community.'
+            : 'When your organizer plans an event, it will show up here.'
         }
         action={
           isOrganizer
-            ? { label: 'Create a training', onPress: () => router.push('/trainings/new') }
+            ? { label: 'Create an event', onPress: () => router.push('/trainings/new') }
             : undefined
         }
         style={{ flex: 1 }}
@@ -101,8 +131,8 @@ export default function TrainingsScreen() {
   } else {
     empty = (
       <EmptyState
-        title="No past trainings"
-        message="Trainings appear here once they are over."
+        title="No past events"
+        message="Events appear here once they are over."
         style={{ flex: 1 }}
       />
     );

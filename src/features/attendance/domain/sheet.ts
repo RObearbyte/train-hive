@@ -172,7 +172,7 @@ export function walkInCandidates(
 }
 
 /**
- * The training needs its attendance recorded: confirmed (not yet completed)
+ * The event needs its attendance recorded: confirmed (not yet completed)
  * and over. The device clock only decides whether to show a cue; the server
  * decides whether recording is accepted.
  */
@@ -184,7 +184,7 @@ export function needsAttendance(
   return hasPredictedEnded(session, now);
 }
 
-/** True when the device clock says the training is over (used only to pick wording). */
+/** True when the device clock says the event is over (used only to pick wording). */
 export function deviceSaysEnded(
   session: Pick<TrainingSession, 'starts_at' | 'ends_at'>,
   now: Date,

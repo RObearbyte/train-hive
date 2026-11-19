@@ -9,11 +9,11 @@ const TITLES: [RegExp, string][] = [
   [/^\/(name|add-community\/join-name)$/, 'Your name'],
   [/^\/(creator-code|add-community\/creator-code)$/, 'Creator code'],
   [/^\/(create-community|add-community\/create-community)$/, 'Create a community'],
-  [/^\/trainings$/, 'Trainings'],
-  [/^\/trainings\/new$/, 'New training'],
-  [/^\/trainings\/[^/]+\/edit$/, 'Edit training'],
+  [/^\/trainings$/, 'Events'],
+  [/^\/trainings\/new$/, 'New event'],
+  [/^\/trainings\/[^/]+\/edit$/, 'Edit event'],
   [/^\/trainings\/[^/]+\/attendance$/, 'Attendance'],
-  [/^\/trainings\/[^/]+$/, 'Training'],
+  [/^\/trainings\/[^/]+$/, 'Event'],
   [/^\/activity$/, 'Activity'],
   [/^\/announcements\/new$/, 'New announcement'],
   [/^\/announcements\/[^/]+\/edit$/, 'Edit announcement'],
@@ -31,7 +31,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/legal\/terms$/, 'Terms of Use'],
 ];
 
-/** "Trainings · TrainHive". Unknown paths get the plain app name. */
+/** "Events · TrainHive". Unknown paths get the plain app name. */
 export function titleForPath(pathname: string): string {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   for (const [pattern, title] of TITLES) {

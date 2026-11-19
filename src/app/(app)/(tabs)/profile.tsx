@@ -110,7 +110,7 @@ export default function ProfileScreen() {
           <Divider />
           <ListItem
             title="Time zone"
-            subtitle={`${zoneCityName(community.timezone)} (${community.timezone}). Training times are shown in this zone.`}
+            subtitle={`${zoneCityName(community.timezone)} (${community.timezone}). Event times are shown in this zone.`}
           />
         </Card>
       </View>
@@ -127,7 +127,7 @@ export default function ProfileScreen() {
           <Divider />
           <ListItem
             title="My attendance"
-            subtitle="Trainings you attended, by month"
+            subtitle="Events you attended, by month"
             leading={<Icon name="check-circle" size={22} color="primary" />}
             onPress={() => router.push('/attendance-history')}
           />

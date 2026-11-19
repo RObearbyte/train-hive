@@ -190,7 +190,7 @@ export function ActivityScreen() {
         ) : !hasNotes ? (
           <EmptyState
             title="No notifications yet"
-            message="Updates about trainings and announcements will show up here."
+            message="Updates about events and announcements will show up here."
           />
         ) : (
           <View style={{ gap: spacing.sm }}>

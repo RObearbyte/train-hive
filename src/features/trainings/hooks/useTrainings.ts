@@ -2,13 +2,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSession } from '@/features/community/hooks/SessionProvider';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
-import type { RsvpResponse, TrainingSession } from '@/lib/database.types';
+import type { EventKind, RsvpResponse, TrainingSession } from '@/lib/database.types';
 import { toAppError, type AppError } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 
 import { rsvpKeys, trainingKeys, type MyRsvps } from '../api/keys';
 import {
-  fetchActivityTypes,
+  fetchEventSubtypes,
   fetchCommunitySessions,
   fetchMyRsvps,
   fetchOrganizerName,
@@ -16,7 +16,7 @@ import {
   fetchSession,
   type Participant,
 } from '../api/trainings';
-import { activityLabel, activityOptions } from '../domain/activity';
+import { subtypeLabel, subtypeOptions, type SubtypeOption } from '../domain/events';
 import { nextSession, splitSessions } from '../domain/status';
 
 const NO_SESSIONS: TrainingSession[] = [];
@@ -156,38 +156,29 @@ export function useOrganizerName(sessionId: string, organizerId: string | null |
   });
 }
 
-export type ActivityOption = { key: string; label: string };
-
-/**
- * Choices for the activity picker: the `activity_types` table once loaded,
- * the built-in seeded list until then. `selected` is always among them, so
- * editing a session with a type this list lacks does not silently change it.
- */
-export function useActivityOptions(selected: string): ActivityOption[] {
-  const types = useQuery({
-    queryKey: trainingKeys.activityTypes,
-    queryFn: fetchActivityTypes,
+function useSubtypeRows() {
+  return useQuery({
+    queryKey: trainingKeys.eventSubtypes,
+    queryFn: fetchEventSubtypes,
     staleTime: 60 * 60_000,
   });
-  const options: ActivityOption[] = types.data
-    ? types.data.map((type) => ({ key: type.key, label: type.label }))
-    : activityOptions();
-  if (selected !== '' && !options.some((option) => option.key === selected)) {
-    options.push({ key: selected, label: activityLabel(selected) });
-  }
-  return options;
 }
 
 /**
- * Label for an activity type key: the server's label when the lookup table
- * has loaded, otherwise the built-in label (which also covers unknown keys).
+ * Choices for the subtype picker of one kind: the `event_subtypes` table once loaded, the
+ * bundled list until then (or when the table cannot be read). `selected` is always among them,
+ * so editing an event with a subtype this list lacks does not silently change it.
  */
-export function useActivityLabel(): (key: string) => string {
-  const types = useQuery({
-    queryKey: trainingKeys.activityTypes,
-    queryFn: fetchActivityTypes,
-    staleTime: 60 * 60_000,
-  });
-  const labels = new Map((types.data ?? []).map((type) => [type.key, type.label]));
-  return (key) => labels.get(key) ?? activityLabel(key);
+export function useSubtypeOptions(kind: EventKind, selected: string): SubtypeOption[] {
+  const rows = useSubtypeRows();
+  return subtypeOptions(kind, rows.data, selected);
+}
+
+/**
+ * Label for a subtype: the server's label when the lookup table has loaded, otherwise the
+ * bundled label (which also covers unknown keys).
+ */
+export function useSubtypeLabel(): (kind: EventKind, key: string) => string {
+  const rows = useSubtypeRows();
+  return (kind, key) => subtypeLabel(kind, key, rows.data);
 }

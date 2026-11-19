@@ -1,6 +1,6 @@
 import type { ColorPalette } from './colors';
 
-/** The seven display states of a training (see docs/ARCHITECTURE.md section 6). */
+/** The display states of an event: seven for trainings (docs/ARCHITECTURE.md section 6) plus two registration states for other kinds. */
 export type TrainingDisplayStatus =
   | 'awaiting_minimum'
   | 'minimum_reached'
@@ -8,7 +8,9 @@ export type TrainingDisplayStatus =
   | 'confirmed'
   | 'cancelled_insufficient'
   | 'cancelled_organizer'
-  | 'completed';
+  | 'completed'
+  | 'registration_open'
+  | 'registration_closed';
 
 export const TRAINING_DISPLAY_STATUSES: readonly TrainingDisplayStatus[] = [
   'awaiting_minimum',
@@ -18,6 +20,8 @@ export const TRAINING_DISPLAY_STATUSES: readonly TrainingDisplayStatus[] = [
   'cancelled_insufficient',
   'cancelled_organizer',
   'completed',
+  'registration_open',
+  'registration_closed',
 ];
 
 export type IconName =
@@ -47,7 +51,9 @@ export type IconName =
   | 'megaphone'
   | 'chart'
   | 'external-link'
-  | 'trash';
+  | 'trash'
+  | 'trophy'
+  | 'lock';
 
 export type StatusVisual = 'filled' | 'outlined' | 'tinted';
 
@@ -68,6 +74,8 @@ export const statusMeta: Record<TrainingDisplayStatus, StatusMeta> = {
   cancelled_insufficient: { label: 'Cancelled: too few', icon: 'close', visual: 'tinted', dashed: false },
   cancelled_organizer: { label: 'Cancelled by organizer', icon: 'ban', visual: 'filled', dashed: false },
   completed: { label: 'Completed', icon: 'flag', visual: 'filled', dashed: false },
+  registration_open: { label: 'Registration open', icon: 'plus', visual: 'outlined', dashed: false },
+  registration_closed: { label: 'Registration closed', icon: 'lock', visual: 'tinted', dashed: false },
 };
 
 export interface StatusColors {
@@ -87,5 +95,7 @@ export function buildStatusColors(c: ColorPalette): StatusColorMap {
     cancelled_insufficient: { fg: c.danger, bg: c.dangerSoft, border: c.danger },
     cancelled_organizer: { fg: c.onDanger, bg: c.danger, border: c.danger },
     completed: { fg: c.surface, bg: c.textMuted, border: c.textMuted },
+    registration_open: { fg: c.success, bg: 'transparent', border: c.success },
+    registration_closed: { fg: c.onPrimarySoft, bg: c.primarySoft, border: c.onPrimarySoft },
   };
 }

@@ -6,7 +6,7 @@
  * - `trainingKeys.list(communityId)`   → `TrainingSession[]`
  * - `trainingKeys.detail(sessionId)`   → `TrainingSession | null`
  * - `trainingKeys.participants(id)`    → `Participant[]`
- * - `trainingKeys.activityTypes`       → `ActivityType[]`
+ * - `trainingKeys.eventSubtypes`        → `EventSubtype[]`
  * - `rsvpKeys.mine(userId)`            → `MyRsvps` (session id → response)
  */
 import type { RsvpResponse } from '@/lib/database.types';
@@ -19,7 +19,7 @@ export const trainingKeys = {
   detail: (sessionId: string) => ['trainings', 'detail', sessionId] as const,
   allParticipants: () => ['trainings', 'participants'] as const,
   participants: (sessionId: string) => ['trainings', 'participants', sessionId] as const,
-  activityTypes: ['trainings', 'activity-types'] as const,
+  eventSubtypes: ['trainings', 'event-subtypes'] as const,
   organizer: (userId: string) => ['trainings', 'organizer', userId] as const,
 };
 

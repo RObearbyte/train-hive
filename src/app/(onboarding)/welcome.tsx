@@ -31,7 +31,7 @@ export default function WelcomeScreen() {
         {notice ? <Banner tone="success" message={notice} /> : null}
         <Text variant="title">Train with your pack</Text>
         <Text color="textMuted">
-          See what is planned, say if you are in, and know for sure when a training is on.
+          See what is planned, say if you are in, and know for sure when an event is on.
         </Text>
         <Button
           label="Join a community"

@@ -7,7 +7,7 @@ export type NavItem = { key: NavKey; label: string; href: string; icon: IconName
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: 'home', label: 'Home', href: '/', icon: 'home' },
-  { key: 'trainings', label: 'Trainings', href: '/trainings', icon: 'calendar' },
+  { key: 'trainings', label: 'Events', href: '/trainings', icon: 'calendar' },
   { key: 'activity', label: 'Activity', href: '/activity', icon: 'bell' },
   { key: 'statistics', label: 'Statistics', href: '/statistics', icon: 'chart' },
   { key: 'profile', label: 'Profile', href: '/profile', icon: 'person' },

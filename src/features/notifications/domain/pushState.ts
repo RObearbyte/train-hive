@@ -139,7 +139,7 @@ const VIEWS: Record<PushStateKind, PushStateView> = {
   },
   can_enable: {
     title: 'Push notifications are off',
-    description: 'Get notified when trainings are confirmed or cancelled, and for announcements.',
+    description: 'Get notified when events are confirmed or cancelled, and for announcements.',
     tone: 'info',
     action: 'enable',
     actionLabel: 'Enable notifications',

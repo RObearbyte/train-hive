@@ -9,6 +9,7 @@ import { needsAttendance } from '@/features/attendance/domain/sheet';
 import { PushPromptCard } from '@/features/notifications/components/PushPromptCard';
 import { RecentAnnouncements } from '@/features/notifications/components/RecentAnnouncements';
 import { TrainingCard } from '@/features/trainings/components/TrainingCard';
+import { kindLabel } from '@/features/trainings/domain/events';
 import { statusBadgeLabel } from '@/features/trainings/domain/presentation';
 import { deriveDisplayStatus, participationSummary } from '@/features/trainings/domain/status';
 import { useCommunityTrainings } from '@/features/trainings/hooks/useTrainings';
@@ -60,7 +61,7 @@ export default function HomeScreen() {
                 {index > 0 ? <Divider /> : null}
                 <ListItem
                   title={formatSessionWhen(session.starts_at, zone, now)}
-                  subtitle={`${session.title} · ${session.location_name}`}
+                  subtitle={`${kindLabel(session.event_kind)} · ${session.title} · ${session.location_name}`}
                   trailing={<NeedsAttendanceCue />}
                   onPress={() => router.push(`/trainings/${session.id}/attendance`)}
                 />
@@ -91,19 +92,19 @@ export default function HomeScreen() {
       />
     );
   } else if (trainings.isLoading) {
-    body = <LoadingState message="Loading trainings" style={{ flex: 1 }} />;
+    body = <LoadingState message="Loading events" style={{ flex: 1 }} />;
   } else if (!hasUpcoming) {
     body = (
       <EmptyState
-        title="No trainings yet"
+        title="No events yet"
         message={
           isOrganizer
-            ? 'Trainings you plan will show up here for the whole community.'
-            : 'When your organizer plans a training, it will show up here.'
+            ? 'Events you plan will show up here for the whole community.'
+            : 'When your organizer plans an event, it will show up here.'
         }
         action={
           isOrganizer
-            ? { label: 'Create a training', onPress: () => router.push('/trainings/new') }
+            ? { label: 'Create an event', onPress: () => router.push('/trainings/new') }
             : undefined
         }
         style={{ flex: 1 }}
@@ -122,7 +123,7 @@ export default function HomeScreen() {
 
         {next ? (
           <View style={{ gap: spacing.sm }}>
-            <Text variant="heading">Next training</Text>
+            <Text variant="heading">Next event</Text>
             <TrainingCard
               featured
               session={next}
@@ -145,7 +146,7 @@ export default function HomeScreen() {
                     {index > 0 ? <Divider /> : null}
                     <ListItem
                       title={formatSessionWhen(session.starts_at, zone, now)}
-                      subtitle={`${session.title} · ${session.location_name}`}
+                      subtitle={`${kindLabel(session.event_kind)} · ${session.title} · ${session.location_name}`}
                       trailing={
                         <StatusBadge
                           size="sm"

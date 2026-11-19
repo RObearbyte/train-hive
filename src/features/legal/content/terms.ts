@@ -29,7 +29,7 @@ export function buildTerms(config: LegalConfig, features: LegalFeatures = FEATUR
         blocks: [
           {
             type: 'paragraph',
-            text: `TrainHive is a service for sports groups to plan trainings, answer invitations, record attendance and ${features.eventPosts ? 'talk to each other' : 'share announcements'}. It is operated by ${config.controllerName}, ${config.controllerAddress}. You can reach us at ${config.privacyEmail}.`,
+            text: `TrainHive is a service for sports groups to plan events, answer invitations, record attendance and ${features.eventPosts ? 'talk to each other' : 'share announcements'}. It is operated by ${config.controllerName}, ${config.controllerAddress}. You can reach us at ${config.privacyEmail}.`,
           },
         ],
       },
@@ -80,7 +80,7 @@ export function buildTerms(config: LegalConfig, features: LegalFeatures = FEATUR
           {
             type: 'list',
             items: [
-              "use members' information only to run your community and its trainings;",
+              "use members' information only to run your community and its events;",
               'not copy, export, publish or share it, inside or outside TrainHive, except where the law requires it;',
               'not use it to contact members for anything unrelated to the community;',
               'correct a record when a member reasonably asks you to, and pass on to us any request to delete information;',
@@ -119,7 +119,7 @@ export function buildTerms(config: LegalConfig, features: LegalFeatures = FEATUR
         blocks: [
           {
             type: 'paragraph',
-            text: 'Sports carry risk. Trainings and events are organized by your community, not by TrainHive, and taking part is your own decision. To the extent the law allows, we are not liable for what happens at trainings, for decisions organizers or members make, or for indirect or consequential losses arising from your use of the service. Nothing in these Terms limits liability that cannot be limited by law, such as liability for intent or gross negligence, or for death or personal injury caused by negligence, and nothing limits your rights as a consumer.',
+            text: 'Sports carry risk. Events are organized by your community, not by TrainHive, and taking part is your own decision. To the extent the law allows, we are not liable for what happens at events, for decisions organizers or members make, or for indirect or consequential losses arising from your use of the service. Nothing in these Terms limits liability that cannot be limited by law, such as liability for intent or gross negligence, or for death or personal injury caused by negligence, and nothing limits your rights as a consumer.',
           },
         ],
       },

@@ -169,8 +169,9 @@ describe('what the screens print, from real data', () => {
 });
 
 describe('copy against the definitions', () => {
-  it('the rate note names the denominator: every finalized eligible training', () => {
-    expect(RATE_NOTE).toMatch(/all finalized trainings/i);
+  it('the rate note names the denominator: every finalized eligible event', () => {
+    // "Event" is the app's vocabulary since P1 (a training is one kind of event).
+    expect(RATE_NOTE).toMatch(/all finalized events/i);
   });
 
   // Q5-1 (resolved by owner decision D2): the attendance rate keeps Not recorded trainings in the

@@ -193,15 +193,15 @@ const MESSAGES: Record<AppErrorCode, string> = {
   invalid_display_name: 'Your name must be between 2 and 40 characters.',
   community_limit_reached:
     'You have reached the maximum number of communities you can create (5). You can still join more with an invitation code.',
-  session_not_editable: 'This training can no longer be edited.',
-  session_not_cancellable: 'This training is already completed and cannot be cancelled.',
+  session_not_editable: 'This event can no longer be edited.',
+  session_not_cancellable: 'This event is already completed and cannot be cancelled.',
   session_has_attendance:
-    'This training already has attendance recorded and can no longer be cancelled. Correct the attendance instead.',
-  rsvp_closed: 'Responses are closed for this training.',
-  session_full: 'This training is full. No spots are left.',
+    'This event already has attendance recorded and can no longer be cancelled. Correct the attendance instead.',
+  rsvp_closed: 'Responses are closed for this event.',
+  session_full: 'This event is full. No spots are left.',
   session_not_confirmed:
-    'Attendance can only be taken for a confirmed training. This one is not confirmed (it is still open or was cancelled).',
-  session_not_ended: 'This training has not ended yet. Attendance can be recorded once it is over.',
+    'Attendance can only be taken for a confirmed event. This one is not confirmed (it is still open or was cancelled).',
+  session_not_ended: 'This event has not ended yet. Attendance can be recorded once it is over.',
   attendee_not_a_member: 'That person is no longer an active member of this community.',
   no_going_rsvp: 'That member did not say they were going. Add them as a walk-in instead.',
   attendee_has_going_rsvp:

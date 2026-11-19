@@ -34,13 +34,13 @@ export default function EditTrainingScreen() {
   if (session && !isEditable(session.status)) {
     body = (
       <EmptyState
-        title="This training can no longer be edited"
+        title="This event can no longer be edited"
         message={
           session.status === 'cancelled'
             ? 'It has been cancelled.'
             : 'It has already taken place.'
         }
-        action={{ label: 'Back to the training', onPress: toDetails }}
+        action={{ label: 'Back to the event', onPress: toDetails }}
         style={{ flex: 1 }}
       />
     );
@@ -48,12 +48,12 @@ export default function EditTrainingScreen() {
     body = (
       <ErrorState
         title="Time zone not supported"
-        message={`This device does not know the training's time zone (${session.timezone}), so its times cannot be edited safely.`}
+        message={`This device does not know the event's time zone (${session.timezone}), so its times cannot be edited safely.`}
         style={{ flex: 1 }}
       />
     );
   } else if (training.isPending || membershipLoading) {
-    body = <LoadingState message="Loading training" style={{ flex: 1 }} />;
+    body = <LoadingState message="Loading event" style={{ flex: 1 }} />;
   } else if (training.isError) {
     body = (
       <ErrorState
@@ -67,9 +67,9 @@ export default function EditTrainingScreen() {
   } else {
     body = (
       <EmptyState
-        title="Training not found"
+        title="Event not found"
         message="It may have been removed, or you no longer have access to it."
-        action={{ label: 'See all trainings', onPress: () => router.replace('/trainings') }}
+        action={{ label: 'See all events', onPress: () => router.replace('/trainings') }}
         style={{ flex: 1 }}
       />
     );

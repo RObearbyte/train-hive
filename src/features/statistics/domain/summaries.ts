@@ -25,14 +25,14 @@ function capped<T>(items: readonly T[]): { shown: readonly T[]; hidden: number }
   return { shown: items.slice(items.length - MAX_SPOKEN_BUCKETS), hidden };
 }
 
-/** "Monthly attendance rate. October 2026: 66.7 percent, 2 of 3 trainings. November 2026: no trainings." */
+/** "Monthly attendance rate. October 2026: 66.7 percent, 2 of 3 events. November 2026: no events." */
 export function monthlySummary(monthly: readonly MonthlyParticipation[]): string {
   if (monthly.length === 0) return 'Monthly attendance rate. No months to show yet.';
   const { shown, hidden } = capped(monthly);
   const parts = shown.map((month) => {
     const label = periodSpoken(month.period, 'month');
     if (month.eligible === 0 || month.attendance_rate === null) {
-      return `${label}: no finalized trainings`;
+      return `${label}: no finalized events`;
     }
     return `${label}: ${spokenPercent(month.attendance_rate)}, ${ofCount(month.attended, month.eligible)}`;
   });
@@ -110,9 +110,9 @@ export function visibleTopSessions(sessions: readonly TopSession[]): TopSession[
   return sessions.filter((session) => session.present > 0);
 }
 
-/** "3 of 4 trainings" for a member row; the dash when they had none. */
+/** "3 of 4 events" for a member row; the dash when they had none. */
 export function memberLine(row: Pick<MemberStatisticsSummaryRow, 'attended' | 'eligible'>): string {
-  return row.eligible > 0 ? ofCount(row.attended, row.eligible) : 'No finalized trainings';
+  return row.eligible > 0 ? ofCount(row.attended, row.eligible) : 'No finalized events';
 }
 
 /** Spoken label of a member row. */

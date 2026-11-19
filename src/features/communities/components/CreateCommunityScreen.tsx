@@ -149,7 +149,7 @@ export function CreateCommunityScreen({ flow }: { flow: AddCommunityFlow }) {
             onChange={field.onChange}
             error={fieldState.error?.message}
             disabled={busy}
-            note="Trainings are shown in this time zone. Pick where your community trains."
+            note="Events are shown in this time zone. Pick where your community trains."
           />
         )}
       />

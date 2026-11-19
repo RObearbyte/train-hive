@@ -44,7 +44,7 @@ export function AttendanceEntryPoint({
         <Banner
           tone="warning"
           title="Needs attendance"
-          message="This training is over. Record who came, then finalize."
+          message="This event is over. Record who came, then finalize."
         />
         <Button label="Record attendance" size="lg" icon="check" onPress={open} fullWidth />
       </View>

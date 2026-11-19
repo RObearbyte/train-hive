@@ -146,7 +146,7 @@ export async function rpcRow<T = Record<string, unknown>>(
 }
 
 /** Tables that hold seeded reference data and must survive `resetData()`. */
-const REFERENCE_TABLES = ['activity_types', 'legal_documents'];
+const REFERENCE_TABLES = ['activity_types', 'event_subtypes', 'legal_documents'];
 
 /**
  * Empties every app table in `public` (except reference data) and `auth.users`, and puts the

@@ -6,6 +6,7 @@ import type { RsvpResponse, TrainingSession } from '@/lib/database.types';
 import { formatDateTimeRange, formatSessionWhen, isValidTimeZone } from '@/lib/datetime';
 import { Card, Divider, Icon, ProgressBar, StatusBadge, Text, statusMeta, useTheme } from '@/ui';
 
+import { courseLine, kindInfo } from '../domain/events';
 import {
   cardAccessibilityLabel,
   isProvisional,
@@ -14,7 +15,8 @@ import {
   statusBadgeLabel,
 } from '../domain/presentation';
 import { deriveDisplayStatus, participationSummary } from '../domain/status';
-import { useActivityLabel } from '../hooks/useTrainings';
+import { useSubtypeLabel } from '../hooks/useTrainings';
+import { KindChip } from './KindChip';
 
 export interface TrainingCardProps {
   session: TrainingSession;
@@ -45,7 +47,7 @@ export function TrainingCard({
   needsAttendance = false,
 }: TrainingCardProps) {
   const { spacing, radii } = useTheme();
-  const activity = useActivityLabel();
+  const subtypeText = useSubtypeLabel();
 
   const zone = isValidTimeZone(session.timezone) ? session.timezone : 'UTC';
   const status = deriveDisplayStatus(session, now);
@@ -53,6 +55,7 @@ export function TrainingCard({
   const when = formatSessionWhen(session.starts_at, zone, now);
   const badgeLabel = statusBadgeLabel(status, summary);
   const lines = participationLines(summary, status);
+  const course = courseLine(session);
   const participation = [lines.count, lines.need, lines.spots]
     .filter((part): part is string => part !== null)
     .join(', ');
@@ -62,9 +65,9 @@ export function TrainingCard({
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityHint="Opens the training details"
+        accessibilityHint="Opens the event details"
         accessibilityLabel={cardAccessibilityLabel({
-          title: session.title,
+          title: `${kindInfo(session.event_kind).label}: ${session.title}`,
           when: formatDateTimeRange(session.starts_at, session.ends_at, zone),
           location: session.location_name,
           participation,
@@ -96,19 +99,28 @@ export function TrainingCard({
               {session.location_name}
             </Text>
           </View>
-          <Text variant="caption" color="textMuted">
-            {activity(session.activity_type)}
-          </Text>
+          <KindChip
+            kind={session.event_kind}
+            subtypeText={subtypeText(session.event_kind, session.event_subtype)}
+          />
+          {course ? (
+            <Text variant="label" color="textMuted">
+              {course}
+            </Text>
+          ) : null}
         </View>
 
         {/* How many */}
         <View style={{ gap: spacing.xs }}>
-          <ProgressBar
-            value={summary.going}
-            target={summary.max ?? Math.max(summary.min, summary.going)}
-            minimum={summary.min}
-            showText={false}
-          />
+          {summary.min !== null || summary.max !== null ? (
+            <ProgressBar
+              value={summary.going}
+              target={summary.max ?? Math.max(summary.min ?? 0, summary.going)}
+              minimum={summary.min ?? undefined}
+              unit={summary.min === null ? 'going' : 'confirmed'}
+              showText={false}
+            />
+          ) : null}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.md }}>
             <Text variant="label">{lines.count}</Text>
             {lines.need ? <Text color="textMuted">{lines.need}</Text> : null}

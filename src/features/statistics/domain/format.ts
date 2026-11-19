@@ -6,7 +6,7 @@
  */
 export const DASH = '—';
 
-/** Below this many eligible trainings a percentage is labelled with its sample size. */
+/** Below this many eligible events a percentage is labelled with its sample size. */
 export const SMALL_SAMPLE_THRESHOLD = 3;
 
 function isFiniteNumber(value: unknown): value is number {
@@ -41,10 +41,10 @@ export function formatCount(value: number | null | undefined): string {
 }
 
 export function trainingNoun(count: number): string {
-  return count === 1 ? 'training' : 'trainings';
+  return count === 1 ? 'event' : 'events';
 }
 
-/** "7 of 9 trainings" ("1 of 1 training"). The dash when either number is unusable. */
+/** "7 of 9 events" ("1 of 1 event"). The dash when either number is unusable. */
 export function ofCount(part: number, total: number, noun?: string): string {
   if (!isFiniteNumber(part) || !isFiniteNumber(total)) return DASH;
   const word = noun ?? trainingNoun(total);
@@ -52,7 +52,7 @@ export function ofCount(part: number, total: number, noun?: string): string {
 }
 
 /**
- * "based on 2 trainings" when the denominator is 1 or 2, else null. With a
+ * "based on 2 events" when the denominator is 1 or 2, else null. With a
  * denominator of 0 there is no percentage at all (it is the dash), so no label.
  */
 export function smallSampleLabel(denominator: number): string | null {

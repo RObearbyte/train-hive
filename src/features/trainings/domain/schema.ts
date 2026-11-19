@@ -1,5 +1,5 @@
 /**
- * Create / edit training form: validation, payload building and prefill.
+ * Create / edit event form (any kind): validation, payload building and prefill.
  *
  * The form holds what the inputs hold: strings. Date and time are wall-clock
  * values in the SESSION's time zone (the community's zone on create), not the
@@ -12,7 +12,12 @@
  */
 import { z } from 'zod';
 
-import type { SessionStatus, TrainingInput, TrainingSession } from '@/lib/database.types';
+import type {
+  EventKind,
+  SessionStatus,
+  TrainingInput,
+  TrainingSession,
+} from '@/lib/database.types';
 import {
   defaultRsvpDeadline,
   isValidDateString,
@@ -22,7 +27,7 @@ import {
   wallTimeToUtc,
 } from '@/lib/datetime';
 
-import { DEFAULT_ACTIVITY_TYPE } from './activity';
+import { EVENT_KINDS, defaultSubtype, isTraining, takesCourse, takesObstacles } from './events';
 
 /** Length in characters (code points), as Postgres `char_length` counts, not UTF-16 units. */
 function charCount(text: string): number {
@@ -35,11 +40,16 @@ export const DESCRIPTION_MAX = 2000;
 export const ADDRESS_MAX = 200;
 export const MAP_URL_MAX = 2048;
 export const MEETING_INSTRUCTIONS_MAX = 1000;
+export const EVENT_NOTES_MAX = 1000;
+export const DISTANCE_KM_MAX = 1000;
+export const ELEVATION_GAIN_MAX = 20000;
+export const OBSTACLE_COUNT_MAX = 500;
 
 export const TRAINING_FORM_FIELDS = [
   'title',
   'description',
-  'activityType',
+  'eventKind',
+  'eventSubtype',
   'date',
   'startTime',
   'endTime',
@@ -53,6 +63,10 @@ export const TRAINING_FORM_FIELDS = [
   'meetingInstructions',
   'minParticipants',
   'maxParticipants',
+  'distanceKm',
+  'elevationGainM',
+  'obstacleCount',
+  'eventNotes',
 ] as const;
 
 export type TrainingFormField = (typeof TRAINING_FORM_FIELDS)[number];
@@ -60,6 +74,8 @@ export type TrainingFormField = (typeof TRAINING_FORM_FIELDS)[number];
 /**
  * Every field is a string, as typed. Optional fields are '' when empty.
  * - `date`, `deadlineDate`: `yyyy-MM-dd`; `startTime`, `endTime`, `deadlineTime`: `HH:mm`.
+ * - `eventKind` is one of the four kinds (immutable once the event exists).
+ * - `distanceKm` accepts a decimal comma; the course fields only count for subtypes that take them.
  * - `endTime` is on the same day as `date`.
  * - `deadlineDate` + `deadlineTime` both empty = default (2 hours before the start).
  */
@@ -69,6 +85,7 @@ export type TrainingFormValues = Record<TrainingFormField, string>;
 export type EditedSession = Pick<
   TrainingSession,
   | 'status'
+  | 'event_kind'
   | 'going_count'
   | 'starts_at'
   | 'ends_at'
@@ -81,11 +98,15 @@ export type TrainingFormContext =
   | { mode: 'create'; timezone: string; now: Date }
   | { mode: 'edit'; timezone: string; now: Date; session: EditedSession };
 
-export function emptyTrainingForm(): TrainingFormValues {
+export function emptyTrainingForm(
+  kind: EventKind = 'training',
+  subtype: string = defaultSubtype(kind),
+): TrainingFormValues {
   return {
     title: '',
     description: '',
-    activityType: DEFAULT_ACTIVITY_TYPE,
+    eventKind: kind,
+    eventSubtype: subtype,
     date: '',
     startTime: '',
     endTime: '',
@@ -99,12 +120,18 @@ export function emptyTrainingForm(): TrainingFormValues {
     meetingInstructions: '',
     minParticipants: '',
     maxParticipants: '',
+    distanceKm: '',
+    elevationGainM: '',
+    obstacleCount: '',
+    eventNotes: '',
   };
 }
 
 const INTEGER_PATTERN = /^\d{1,9}$/;
 // Accepts a decimal comma, which is what many European keyboards type.
 const DECIMAL_PATTERN = /^[+-]?\d+(?:[.,]\d+)?$/;
+// At most 2 decimals, like numeric(6,2) on the server (never rounded silently).
+const DISTANCE_PATTERN = /^\d+(?:[.,]\d{1,2})?$/;
 const HTTP_URL_PATTERN = /^https?:\/\/[^\s/?#]+[^\s]*$/i;
 
 function parseInteger(text: string): number | null {
@@ -187,7 +214,8 @@ function computeInstants(
 const formShape = z.object({
   title: z.string(),
   description: z.string(),
-  activityType: z.string(),
+  eventKind: z.string(),
+  eventSubtype: z.string(),
   date: z.string(),
   startTime: z.string(),
   endTime: z.string(),
@@ -201,7 +229,15 @@ const formShape = z.object({
   meetingInstructions: z.string(),
   minParticipants: z.string(),
   maxParticipants: z.string(),
+  distanceKm: z.string(),
+  elevationGainM: z.string(),
+  obstacleCount: z.string(),
+  eventNotes: z.string(),
 });
+
+function asKind(value: string): EventKind | null {
+  return (EVENT_KINDS as readonly string[]).includes(value) ? (value as EventKind) : null;
+}
 
 /**
  * Zod schema for the form. All rules run in one pass so every invalid field
@@ -213,12 +249,29 @@ export function trainingFormSchema(context: TrainingFormContext) {
   }
   const { timezone, now } = context;
   const stored = context.mode === 'edit' ? context.session : undefined;
-  const isConfirmedEdit = stored?.status === 'confirmed';
   const nowMs = now.getTime();
 
   return formShape.superRefine((values, ctx) => {
     const issue = (field: TrainingFormField, message: string) =>
       ctx.addIssue({ code: 'custom', path: [field], message });
+
+    // --- Kind and subtype ----------------------------------------------------
+    const kind = asKind(values.eventKind);
+    if (kind === null) issue('eventKind', 'Choose what kind of event this is.');
+    else if (stored && stored.event_kind !== kind) {
+      issue('eventKind', 'The kind of an event cannot be changed after it is created.');
+    }
+    const training = kind === null || isTraining(kind);
+    const subtype = values.eventSubtype.trim();
+    if (subtype === '') issue('eventSubtype', 'Choose a type.');
+    // A training whose registration is decided keeps its deadline and limits; a non-training event
+    // only loses its deadline once the (stored) deadline has passed. Display rule; the server decides.
+    const storedDeadlinePassed =
+      stored !== undefined && nowMs >= new Date(stored.rsvp_deadline).getTime();
+    const deadlineFrozen =
+      stored?.status === 'confirmed' && (training || storedDeadlinePassed);
+    const limitsFrozen = stored?.status === 'confirmed' && training;
+    const noun = training ? 'training' : 'event';
 
     // --- Text -------------------------------------------------------------
     const title = values.title.trim();
@@ -226,12 +279,10 @@ export function trainingFormSchema(context: TrainingFormContext) {
     else if (charCount(title) > TITLE_MAX) issue('title', `Keep the title to ${TITLE_MAX} characters.`);
 
     const locationName = values.locationName.trim();
-    if (locationName === '') issue('locationName', 'Enter where the training takes place.');
+    if (locationName === '') issue('locationName', `Enter where the ${noun} takes place.`);
     else if (charCount(locationName) > LOCATION_NAME_MAX) {
       issue('locationName', `Keep the location name to ${LOCATION_NAME_MAX} characters.`);
     }
-
-    if (values.activityType.trim() === '') issue('activityType', 'Choose an activity.');
 
     const mapUrl = values.mapUrl.trim();
     if (mapUrl !== '' && !HTTP_URL_PATTERN.test(mapUrl)) {
@@ -315,17 +366,24 @@ export function trainingFormSchema(context: TrainingFormContext) {
       }
     }
 
-    if (isConfirmedEdit) {
+    if (deadlineFrozen) {
       if (deadlineMs !== null && !sameInstant(rsvpDeadline, stored?.rsvp_deadline ?? null)) {
         issue(
           'deadlineDate',
-          'The RSVP deadline cannot be changed after the training is confirmed.',
+          training
+            ? 'The RSVP deadline cannot be changed after the training is confirmed.'
+            : 'Registration has closed, so the deadline can no longer be changed.',
         );
+      } else if (!training && deadlineMs !== null && startMs !== null && deadlineMs >= startMs) {
+        issue('date', 'The new start must be after the registration deadline.');
       }
     } else if (deadlineMs !== null && startMs !== null) {
       // Strictly before: the server rejects a deadline equal to the start.
       if (deadlineMs >= startMs) {
-        issue('deadlineDate', 'The RSVP deadline must be before the start.');
+        issue(
+          'deadlineDate',
+          `The ${training ? 'RSVP' : 'registration'} deadline must be before the start.`,
+        );
       } else if (
         deadlineMs <= nowMs &&
         !startIsPast &&
@@ -334,37 +392,80 @@ export function trainingFormSchema(context: TrainingFormContext) {
         issue(
           'deadlineDate',
           deadlineIsDefault
-            ? 'The training starts in less than 2 hours. Set an RSVP deadline that is still in the future.'
-            : 'The RSVP deadline must be in the future.',
+            ? `The ${noun} starts in less than 2 hours. Set ${training ? 'an RSVP deadline' : 'a registration deadline'} that is still in the future.`
+            : `The ${training ? 'RSVP' : 'registration'} deadline must be in the future.`,
         );
       }
     }
 
     // --- Participants -------------------------------------------------------
-    const minText = values.minParticipants.trim();
-    const min = parseInteger(minText);
-    if (minText === '') issue('minParticipants', 'Enter the minimum number of participants.');
-    else if (min === null) issue('minParticipants', 'Enter a whole number.');
-    else if (min < 1) issue('minParticipants', 'The minimum must be at least 1.');
-    else if (isConfirmedEdit && min !== stored?.min_participants) {
-      issue('minParticipants', 'The minimum cannot be changed after the training is confirmed.');
+    // Only a training has a minimum (required). Every other kind never sends one.
+    let min: number | null = null;
+    if (training) {
+      const minText = values.minParticipants.trim();
+      min = parseInteger(minText);
+      if (minText === '') issue('minParticipants', 'Enter the minimum number of participants.');
+      else if (min === null) issue('minParticipants', 'Enter a whole number.');
+      else if (min < 1) issue('minParticipants', 'The minimum must be at least 1.');
+      else if (limitsFrozen && min !== stored?.min_participants) {
+        issue('minParticipants', 'The minimum cannot be changed after the training is confirmed.');
+      }
     }
 
     const maxText = values.maxParticipants.trim();
     const max = maxText === '' ? null : parseInteger(maxText);
     if (maxText !== '' && max === null) issue('maxParticipants', 'Enter a whole number.');
-    else if (isConfirmedEdit && max !== (stored?.max_participants ?? null)) {
+    else if (limitsFrozen && max !== (stored?.max_participants ?? null)) {
       issue('maxParticipants', 'The maximum cannot be changed after the training is confirmed.');
     } else if (max !== null) {
       if (min !== null && min >= 1 && max < min) {
         issue('maxParticipants', 'The maximum cannot be lower than the minimum.');
-      } else if (stored && stored.status === 'scheduled' && max < stored.going_count) {
+      } else if (stored && !limitsFrozen && max < stored.going_count) {
         const going = stored.going_count;
         issue(
           'maxParticipants',
           `${going} ${going === 1 ? 'participant is' : 'participants are'} already going, so the maximum cannot be lower than ${going}.`,
         );
+      } else if (max < 1) {
+        issue('maxParticipants', 'The maximum must be at least 1.');
       }
+    }
+
+    // --- Course (running-type subtypes) and notes ----------------------------
+    if (takesCourse(subtype)) {
+      const distanceText = values.distanceKm.trim();
+      if (distanceText !== '') {
+        if (!DISTANCE_PATTERN.test(distanceText)) {
+          issue('distanceKm', 'Enter a distance in km with at most 2 decimals, for example 21.1.');
+        } else {
+          const km = Number(distanceText.replace(',', '.'));
+          if (km <= 0) issue('distanceKm', 'The distance must be more than 0 km.');
+          else if (km > DISTANCE_KM_MAX) {
+            issue('distanceKm', `The distance cannot be more than ${DISTANCE_KM_MAX} km.`);
+          }
+        }
+      }
+      const elevationText = values.elevationGainM.trim();
+      if (elevationText !== '') {
+        const elevation = parseInteger(elevationText);
+        if (elevation === null) issue('elevationGainM', 'Enter whole metres, for example 450.');
+        else if (elevation > ELEVATION_GAIN_MAX) {
+          issue('elevationGainM', `D+ cannot be more than ${ELEVATION_GAIN_MAX} m.`);
+        }
+      }
+    }
+    if (takesObstacles(subtype)) {
+      const obstacleText = values.obstacleCount.trim();
+      if (obstacleText !== '') {
+        const obstacles = parseInteger(obstacleText);
+        if (obstacles === null) issue('obstacleCount', 'Enter a whole number.');
+        else if (obstacles > OBSTACLE_COUNT_MAX) {
+          issue('obstacleCount', `There cannot be more than ${OBSTACLE_COUNT_MAX} obstacles.`);
+        }
+      }
+    }
+    if (charCount(values.eventNotes.trim()) > EVENT_NOTES_MAX) {
+      issue('eventNotes', `Keep the notes to ${EVENT_NOTES_MAX} characters.`);
     }
 
     // --- Coordinates --------------------------------------------------------
@@ -390,8 +491,12 @@ export function trainingFormSchema(context: TrainingFormContext) {
  * untouched timestamps are sent back exactly as stored.
  *
  * Every key is sent (update is a full replace); empty optional fields are null
- * and an empty deadline is sent as start − 2 hours, the same default the
- * server applies. Throws RangeError when the values were not validated.
+ * and an empty deadline is sent as start - 2 hours, the same default the
+ * server applies. `event_kind` and `event_subtype` are always sent
+ * (`activity_type` is left out: the server derives it). Only a training sends a
+ * minimum; every other kind sends null. Course fields the subtype does not take
+ * are sent as null, which also clears a stored value when the subtype changes.
+ * Throws RangeError when the values were not validated.
  */
 export function toTrainingInput(
   values: TrainingFormValues,
@@ -400,8 +505,11 @@ export function toTrainingInput(
 ): TrainingInput {
   if (!isValidTimeZone(timezone)) throw new RangeError(`Invalid time zone: ${String(timezone)}`);
 
+  const kind = asKind(values.eventKind);
+  const subtype = values.eventSubtype.trim();
   const { startsAt, endsAt, rsvpDeadline } = computeInstants(values, timezone, stored);
-  const min = parseInteger(values.minParticipants);
+  const training = kind !== null && isTraining(kind);
+  const min = training ? parseInteger(values.minParticipants) : null;
   const maxText = values.maxParticipants.trim();
   const max = maxText === '' ? null : parseInteger(maxText);
   const latText = values.latitude.trim();
@@ -409,22 +517,34 @@ export function toTrainingInput(
   const latitude = latText === '' ? null : parseDecimal(latText);
   const longitude = lngText === '' ? null : parseDecimal(lngText);
 
+  const distanceText = takesCourse(subtype) ? values.distanceKm.trim() : '';
+  const distance = distanceText === '' ? null : parseDecimal(distanceText);
+  const elevationText = takesCourse(subtype) ? values.elevationGainM.trim() : '';
+  const elevation = elevationText === '' ? null : parseInteger(elevationText);
+  const obstacleText = takesObstacles(subtype) ? values.obstacleCount.trim() : '';
+  const obstacles = obstacleText === '' ? null : parseInteger(obstacleText);
+
   if (
+    kind === null ||
+    subtype === '' ||
     startsAt === null ||
     rsvpDeadline === null ||
-    min === null ||
+    (training && min === null) ||
     (values.endTime.trim() !== '' && endsAt === null) ||
     (maxText !== '' && max === null) ||
     (latText !== '' && latitude === null) ||
-    (lngText !== '' && longitude === null)
+    (lngText !== '' && longitude === null) ||
+    (distanceText !== '' && distance === null) ||
+    (elevationText !== '' && elevation === null) ||
+    (obstacleText !== '' && obstacles === null)
   ) {
     throw new RangeError('toTrainingInput needs validated form values.');
   }
 
-  return {
+  const common = {
     title: values.title.trim(),
     description: optionalText(values.description),
-    activity_type: values.activityType.trim() || DEFAULT_ACTIVITY_TYPE,
+    event_subtype: subtype,
     starts_at: startsAt,
     ends_at: endsAt,
     rsvp_deadline: rsvpDeadline,
@@ -435,9 +555,17 @@ export function toTrainingInput(
     longitude,
     map_url: optionalText(values.mapUrl),
     meeting_instructions: optionalText(values.meetingInstructions),
-    min_participants: min,
     max_participants: max,
+    distance_km: distance,
+    elevation_gain_m: elevation,
+    obstacle_count: obstacles,
+    event_notes: optionalText(values.eventNotes),
   };
+
+  if (kind === 'training') {
+    return { ...common, event_kind: 'training', min_participants: min as number };
+  }
+  return { ...common, event_kind: kind, min_participants: null };
 }
 
 /** Prefills the edit form, with wall-clock values in the session's own zone. */
@@ -446,7 +574,8 @@ export function fromSession(
     TrainingSession,
     | 'title'
     | 'description'
-    | 'activity_type'
+    | 'event_kind'
+    | 'event_subtype'
     | 'starts_at'
     | 'ends_at'
     | 'rsvp_deadline'
@@ -459,6 +588,10 @@ export function fromSession(
     | 'meeting_instructions'
     | 'min_participants'
     | 'max_participants'
+    | 'distance_km'
+    | 'elevation_gain_m'
+    | 'obstacle_count'
+    | 'event_notes'
   >,
 ): TrainingFormValues {
   const start = utcToWallTime(session.starts_at, session.timezone);
@@ -470,7 +603,8 @@ export function fromSession(
   return {
     title: session.title,
     description: session.description ?? '',
-    activityType: session.activity_type,
+    eventKind: session.event_kind,
+    eventSubtype: session.event_subtype,
     date: start.date,
     startTime: start.time,
     endTime: end?.time ?? '',
@@ -482,8 +616,12 @@ export function fromSession(
     longitude: session.longitude === null ? '' : String(session.longitude),
     mapUrl: session.map_url ?? '',
     meetingInstructions: session.meeting_instructions ?? '',
-    minParticipants: String(session.min_participants),
+    minParticipants: session.min_participants === null ? '' : String(session.min_participants),
     maxParticipants: session.max_participants === null ? '' : String(session.max_participants),
+    distanceKm: session.distance_km === null ? '' : String(session.distance_km),
+    elevationGainM: session.elevation_gain_m === null ? '' : String(session.elevation_gain_m),
+    obstacleCount: session.obstacle_count === null ? '' : String(session.obstacle_count),
+    eventNotes: session.event_notes ?? '',
   };
 }
 
@@ -497,19 +635,32 @@ const FROZEN_WHEN_CONFIRMED: ReadonlySet<TrainingFormField> = new Set([
 const CONFIRMED_FIELDS: ReadonlySet<TrainingFormField> = new Set(
   TRAINING_FORM_FIELDS.filter((field) => !FROZEN_WHEN_CONFIRMED.has(field)),
 );
+// Non-training event after its registration deadline: only the deadline is frozen, the maximum stays editable.
+const AFTER_DEADLINE_FIELDS: ReadonlySet<TrainingFormField> = new Set(
+  TRAINING_FORM_FIELDS.filter((field) => field !== 'deadlineDate' && field !== 'deadlineTime'),
+);
 const NO_FIELDS: ReadonlySet<TrainingFormField> = new Set();
 
 /**
- * Form fields an organizer may change, per the contract's update rules:
- * scheduled = everything; confirmed = everything except the deadline and the
- * participant limits; cancelled / completed = nothing (`session_not_editable`).
+ * Form fields an organizer may change, per the contract's update rules.
+ * - training: scheduled = everything; confirmed = everything except the deadline and the
+ *   participant limits.
+ * - other kinds (always confirmed): everything while registration is open; once the deadline has
+ *   passed (`deadlinePassed`) only the deadline is locked (the maximum stays editable).
+ * - cancelled / completed: nothing (`session_not_editable`).
+ * The kind itself is never editable: the form shows it, locked.
  */
-export function editableFields(status: SessionStatus): ReadonlySet<TrainingFormField> {
+export function editableFields(
+  status: SessionStatus,
+  kind: EventKind = 'training',
+  deadlinePassed = false,
+): ReadonlySet<TrainingFormField> {
   switch (status) {
     case 'scheduled':
       return ALL_FIELDS;
     case 'confirmed':
-      return CONFIRMED_FIELDS;
+      if (isTraining(kind)) return CONFIRMED_FIELDS;
+      return deadlinePassed ? AFTER_DEADLINE_FIELDS : ALL_FIELDS;
     case 'cancelled':
     case 'completed':
       return NO_FIELDS;

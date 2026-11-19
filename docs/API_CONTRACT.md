@@ -710,3 +710,96 @@ The export README now says "rate-limit records kept for **about a day**" (was "a
 ## Erasure scrubs audit reasons (Q7-6)
 
 `private.erase_user` (so `delete_my_account`) sets `attendance_audit_log.reason = null` on every audit row **about** the erased user (which also loses `user_id`) and on every row the erased user **wrote** (which loses `changed_by`). Statuses, actions and times stay. Scope: a reason on another member's row that mentions the erased person by name is not changed (no text matching).
+
+---
+
+# Events (P1, append-only)
+
+Migration `20261126000100_events.sql`. Plan: `docs/EVENTS_PLAN.md` ("Confirmed decisions", "1. Events"). Tests: `supabase/tests/events.test.ts`, `events-lifecycle.test.ts`, `events-concurrency.test.ts`, plus the event_subtypes privileges in `qa-privileges.test.ts`.
+
+**Vocabulary.** A training becomes one *kind* of **event**. "Event" is UI vocabulary only: the table stays `training_sessions`, the RPCs keep their names and signatures (`create_training`, `update_training`, `cancel_training`, `set_rsvp`, `finalize_due_sessions`, attendance and statistics RPCs), the notification kinds keep their names (`training_*`, no new enum value) and deep links stay `/trainings/<id>`. No public function was added or removed; grants unchanged.
+
+## Schema
+
+- Enum `event_kind`: `training`, `race`, `sports_event`, `social`.
+- Table `event_subtypes(kind event_kind, key text, label text, sort_order int, activity_type text → activity_types.key)`, pk `(kind, key)`. RLS on; **SELECT for `authenticated` only** (anon and service_role nothing); no RPC writes it. `activity_type` is the legacy activity type written for events of that subtype (an addition to the planned columns, so the compatibility mapping is data, not code).
+
+| kind | subtypes (key → legacy `activity_type`) |
+|---|---|
+| `training` | `running`, `trail_running`, `strength`, `functional_fitness`, `ocr`, `other` (identity; every `activity_types` key is a training subtype) |
+| `race` | `trail_running` → trail_running, `asphalt_running` → running, `ocr` → ocr |
+| `sports_event` | `crossfit_event` → functional_fitness, `public_training` → other, `other` → other |
+| `social` | `social_gathering` → other, `other` → other |
+
+- `training_sessions` new columns: `event_kind event_kind not null default 'training'` (**immutable**), `event_subtype text not null` (composite FK `(event_kind, event_subtype)` → `event_subtypes`), `distance_km numeric(6,2)?` (> 0, ≤ 1000), `elevation_gain_m int?` (0..20000, "D+"), `obstacle_count int?` (0..500), `event_notes text?` (1..1000). `min_participants` is now **nullable**.
+- Table checks: `min_participants` set iff `event_kind = 'training'`; a non-training event is never `scheduled`; `max_participants >= coalesce(min_participants, 1)`; ranges above; `distance_km` / `elevation_gain_m` only for subtypes `running`, `trail_running`, `asphalt_running`, `ocr`; `obstacle_count` only for `ocr`. Existing checks (`going_count`, deadline, coordinates, cancel reason, completion) unchanged.
+- **`activity_type` compatibility (decision):** kept as a column and always **derived** from `(event_kind, event_subtype)` through `event_subtypes.activity_type`, by a BEFORE trigger on every write path. For trainings it equals the subtype. Every existing reader (history payload `activity_type`, app lists, exports) keeps working. A legacy-shaped insert without `event_subtype` gets the training subtype from `activity_type`; a write of `activity_type` alone on a training moves the subtype with it; a write that changes `event_kind` raises `validation_failed:event_kind`.
+- Backfill: every existing row became `event_kind = 'training'`, `event_subtype = activity_type`.
+
+## `create_training` / `update_training` input
+
+Final `p_input` keys: `title`, `description`, `event_kind`, `event_subtype`, `activity_type` (legacy), `starts_at`, `ends_at`, `rsvp_deadline`, `timezone`, `location_name`, `address`, `latitude`, `longitude`, `map_url`, `meeting_instructions`, `min_participants`, `max_participants`, `distance_km`, `elevation_gain_m`, `obstacle_count`, `event_notes`. Unknown keys are still ignored.
+
+- `event_kind`: absent/null → `training` on create, the stored kind on update. A different kind on update → `validation_failed:event_kind`. Not a known kind → `validation_failed:event_kind`.
+- `event_subtype`: must belong to the kind (`validation_failed:event_subtype`). Absent/null:
+  - training: taken from `activity_type` (default `other`); unknown → `validation_failed:activity_type` (the Milestone 1 behaviour). A training that sends both must send the same value, else `validation_failed:activity_type`.
+  - other kinds: create → `sports_event` `other`, `social` `social_gathering`; a race has no default → `validation_failed:event_subtype`. Update → the stored subtype.
+  - other kinds ignore a sent `activity_type` (derived).
+- `min_participants`: training ≥ 1 (required); every other kind must be null/absent → `validation_failed:min_participants`.
+- `max_participants`: ≥ `coalesce(min_participants, 1)` → else `validation_failed:max_participants`.
+- `distance_km`: JSON number, > 0, ≤ 1000, at most 2 decimals (never rounded silently); `elevation_gain_m`: integer 0..20000; `obstacle_count`: integer 0..500. On a subtype that does not take them → `validation_failed:<field>`.
+- `event_notes`: string ≤ 1000 after cleaning, any kind. The announcement text hygiene (C3/Q4-5): C0/C1 controls and bidi embedding/override/isolate controls stripped, CR LF / CR / U+2028 / U+2029 become LF, trimmed; whitespace-only = null; invisible-only (zero-width, bidi only, ...) → `validation_failed:event_notes`.
+- **Absent vs null for the P1 keys on update:** `distance_km`, `elevation_gain_m`, `obstacle_count`, `event_notes` **absent → keep the stored value**, null → clear. So an app build from before P1 (which sends the Milestone 1 form) can edit a race without wiping its fields. The Milestone 1 keys keep their full-replace meaning. Changing to a subtype that does not take a stored field requires sending it as null.
+- **Backward compatibility:** the Milestone 1 payload (no kind keys) creates/updates a training exactly as before, subtype = `activity_type`.
+- Order of validation (first failure wins): title, description, event_kind, event_subtype / activity_type, starts_at, ends_at, rsvp_deadline (format), timezone, location fields, map_url, meeting_instructions, min_participants, max_participants, distance_km, elevation_gain_m, obstacle_count (ranges, then subtype rules in that order), event_notes; then the time rules of create / update.
+
+## Rules per kind
+
+| | `training` | `race`, `sports_event`, `social` |
+|---|---|---|
+| Minimum | required (≥ 1) | none (null) |
+| Status at creation | `scheduled` | **`confirmed`** (`decided_at` null) |
+| Decided by `finalize_due_sessions` | yes, unchanged | **never** (the finalizer only selects trainings with a minimum) |
+| `set_rsvp` open while | `scheduled` and before the deadline (a training confirmed by the finalizer keeps answering `rsvp_closed`, as before) | `confirmed` and before the deadline |
+| Capacity (`session_full`) | as before | same rule |
+| `update_training` while registration is open (before the deadline) | as before (start future, deadline future and < start, max ≥ going) | **same as an open training**: start (future), deadline (future, < start) and max (≥ `going_count`) editable |
+| `update_training` after the deadline | as before: deadline, min, max frozen | deadline frozen (`validation_failed:rsvp_deadline`); **max stays editable** (≥ `going_count`); start may move to the future, after the deadline |
+| Attendance time freeze (ended or has records) | unchanged | same rule |
+| Kind-specific fields, subtype (within the kind), descriptive fields | editable until cancelled / completed | same |
+| `cancel_training` | unchanged | unchanged (organizer; `session_has_attendance`, `session_not_cancellable` as before) |
+| Attendance | confirmed and ended, as before | same |
+| Reminders 24h / 2h | 24h when `scheduled` or `confirmed`, 2h when `confirmed` (unchanged) | both (always `confirmed`) |
+
+Decision on "the deadline may be moved while in the future": the deadline of a non-training event is editable while the **current** deadline has not passed (the new one must be in the future and before the start). Once it has passed, registration cannot be reopened by moving it.
+
+Removing a member (`remove_member`, `leave_community`, membership deletion) now also releases their `going` RSVP on a non-training event whose registration is open (confirmed, before the deadline), like on a scheduled training; after the deadline the count stands.
+
+## Notifications (texts only; recipients, dedupe keys, deep links unchanged)
+
+| Kind | training | race | sports_event | social |
+|---|---|---|---|---|
+| `training_created` | New training: X | New race: X | New sports event: X | New social event: X |
+| `training_updated` (material change) | Training updated: X | Race updated: X | Sports event updated: X | Social event updated: X |
+| `training_cancelled` | Training cancelled: X | Race cancelled: X | Sports event cancelled: X | Social event cancelled: X |
+| `training_confirmed` | Training confirmed: X | none | none | none |
+| `training_reminder` | Tomorrow: X / Starting soon: X | same | same | same |
+
+- `training_confirmed` only comes from the finalizer deciding a training. An event created already `confirmed` fires only the AFTER INSERT trigger (`training_created`); the UPDATE trigger additionally checks `event_kind = 'training'` before sending a confirmation.
+- `event_subtype`, `distance_km`, `elevation_gain_m`, `obstacle_count`, `event_notes`, `max_participants` changes are silent (like description and limits).
+- The "not enough participants" body only occurs for trainings.
+
+## Statistics
+
+The session set S is unchanged: completed (attendance finalized), non-cancelled sessions of **every kind** count exactly like trainings in the personal and community statistics. `cancelled_insufficient_participation` can only concern trainings; a cancelled event of another kind counts in `cancelled_by_organizer`. Additive fields: history items (`get_my_attendance_history`, `get_member_attendance_history`) gain `event_kind` and `event_subtype`; `top_sessions` items gain `event_kind` and carry `min_participants: null` for non-training events. No field was renamed.
+
+## Error codes
+
+New: `validation_failed:event_kind`, `validation_failed:event_subtype`, `validation_failed:distance_km`, `validation_failed:elevation_gain_m`, `validation_failed:obstacle_count`, `validation_failed:event_notes`. Changed meaning: `validation_failed:min_participants` is also raised for a minimum on a non-training event. Everything else as before.
+
+## TypeScript (`src/lib/database.types.ts`)
+
+Enum `event_kind` (`EventKind`), table `event_subtypes` (`EventSubtype`), `training_sessions` gains the six columns and `min_participants: number | null` (`EventSession` = `TrainingSession`). `TrainingInput` is now `TrainingEventInput | OtherEventInput` (alias `EventInput`); `AttendanceHistoryItem` gains `event_kind`, `event_subtype`; `TopSession` gains `event_kind` and `min_participants: number | null`.
+
+## Hosted deployment
+
+`npx supabase@latest db push --remote` after the app build that understands non-training events and a nullable `min_participants` is installed (an older app keeps creating and editing trainings, but would show races as trainings without a minimum).

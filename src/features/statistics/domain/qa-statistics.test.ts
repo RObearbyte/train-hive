@@ -17,7 +17,7 @@ describe('copy: Not recorded and the rate (Q5-1)', () => {
     expect(NOT_RECORDED_NOTE).toMatch(/not counted as an absence/);
     expect(NOT_RECORDED_NOTE).toMatch(/included when the rate is calculated/);
     expect(MEMBER_LIST_NOTE).toMatch(/included in that total/);
-    expect(RATE_NOTE).toMatch(/all finalized trainings/i);
+    expect(RATE_NOTE).toMatch(/all finalized events/i);
   });
 });
 
@@ -41,7 +41,7 @@ describe('chart axis', () => {
     expect(formatTickValue(Number.NaN)).toBe(DASH);
   });
 
-  it('RSVP sample label counts RSVPs, not trainings', () => {
+  it('RSVP sample label counts RSVPs, not events', () => {
     expect([0, 1, 2, 3, Number.NaN].map((n) => smallRsvpSampleLabel(n))).toEqual([null, 'based on 1 RSVP', 'based on 2 RSVPs', null, null]);
   });
 
@@ -108,7 +108,7 @@ describe('spoken summaries', () => {
 
   it('months with nothing finalized are spoken as such, rates keep their counts', () => {
     const text = monthlySummary([month('2026-10', 3, 2, 66.7), month('2026-11', 0, 0, null)]);
-    expect(text).toBe('Monthly attendance rate. October 2026: 66.7 percent, 2 of 3 trainings. November 2026: no finalized trainings.');
+    expect(text).toBe('Monthly attendance rate. October 2026: 66.7 percent, 2 of 3 events. November 2026: no finalized events.');
     expect(monthlySummary([])).toMatch(/No months/);
   });
 
@@ -131,21 +131,21 @@ describe('spoken summaries', () => {
 
   it('member rows: no rate yet when there is none, "not recorded" is named, never "absent"', () => {
     const row = { user_id: 'u', display_name: 'Ana', role: 'member' as const, joined_at: '', eligible: 0, attended: 0, absent: 0, not_recorded: 0, attendance_rate: null, confirmed_rsvps: 0, missed: 0, rsvp_going_present: 0, rsvp_going_recorded: 0, rsvp_reliability: null, walk_ins: 0 };
-    expect(memberRowLabel(row)).toBe('Ana, No finalized trainings, no rate yet');
+    expect(memberRowLabel(row)).toBe('Ana, No finalized events, no rate yet');
     const busy = memberRowLabel({ ...row, eligible: 4, attended: 2, not_recorded: 2, attendance_rate: 50 });
-    expect(busy).toBe('Ana, 2 of 4 trainings, 50 percent, 2 not recorded');
+    expect(busy).toBe('Ana, 2 of 4 events, 50 percent, 2 not recorded');
     expect(busy).not.toMatch(/absent|miss/i);
   });
 });
 
 describe('formatting', () => {
   it('small samples: labelled for 1 and 2, not for 0 or 3 and up, singular for 1', () => {
-    expect([0, 1, 2, 3, 10, Number.NaN, -1].map(smallSampleLabel)).toEqual([null, 'based on 1 training', 'based on 2 trainings', null, null, null, null]);
+    expect([0, 1, 2, 3, 10, Number.NaN, -1].map(smallSampleLabel)).toEqual([null, 'based on 1 event', 'based on 2 events', null, null, null, null]);
   });
 
   it('counts read naturally and never fabricate', () => {
-    expect(ofCount(1, 1)).toBe('1 of 1 training');
-    expect(ofCount(0, 0)).toBe('0 of 0 trainings');
+    expect(ofCount(1, 1)).toBe('1 of 1 event');
+    expect(ofCount(0, 0)).toBe('0 of 0 events');
     expect(ofCount(Number.NaN, 3)).toBe(DASH);
     expect(sessionsText(1)).toBe('1 session');
     expect(sessionsText(Number.NaN)).toBe('0 sessions');
@@ -163,7 +163,7 @@ describe('formatting', () => {
     expect(formatDecimal(null)).toBe(DASH);
     expect(trimDecimal(-0)).toBe('0');
     expect(trimDecimal(0.04)).toBe('0');
-    expect(EMPTY_STATS).toMatch(/No finalized trainings yet/);
+    expect(EMPTY_STATS).toMatch(/No finalized events yet/);
   });
 });
 

@@ -72,7 +72,7 @@ export function actionConfirmation(action: MemberAction, name: string, community
     case 'make_organizer':
       return {
         title: `Make ${name} an organizer?`,
-        message: `${name} will be able to create and edit trainings and announcements, record attendance, manage invitation codes and change members' roles in ${communityName}. You can change this back at any time.`,
+        message: `${name} will be able to create and edit events and announcements, record attendance, manage invitation codes and change members' roles in ${communityName}. You can change this back at any time.`,
         confirmLabel: 'Make organizer',
         cancelLabel: 'Cancel',
         destructive: false,
@@ -80,7 +80,7 @@ export function actionConfirmation(action: MemberAction, name: string, community
     case 'make_member':
       return {
         title: `Make ${name} a regular member?`,
-        message: `${name} will no longer be able to organize in ${communityName}: no editing trainings or announcements, attendance, invitation codes or roles.`,
+        message: `${name} will no longer be able to organize in ${communityName}: no editing events or announcements, attendance, invitation codes or roles.`,
         confirmLabel: 'Make member',
         cancelLabel: 'Cancel',
         destructive: false,
@@ -88,7 +88,7 @@ export function actionConfirmation(action: MemberAction, name: string, community
     case 'remove':
       return {
         title: `Remove ${name} from ${communityName}?`,
-        message: `${name} loses access to ${communityName} and cannot rejoin with an invitation code. Their answers on trainings that are still open are released. Their attendance history stays in the community's records.`,
+        message: `${name} loses access to ${communityName} and cannot rejoin with an invitation code. Their answers on events that are still open are released. Their attendance history stays in the community's records.`,
         confirmLabel: 'Remove',
         cancelLabel: 'Keep member',
         destructive: true,
@@ -105,7 +105,7 @@ export function memberActionErrorMessage(error: unknown): string {
 export const LEAVE_TITLE = (communityName: string) => `Leave ${communityName}?`;
 
 export const LEAVE_MESSAGE =
-  'You lose access to this community and cannot rejoin with an invitation code: you would need an organizer to invite you again. Your answers on trainings that are still open are released. Your attendance history stays in the community’s records.';
+  'You lose access to this community and cannot rejoin with an invitation code: you would need an organizer to invite you again. Your answers on events that are still open are released. Your attendance history stays in the community’s records.';
 
 /** Friendly text for a failed `leave_community`; the last organizer is pointed to the Members screen. */
 export function leaveErrorMessage(error: unknown): string {

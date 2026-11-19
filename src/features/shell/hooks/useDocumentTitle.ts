@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 import { titleForPath } from '../domain/pageTitle';
 
-/** Web only: keeps the browser tab title in step with the current route ("Trainings · TrainHive"). */
+/** Web only: keeps the browser tab title in step with the current route ("Events · TrainHive"). */
 export function useDocumentTitle(): void {
   const pathname = usePathname();
   useEffect(() => {

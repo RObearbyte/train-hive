@@ -1,5 +1,5 @@
 /**
- * Wording for training cards and details. Pure, so every status has tested
+ * Wording for event cards and details. Pure, so every status has tested
  * text and the provisional / final distinction cannot drift between screens.
  */
 import type { RsvpResponse } from '@/lib/database.types';
@@ -34,12 +34,16 @@ export function statusExplanation(
       return 'Responses are closed. The final decision is being made now.';
     case 'confirmed':
       return 'Final: this training is happening.';
+    case 'registration_open':
+      return `Registration is open until ${deadlineText}. This event is happening.`;
+    case 'registration_closed':
+      return 'Registration is closed. This event is happening.';
     case 'cancelled_insufficient':
       return 'Cancelled: too few people had signed up by the deadline.';
     case 'cancelled_organizer':
       return 'Cancelled by the organizer.';
     case 'completed':
-      return 'This training has taken place.';
+      return 'This event has taken place.';
   }
 }
 
@@ -95,7 +99,7 @@ export function groupParticipants<T extends ParticipantLike>(
 }
 
 export type ParticipationLines = {
-  /** "8 / 10 confirmed" below the minimum, "11 confirmed (minimum 6)" once reached. */
+  /** "12 going" without a minimum; "8 / 10 confirmed" below the minimum, "11 confirmed (minimum 6)" once reached. */
   count: string;
   /** "2 more participants needed", only while that can still change the outcome. */
   need: string | null;
@@ -112,6 +116,14 @@ export function participationLines(
   summary: ParticipationSummary,
   status: TrainingDisplayStatus,
 ): ParticipationLines {
+  // No minimum (every kind but training): just who is going, and free places while registration is open.
+  if (summary.min === null) {
+    return {
+      count: summary.text,
+      need: null,
+      spots: status === 'registration_open' ? summary.spotsText : null,
+    };
+  }
   const open = status === 'awaiting_minimum' || status === 'minimum_reached';
   return {
     count:

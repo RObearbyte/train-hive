@@ -6,9 +6,9 @@ export type StatCardProps = {
   label: string;
   /** The headline number, already formatted (never raw null / NaN). */
   value: string;
-  /** One line under the value, e.g. "7 of 9 trainings". */
+  /** One line under the value, e.g. "7 of 9 events". */
   detail?: string | null;
-  /** A second, quieter line, e.g. "based on 2 trainings". */
+  /** A second, quieter line, e.g. "based on 2 events". */
   note?: string | null;
   /** Explanation that reads as part of the card for screen readers. */
   help?: string | null;

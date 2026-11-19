@@ -54,10 +54,10 @@ describe('trimDecimal / formatDecimal / formatCount', () => {
 });
 
 describe('ofCount', () => {
-  it('words "7 of 9 trainings" with the right singular', () => {
-    expect(ofCount(7, 9)).toBe('7 of 9 trainings');
-    expect(ofCount(1, 1)).toBe('1 of 1 training');
-    expect(ofCount(0, 0)).toBe('0 of 0 trainings');
+  it('words "7 of 9 events" with the right singular', () => {
+    expect(ofCount(7, 9)).toBe('7 of 9 events');
+    expect(ofCount(1, 1)).toBe('1 of 1 event');
+    expect(ofCount(0, 0)).toBe('0 of 0 events');
     expect(ofCount(2, 4, 'going RSVPs')).toBe('2 of 4 going RSVPs');
   });
 
@@ -69,8 +69,8 @@ describe('ofCount', () => {
 
 describe('smallSampleLabel', () => {
   it('labels a denominator of 1 or 2 only', () => {
-    expect(smallSampleLabel(1)).toBe('based on 1 training');
-    expect(smallSampleLabel(2)).toBe('based on 2 trainings');
+    expect(smallSampleLabel(1)).toBe('based on 1 event');
+    expect(smallSampleLabel(2)).toBe('based on 2 events');
   });
 
   it('has no label at 0 (no percentage exists) or from 3 on', () => {

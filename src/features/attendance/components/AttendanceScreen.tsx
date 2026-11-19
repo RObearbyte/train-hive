@@ -56,32 +56,32 @@ function unavailableCopy(
       return {
         title: 'Attendance is not open',
         message:
-          'This training is not confirmed, so there is nothing to record yet. Attendance opens after a confirmed training has ended.',
+          'This event is not confirmed, so there is nothing to record yet. Attendance opens after a confirmed event has ended.',
       };
     case 'cancelled':
       return {
-        title: 'This training was cancelled',
-        message: 'A cancelled training never takes attendance and does not count in anyone’s history.',
+        title: 'This event was cancelled',
+        message: 'A cancelled event never takes attendance and does not count in anyone’s history.',
       };
     case 'not_ended':
       if (mode.hint === 'checking') {
         return {
           title: 'Checking with the server',
-          message: 'The training has just ended. Refreshing the attendance list.',
+          message: 'The event has just ended. Refreshing the attendance list.',
         };
       }
       return mode.hint === 'server_behind'
         ? {
             title: 'Waiting for the server',
             message:
-              'The server has not yet reached this training’s end time. Tap Refresh to check again.',
+              'The server has not yet reached this event’s end time. Tap Refresh to check again.',
             refresh: true,
           }
         : {
-            title: 'This training has not ended yet',
+            title: 'This event has not ended yet',
             message: session
               ? `Attendance opens once it is over (${formatDateTime(new Date(sessionEndInstant(session)), zone)}).`
-              : 'Attendance opens once the training is over.',
+              : 'Attendance opens once the event is over.',
           };
   }
 }
@@ -239,7 +239,7 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
           action={
             copy.refresh
               ? { label: 'Refresh', onPress: refetch }
-              : { label: 'Back to the training', onPress: goBack }
+              : { label: 'Back to the event', onPress: goBack }
           }
           style={{ flex: 1 }}
         />
@@ -374,7 +374,7 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
         <Text variant="caption" color="textMuted" align="center">
           {busy
             ? 'Saving your marks. Finalize when they are done.'
-            : 'The training becomes Completed. You can still correct attendance afterwards.'}
+            : 'The event becomes Completed. You can still correct attendance afterwards.'}
         </Text>
       </View>
     ) : null;
@@ -429,7 +429,7 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
       <ConfirmDialog
         visible={finalizeOpen}
         title="Finalize attendance?"
-        message={`The training becomes Completed and shows in members' attendance history. ${
+        message={`The event becomes Completed and shows in members' attendance history. ${
           counts.unrecorded === 0
             ? 'Everyone has a mark.'
             : `${counts.unrecorded} ${counts.unrecorded === 1 ? 'person stays' : 'people stay'} Not recorded and ${counts.unrecorded === 1 ? 'is' : 'are'} NOT counted as absent.`

@@ -3,6 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import type { AttendanceHistoryItem, AttendanceHistoryPage, AttendanceStatus } from '@/lib/database.types';
 import { formatDateTime, isValidTimeZone } from '@/lib/datetime';
+import { kindLabel } from '@/features/trainings/domain/events';
 import { toAppError, userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 import {
@@ -18,6 +19,8 @@ import {
   type ColorToken,
   type IconName,
 } from '@/ui';
+
+import { KindChip } from '@/features/trainings/components/KindChip';
 
 import { HISTORY_EMPTY } from '../domain/copy';
 import { outcomeLabel, rsvpLabel } from '../domain/summaries';
@@ -68,7 +71,7 @@ function HistoryRow({ item }: { item: AttendanceHistoryItem }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${item.title}, ${detail}, ${outcomeLabel(item.outcome)}`}
+      accessibilityLabel={`${kindLabel(item.event_kind)}: ${item.title}, ${detail}, ${outcomeLabel(item.outcome)}`}
       onPress={() => router.push(`/trainings/${item.session_id}`)}
       style={({ pressed }) => ({
         minHeight: minTouchTarget + 12,
@@ -84,6 +87,7 @@ function HistoryRow({ item }: { item: AttendanceHistoryItem }) {
         <Text variant="caption" color="textMuted">
           {detail}
         </Text>
+        <KindChip kind={item.event_kind} />
       </View>
       <OutcomeChip outcome={item.outcome} />
     </Pressable>
@@ -91,7 +95,7 @@ function HistoryRow({ item }: { item: AttendanceHistoryItem }) {
 }
 
 /**
- * "History": finalized trainings in the window, newest first, loaded page by page.
+ * "History": finalized events in the window, newest first, loaded page by page.
  * The caller supplies the query (mine, or an organizer's view of one member).
  */
 export function HistorySection({
@@ -148,7 +152,7 @@ export function HistorySection({
         {query.isFetchNextPageError ? (
           <Banner
             tone="warning"
-            message={`More trainings could not be loaded. ${userMessage(toAppError(query.error).code)}`}
+            message={`More events could not be loaded. ${userMessage(toAppError(query.error).code)}`}
           />
         ) : null}
         {query.hasNextPage ? (

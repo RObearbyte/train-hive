@@ -114,7 +114,7 @@ export function StatisticsScreen() {
         <WindowFilter />
         <Text variant="caption" color="textMuted">
           {view === 'me' ? 'Your participation' : 'Community overview'} for {windowPhrase(window)}. Only
-          finalized trainings count.
+          finalized events count.
         </Text>
       </View>
 

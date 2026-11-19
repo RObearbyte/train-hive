@@ -248,6 +248,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      /** P1: subtypes per event kind (select-only for authenticated). */
+      event_subtypes: {
+        Row: {
+          kind: Database['public']['Enums']['event_kind'];
+          key: string;
+          label: string;
+          sort_order: number;
+          /** Legacy activity type written to training_sessions.activity_type for this subtype. */
+          activity_type: string;
+        };
+        Insert: {
+          kind: Database['public']['Enums']['event_kind'];
+          key: string;
+          label: string;
+          sort_order?: number;
+          activity_type: string;
+        };
+        Update: {
+          kind?: Database['public']['Enums']['event_kind'];
+          key?: string;
+          label?: string;
+          sort_order?: number;
+          activity_type?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'event_subtypes_activity_type_fkey';
+            columns: ['activity_type'];
+            isOneToOne: false;
+            referencedRelation: 'activity_types';
+            referencedColumns: ['key'];
+          },
+        ];
+      };
       training_sessions: {
         Row: {
           id: string;
@@ -266,10 +300,22 @@ export type Database = {
           longitude: number | null;
           map_url: string | null;
           meeting_instructions: string | null;
-          min_participants: number;
+          /** Trainings only (>= 1); null for every other event kind. */
+          min_participants: number | null;
           max_participants: number | null;
           going_count: number;
           status: Database['public']['Enums']['session_status'];
+          /** P1. Immutable after creation. */
+          event_kind: Database['public']['Enums']['event_kind'];
+          /** P1. A key of event_subtypes for this kind. activity_type is derived from it. */
+          event_subtype: string;
+          /** P1. numeric(6,2) km; PostgREST returns it as a JSON number. */
+          distance_km: number | null;
+          /** P1. D+ in metres. */
+          elevation_gain_m: number | null;
+          /** P1. OCR subtype only. */
+          obstacle_count: number | null;
+          event_notes: string | null;
           cancel_reason: Database['public']['Enums']['cancel_reason'] | null;
           decided_at: string | null;
           cancelled_at: string | null;
@@ -298,10 +344,16 @@ export type Database = {
           longitude?: number | null;
           map_url?: string | null;
           meeting_instructions?: string | null;
-          min_participants: number;
+          min_participants?: number | null;
           max_participants?: number | null;
           going_count?: number;
           status?: Database['public']['Enums']['session_status'];
+          event_kind?: Database['public']['Enums']['event_kind'];
+          event_subtype?: string;
+          distance_km?: number | null;
+          elevation_gain_m?: number | null;
+          obstacle_count?: number | null;
+          event_notes?: string | null;
           cancel_reason?: Database['public']['Enums']['cancel_reason'] | null;
           decided_at?: string | null;
           cancelled_at?: string | null;
@@ -328,10 +380,16 @@ export type Database = {
           longitude?: number | null;
           map_url?: string | null;
           meeting_instructions?: string | null;
-          min_participants?: number;
+          min_participants?: number | null;
           max_participants?: number | null;
           going_count?: number;
           status?: Database['public']['Enums']['session_status'];
+          event_kind?: Database['public']['Enums']['event_kind'];
+          event_subtype?: string;
+          distance_km?: number | null;
+          elevation_gain_m?: number | null;
+          obstacle_count?: number | null;
+          event_notes?: string | null;
           cancel_reason?: Database['public']['Enums']['cancel_reason'] | null;
           decided_at?: string | null;
           cancelled_at?: string | null;
@@ -369,6 +427,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'activity_types';
             referencedColumns: ['key'];
+          },
+          {
+            foreignKeyName: 'training_sessions_event_subtype_fkey';
+            columns: ['event_kind', 'event_subtype'];
+            isOneToOne: false;
+            referencedRelation: 'event_subtypes';
+            referencedColumns: ['kind', 'key'];
           },
           {
             foreignKeyName: 'training_sessions_attendance_finalized_by_fkey';
@@ -1230,6 +1295,8 @@ export type Database = {
       membership_role: 'organizer' | 'member';
       membership_status: 'active' | 'removed';
       session_status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed';
+      /** P1: the kind of an event (a row of training_sessions). */
+      event_kind: 'training' | 'race' | 'sports_event' | 'social';
       cancel_reason: 'insufficient_participation' | 'organizer';
       rsvp_response: 'going' | 'not_going' | 'no_response';
       attendance_status: 'present' | 'absent' | 'unrecorded';
@@ -1275,6 +1342,12 @@ export type AttendanceAuditEntry = Tables<'attendance_audit_log'>;
 export type MembershipRole = Enums<'membership_role'>;
 export type MembershipStatus = Enums<'membership_status'>;
 export type SessionStatus = Enums<'session_status'>;
+/** P1: training | race | sports_event | social. "Event" is UI vocabulary for a training_sessions row. */
+export type EventKind = Enums<'event_kind'>;
+/** P1: a row of the event_subtypes lookup. */
+export type EventSubtype = Tables<'event_subtypes'>;
+/** P1: an event is a training_sessions row (the table keeps its name). */
+export type EventSession = TrainingSession;
 export type CancelReason = Enums<'cancel_reason'>;
 export type RsvpResponse = Enums<'rsvp_response'>;
 export type AttendanceStatus = Enums<'attendance_status'>;
@@ -1703,15 +1776,10 @@ export type MyDataExport = {
   >;
 };
 
-/**
- * `p_input` of `create_training` / `update_training`. Keys are the column
- * names. Timestamps are UTC ISO strings. Optional keys may be omitted or
- * null; update is a full replace, so the client sends every key.
- */
-export type TrainingInput = {
+/** Keys shared by every event kind in `create_training` / `update_training`. */
+type EventInputBase = {
   title: string;
   description?: string | null;
-  activity_type?: string | null;
   starts_at: string;
   ends_at?: string | null;
   rsvp_deadline?: string | null;
@@ -1722,9 +1790,49 @@ export type TrainingInput = {
   longitude?: number | null;
   map_url?: string | null;
   meeting_instructions?: string | null;
-  min_participants: number;
   max_participants?: number | null;
+  /**
+   * P1 optional keys. On update an ABSENT key keeps the stored value and null clears it.
+   * distance_km (> 0, <= 1000, at most 2 decimals) and elevation_gain_m (0..20000) only for the
+   * subtypes running, trail_running, asphalt_running, ocr; obstacle_count (0..500) only for ocr;
+   * event_notes (<= 1000 characters) for every kind.
+   */
+  distance_km?: number | null;
+  elevation_gain_m?: number | null;
+  obstacle_count?: number | null;
+  event_notes?: string | null;
 };
+
+/**
+ * A training (P1 kind `training`, also the Milestone 1 payload without kind keys). The subtype
+ * is `event_subtype`, or `activity_type` for older clients (both must agree when both are sent).
+ */
+export type TrainingEventInput = EventInputBase & {
+  event_kind?: 'training' | null;
+  event_subtype?: string | null;
+  activity_type?: string | null;
+  min_participants: number;
+};
+
+/**
+ * A race, sports event or social event: no minimum (null or absent), created `confirmed`.
+ * `event_subtype` must belong to the kind (a race has no default subtype). activity_type is
+ * derived by the server and ignored when sent.
+ */
+export type OtherEventInput = EventInputBase & {
+  event_kind: Exclude<EventKind, 'training'>;
+  event_subtype?: string | null;
+  min_participants?: null;
+};
+
+/**
+ * `p_input` of `create_training` / `update_training`. Keys are the column
+ * names. Timestamps are UTC ISO strings. The Milestone 1 keys are a full replace on update,
+ * so the client sends every one of them. `event_kind` cannot change after creation.
+ */
+export type TrainingInput = TrainingEventInput | OtherEventInput;
+/** P1 alias: "event" is the UI name of a training_sessions row. */
+export type EventInput = TrainingInput;
 
 // ---------------------------------------------------------------------------
 // Milestone 4: statistics payloads (jsonb). Definitions: docs/STATS_DEFINITIONS.md.
@@ -1808,6 +1916,10 @@ export type AttendanceHistoryItem = {
   session_id: string;
   title: string;
   activity_type: string;
+  /** P1. */
+  event_kind: EventKind;
+  /** P1. */
+  event_subtype: string;
   starts_at: string;
   ends_at: string | null;
   timezone: string;
@@ -1847,8 +1959,11 @@ export type TopSession = {
   starts_at: string;
   timezone: string;
   present: number;
-  min_participants: number;
+  /** null for events other than trainings (P1). */
+  min_participants: number | null;
   going_count: number;
+  /** P1. */
+  event_kind: EventKind;
 };
 
 /** Result of `get_community_statistics` (organizers). */

@@ -3,6 +3,8 @@ import { Pressable, View } from 'react-native';
 
 import type { CommunityStatistics, StatisticsWindow } from '@/lib/database.types';
 import { formatDateTime, isValidTimeZone } from '@/lib/datetime';
+import { KindChip } from '@/features/trainings/components/KindChip';
+import { kindLabel } from '@/features/trainings/domain/events';
 import { toAppError, userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 import { Banner, Card, Divider, EmptyState, ErrorState, Text, useTheme } from '@/ui';
@@ -41,10 +43,10 @@ function Overview({ stats }: { stats: CommunityStatistics }) {
       {hasSessions ? null : <Banner tone="info" message={EMPTY_STATS} />}
 
       <StatGrid>
-        <StatCard label="Completed trainings" value={formatCount(stats.completed_trainings)} />
+        <StatCard label="Completed events" value={formatCount(stats.completed_trainings)} />
         <StatCard label="Total attendances" value={formatCount(stats.total_attendances)} detail="people present" />
         <StatCard
-          label="Average attendees per training"
+          label="Average attendees per event"
           value={formatDecimal(stats.average_attendees)}
           detail={
             stats.average_attendees === null
@@ -56,7 +58,7 @@ function Overview({ stats }: { stats: CommunityStatistics }) {
         <StatCard
           label="Average RSVP participation"
           value={formatDecimal(stats.average_rsvp_participation)}
-          detail="said going per training"
+          detail="said going per event"
         />
         <StatCard
           label="RSVP to attendance"
@@ -109,9 +111,9 @@ function Overview({ stats }: { stats: CommunityStatistics }) {
       </View>
 
       <View style={{ gap: spacing.sm }}>
-        <Text variant="heading">Most attended trainings</Text>
+        <Text variant="heading">Most attended events</Text>
         {top.length === 0 ? (
-          <Text color="textMuted">No trainings with recorded attendance in this period.</Text>
+          <Text color="textMuted">No events with recorded attendance in this period.</Text>
         ) : (
           <Card style={{ paddingVertical: spacing.xs }}>
             {top.map((session, index) => {
@@ -122,7 +124,7 @@ function Overview({ stats }: { stats: CommunityStatistics }) {
                   {index > 0 ? <Divider /> : null}
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`${index + 1}. ${session.title}, ${when}, ${presentText(session.present)}, minimum ${session.min_participants}`}
+                    accessibilityLabel={`${index + 1}. ${kindLabel(session.event_kind)}: ${session.title}, ${when}, ${presentText(session.present)}${session.min_participants === null ? '' : `, minimum ${session.min_participants}`}`}
                     onPress={() => router.push(`/trainings/${session.session_id}`)}
                     style={({ pressed }) => ({
                       minHeight: minTouchTarget + 12,
@@ -139,8 +141,12 @@ function Overview({ stats }: { stats: CommunityStatistics }) {
                     <View style={{ flex: 1, gap: spacing.xxs }}>
                       <Text variant="label">{session.title}</Text>
                       <Text variant="caption" color="textMuted">
-                        {when} {'·'} minimum {session.min_participants}
+                        {when}
+                        {session.min_participants === null
+                          ? ''
+                          : ` · minimum ${session.min_participants}`}
                       </Text>
+                      <KindChip kind={session.event_kind} />
                     </View>
                     <Text variant="label">{presentText(session.present)}</Text>
                   </Pressable>

@@ -79,9 +79,9 @@ describe('contract coverage', () => {
     },
   );
 
-  it('explains a refused cancel of a training that already has attendance', () => {
+  it('explains a refused cancel of an event that already has attendance', () => {
     expect(userMessage('session_has_attendance')).toBe(
-      'This training already has attendance recorded and can no longer be cancelled. Correct the attendance instead.',
+      'This event already has attendance recorded and can no longer be cancelled. Correct the attendance instead.',
     );
     expect(toAppError(pgError('session_has_attendance')).code).toBe('session_has_attendance');
   });

@@ -49,17 +49,17 @@ export function OrganizerActions({ session, onEdit }: OrganizerActionsProps) {
       {failure !== null && !confirming ? (
         <Banner
           tone="error"
-          title="The training was not cancelled"
+          title="The event was not cancelled"
           message={failure}
           action={{ label: 'Dismiss', onPress: cancel.reset }}
         />
       ) : null}
       {canEdit ? (
-        <Button label="Edit training" variant="secondary" icon="edit" onPress={onEdit} fullWidth />
+        <Button label="Edit event" variant="secondary" icon="edit" onPress={onEdit} fullWidth />
       ) : null}
       {canCancel ? (
         <Button
-          label="Cancel training"
+          label="Cancel event"
           variant="danger"
           icon="ban"
           onPress={() => {
@@ -72,9 +72,9 @@ export function OrganizerActions({ session, onEdit }: OrganizerActionsProps) {
 
       <ConfirmDialog
         visible={confirming}
-        title="Cancel this training?"
+        title="Cancel this event?"
         message={`Members will see "${session.title}" as cancelled by the organizer and can no longer answer. This cannot be undone.`}
-        confirmLabel="Cancel training"
+        confirmLabel="Cancel event"
         cancelLabel="Keep training"
         destructive
         pending={cancel.isPending}

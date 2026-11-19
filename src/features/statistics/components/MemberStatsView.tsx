@@ -31,7 +31,7 @@ export function MemberStatsView({
       <Card style={{ gap: spacing.sm, alignItems: 'center' }}>
         <Icon name="chart" size={28} color="textMuted" />
         <Text variant="heading" align="center">
-          No finalized trainings
+          No finalized events
         </Text>
         <Text color="textMuted" align="center">
           {EMPTY_STATS}
@@ -59,7 +59,7 @@ export function MemberStatsView({
           <StatCard
             label="Not recorded"
             value={formatCount(stats.not_recorded)}
-            detail={stats.not_recorded === 1 ? 'training' : 'trainings'}
+            detail={stats.not_recorded === 1 ? 'event' : 'events'}
             note="Not an absence, but included in the rate"
           />
         </StatGrid>
@@ -72,7 +72,7 @@ export function MemberStatsView({
         <StatCard
           label="Attended"
           value={formatCount(stats.attended)}
-          detail={stats.attended === 1 ? 'training' : 'trainings'}
+          detail={stats.attended === 1 ? 'event' : 'events'}
         />
         <StatCard
           label="Confirmed RSVPs"
@@ -103,7 +103,7 @@ export function MemberStatsView({
       <View style={{ gap: spacing.sm }}>
         <Text variant="heading">Monthly participation</Text>
         <Text variant="caption" color="textMuted">
-          Attendance rate per month. A dash means no finalized trainings that month.
+          Attendance rate per month. A dash means no finalized events that month.
         </Text>
         <Card>
           {months.length === 0 ? (

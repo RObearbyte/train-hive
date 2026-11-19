@@ -11,7 +11,7 @@ import { TRAINING_FORM_FIELDS } from './schema';
 describe('formFieldForColumn', () => {
   it('maps every editable p_input column to a form field', () => {
     expect(formFieldForColumn('title')).toBe('title');
-    expect(formFieldForColumn('activity_type')).toBe('activityType');
+    expect(formFieldForColumn('activity_type')).toBe('eventSubtype');
     expect(formFieldForColumn('starts_at')).toBe('date');
     expect(formFieldForColumn('ends_at')).toBe('endTime');
     expect(formFieldForColumn('rsvp_deadline')).toBe('deadlineDate');
@@ -46,7 +46,7 @@ describe('serverFieldError', () => {
     expect(serverFieldError({ code: 'validation_failed', field: 'max_participants' })).toEqual({
       field: 'maxParticipants',
       message:
-        'The maximum cannot be lower than the minimum or the number already going. It cannot be changed once responses have closed.',
+        'The maximum cannot be lower than the minimum (or 1) or the number already going. A training cannot change it once responses have closed.',
     });
     expect(serverFieldError({ code: 'validation_failed', field: 'starts_at' })?.field).toBe('date');
   });
@@ -74,19 +74,19 @@ describe('frozenFormFields', () => {
   const limits = ['deadlineDate', 'deadlineTime', 'minParticipants', 'maxParticipants'];
 
   it('locks nothing on a scheduled session before its deadline', () => {
-    const frozen = frozenFormFields({ status: 'scheduled', rsvp_deadline: deadline, starts_at: START, ends_at: null }, before);
+    const frozen = frozenFormFields({ status: 'scheduled', rsvp_deadline: deadline, starts_at: START, ends_at: null, event_kind: 'training' as const }, before);
     expect(frozen.fields.size).toBe(0);
     expect(frozen.reason).toBeNull();
   });
 
   it('locks the deadline and limits on a scheduled session at or after its deadline', () => {
-    const frozen = frozenFormFields({ status: 'scheduled', rsvp_deadline: deadline, starts_at: START, ends_at: null }, after);
+    const frozen = frozenFormFields({ status: 'scheduled', rsvp_deadline: deadline, starts_at: START, ends_at: null, event_kind: 'training' as const }, after);
     expect([...frozen.fields].sort()).toEqual([...limits].sort());
     expect(frozen.reason).toBe('Locked because the RSVP deadline has passed.');
   });
 
   it('locks the deadline and limits on a confirmed session', () => {
-    const frozen = frozenFormFields({ status: 'confirmed', rsvp_deadline: deadline, starts_at: START, ends_at: null }, before);
+    const frozen = frozenFormFields({ status: 'confirmed', rsvp_deadline: deadline, starts_at: START, ends_at: null, event_kind: 'training' as const }, before);
     expect([...frozen.fields].sort()).toEqual([...limits].sort());
     expect(frozen.fields.has('title')).toBe(false);
     expect(frozen.reason).toBe('Locked because the training is confirmed.');
@@ -94,7 +94,7 @@ describe('frozenFormFields', () => {
 
   it('locks everything on cancelled and completed sessions', () => {
     for (const status of ['cancelled', 'completed'] as const) {
-      const frozen = frozenFormFields({ status, rsvp_deadline: deadline, starts_at: START, ends_at: null }, before);
+      const frozen = frozenFormFields({ status, rsvp_deadline: deadline, starts_at: START, ends_at: null, event_kind: 'training' as const }, before);
       expect(frozen.fields.size).toBe(TRAINING_FORM_FIELDS.length);
     }
   });

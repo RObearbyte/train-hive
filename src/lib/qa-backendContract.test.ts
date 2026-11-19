@@ -58,7 +58,120 @@ function parseTables(text: string): Map<string, TableInfo> {
   return tables;
 }
 
+/** Splits at commas that are not inside parentheses: "add column a numeric(6, 2), add column b int". */
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const char of text) {
+    if (char === '(') depth += 1;
+    else if (char === ')') depth -= 1;
+    if (char === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim() !== '') parts.push(current.trim());
+  return parts;
+}
+
+/**
+ * Applies `alter table public.x add column ...`, `alter column ... set not null`,
+ * `alter column ... drop not null` and `drop column ...` to tables parsed from
+ * `create table`, in the order they appear, so the result is the final schema.
+ * Every other clause (constraints, row level security) does not change columns and is ignored.
+ */
+function applyAlterations(text: string, parsed: Map<string, TableInfo>): void {
+  const statement = /alter table (?:only )?public\.(\w+)\s+([^;]*);/gi;
+  let match: RegExpExecArray | null;
+  while ((match = statement.exec(text)) !== null) {
+    const table = parsed.get(match[1]);
+    if (!table) continue;
+    for (const clause of splitTopLevel(match[2])) {
+      const add = /^add column (?:if not exists )?(\w+)\s+(.*)$/is.exec(clause);
+      if (add) {
+        table.columns.set(add[1], { nullable: !/\bnot null\b|\bprimary key\b/i.test(add[2]) });
+        continue;
+      }
+      const setNotNull = /^alter column (\w+) set not null$/i.exec(clause);
+      if (setNotNull) {
+        const column = table.columns.get(setNotNull[1]);
+        if (column) column.nullable = false;
+        continue;
+      }
+      const dropNotNull = /^alter column (\w+) drop not null$/i.exec(clause);
+      if (dropNotNull) {
+        const column = table.columns.get(dropNotNull[1]);
+        if (column) column.nullable = true;
+        continue;
+      }
+      const drop = /^drop column (?:if exists )?(\w+)/i.exec(clause);
+      if (drop) table.columns.delete(drop[1]);
+    }
+  }
+}
+
 const tables = parseTables(sql);
+applyAlterations(sql, tables);
+
+describe('QA contract parser: alter table statements', () => {
+  const base = `create table public.t (
+  id uuid primary key,
+  name text not null,
+  note text
+);
+`;
+
+  function parse(extra: string): Map<string, { nullable: boolean }> {
+    const parsed = parseTables(base);
+    applyAlterations(base + extra, parsed);
+    return parsed.get('t')?.columns ?? new Map();
+  }
+
+  it('adds columns, with their own nullability', () => {
+    const columns = parse(`alter table public.t
+  add column kind public.kind not null default 'x',
+  add column distance numeric(6, 2),
+  add column if not exists count integer;`);
+    expect(columns.get('kind')).toEqual({ nullable: false });
+    expect(columns.get('distance')).toEqual({ nullable: true });
+    expect(columns.get('count')).toEqual({ nullable: true });
+    expect(columns.get('name')).toEqual({ nullable: false });
+  });
+
+  it('applies set not null and drop not null in order', () => {
+    const columns = parse(`alter table public.t alter column note set not null;
+alter table public.t
+  alter column name drop not null,
+  add constraint t_note_check check (note <> '');`);
+    expect(columns.get('note')).toEqual({ nullable: false });
+    expect(columns.get('name')).toEqual({ nullable: true });
+  });
+
+  it('drops columns and ignores clauses that do not change columns', () => {
+    const columns = parse(`alter table public.t drop column note;
+alter table public.t enable row level security;
+alter table public.t add constraint t_pk unique (id, name);`);
+    expect([...columns.keys()].sort()).toEqual(['id', 'name']);
+  });
+
+  it('does not touch tables it does not know', () => {
+    const parsed = parseTables(base);
+    applyAlterations('alter table public.other add column z text;', parsed);
+    expect(parsed.has('other')).toBe(false);
+    expect([...(parsed.get('t')?.columns.keys() ?? [])].sort()).toEqual(['id', 'name', 'note']);
+  });
+
+  it('applies the real migrations: training_sessions has the event columns and a nullable minimum', () => {
+    const sessions = tables.get('training_sessions')?.columns;
+    expect(sessions?.get('event_kind')).toEqual({ nullable: false });
+    expect(sessions?.get('event_subtype')).toEqual({ nullable: false });
+    expect(sessions?.get('distance_km')).toEqual({ nullable: true });
+    expect(sessions?.get('min_participants')).toEqual({ nullable: true });
+  });
+});
 
 describe('QA contract: tables read by the app', () => {
   const calls: { file: string; table: string; index: number; text: string }[] = [];
@@ -244,7 +357,7 @@ describe('QA contract: database.types.ts versus the SQL', () => {
     const end = typesText.indexOf('\n        };', start);
     const block = typesText.slice(start, end);
     const row = new Map<string, boolean>();
-    for (const m of block.matchAll(/^ {10}(\w+): ([^;]+);$/gm)) row.set(m[1], /\| null$/.test(m[2]));
+    for (const m of block.matchAll(/^ {10}(\w+)\??: ([^;]+);$/gm)) row.set(m[1], /\| null$/.test(m[2]));
     return row;
   }
 

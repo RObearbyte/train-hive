@@ -27,13 +27,14 @@ import { statusMeta, TRAINING_DISPLAY_STATUSES } from '@/ui/theme/status';
 const DEADLINE = '2026-11-14T05:00:00.000Z';
 const at = (iso: string) => new Date(iso);
 
-function fields(overrides: Partial<Pick<TrainingSession, 'status' | 'cancel_reason' | 'going_count' | 'min_participants' | 'rsvp_deadline'>> = {}) {
+function fields(overrides: Partial<Pick<TrainingSession, 'status' | 'cancel_reason' | 'going_count' | 'min_participants' | 'rsvp_deadline' | 'event_kind'>> = {}) {
   return {
     status: 'scheduled' as SessionStatus,
     cancel_reason: null,
     going_count: 7,
     min_participants: 10,
     rsvp_deadline: DEADLINE,
+    event_kind: 'training' as const,
     ...overrides,
   };
 }
@@ -179,7 +180,7 @@ describe('Home / list sectioning near the edges', () => {
 });
 
 describe('the RSVP control follows the stored state (advisory; server decides)', () => {
-  const session = { status: 'scheduled' as SessionStatus, rsvp_deadline: DEADLINE, going_count: 3, max_participants: 4 };
+  const session = { status: 'scheduled' as SessionStatus, event_kind: 'training' as const, rsvp_deadline: DEADLINE, going_count: 3, max_participants: 4 };
 
   it('open, closed exactly at the deadline, never open for decided sessions', () => {
     expect(canChangeRsvp(session, at('2026-11-14T04:59:59.999Z')).allowed).toBe(true);

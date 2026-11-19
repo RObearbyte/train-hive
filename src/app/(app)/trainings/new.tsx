@@ -2,7 +2,7 @@ import { Redirect, useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
-import { CreateTrainingForm } from '@/features/trainings/components/TrainingForm';
+import { CreateEventFlow } from '@/features/trainings/components/CreateEventFlow';
 import { isValidTimeZone } from '@/lib/datetime';
 import { userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
@@ -22,7 +22,7 @@ export default function NewTrainingScreen() {
 
   if (community && isValidTimeZone(community.timezone)) {
     return (
-      <CreateTrainingForm
+      <CreateEventFlow
         communityId={community.id}
         timezone={community.timezone}
         onSaved={(session) => router.replace(`/trainings/${session.id}`)}
