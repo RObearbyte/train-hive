@@ -14,6 +14,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/trainings\/[^/]+\/edit$/, 'Edit event'],
   [/^\/trainings\/[^/]+\/attendance$/, 'Attendance'],
   [/^\/trainings\/[^/]+$/, 'Event'],
+  [/^\/communications$/, 'Communications'],
   [/^\/(activity|notifications)$/, 'Notifications'],
   [/^\/announcements$/, 'Announcements'],
   [/^\/announcements\/new$/, 'New announcement'],

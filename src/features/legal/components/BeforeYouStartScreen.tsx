@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { KeyboardScreen } from '@/features/onboarding/components/KeyboardScreen';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { userMessage } from '@/lib/errors';
+import { reportError } from '@/lib/logger';
 import { Banner, Button, ErrorState, LoadingState, Screen, Text, useTheme } from '@/ui';
 
 import { MINIMUM_AGE } from '../constants';
@@ -14,6 +15,7 @@ import {
   parseStartTarget,
   type ConsentStartTarget,
 } from '../domain/consentState';
+import { clearPushIntent, writePushIntent } from '../api/pushIntentStorage';
 import { useLocalAcceptance } from '../hooks/useConsents';
 import { ConsentCheckbox } from './ConsentCheckbox';
 import { LegalLinks } from './LegalLinks';
@@ -36,6 +38,7 @@ export function BeforeYouStartScreen({ next }: { next: unknown }) {
   const { acceptance, isLoading, error, accept } = useLocalAcceptance();
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [confirmedAge, setConfirmedAge] = useState(false);
+  const [wantsPush, setWantsPush] = useState(false);
 
   if (isLoading) {
     return (
@@ -100,6 +103,25 @@ export function BeforeYouStartScreen({ next }: { next: unknown }) {
         />
       </View>
 
+      <View style={{ gap: spacing.xs }}>
+        <Text variant="heading">Stay in the loop</Text>
+        <Text color="textMuted">
+          Notifications are how you hear that an event is confirmed or cancelled, or that your
+          organizer posted something. Without them you only see changes when you open the app. This
+          one is optional and starts unticked.
+        </Text>
+        <ConsentCheckbox
+          testID="consent-push"
+          label="Send me push notifications about events and announcements"
+          checked={wantsPush}
+          onChange={setWantsPush}
+          disabled={accept.isPending}
+        />
+        <Text variant="caption" color="textMuted">
+          You can change this any time in Profile, then Privacy.
+        </Text>
+      </View>
+
       {accept.error ? (
         <Banner tone="error" message="We could not save your choice on this device. Please try again." />
       ) : null}
@@ -112,7 +134,12 @@ export function BeforeYouStartScreen({ next }: { next: unknown }) {
         loading={accept.isPending}
         accessibilityHint={ready ? undefined : 'Tick both boxes to continue'}
         onPress={() => {
-          if (ready && !accept.isPending) accept.mutate();
+          if (!ready || accept.isPending) return;
+          // Only a note on this device; the signed-in app records it and asks the system once.
+          const save = wantsPush ? writePushIntent() : clearPushIntent();
+          save
+            .catch((error: unknown) => reportError('consents.savePushIntent', error))
+            .finally(() => accept.mutate());
         }}
       />
       {ready ? null : (

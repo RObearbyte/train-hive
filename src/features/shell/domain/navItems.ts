@@ -1,13 +1,14 @@
-/** The four main sections, shared by the sidebar and for the page titles. Pure. */
+/** The five main sections, shared by the sidebar and for the page titles. Pure. */
 import type { IconName } from '@/ui';
 
-export type NavKey = 'home' | 'trainings' | 'statistics' | 'profile';
+export type NavKey = 'home' | 'trainings' | 'communications' | 'statistics' | 'profile';
 
 export type NavItem = { key: NavKey; label: string; href: string; icon: IconName };
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: 'home', label: 'Home', href: '/', icon: 'home' },
   { key: 'trainings', label: 'Events', href: '/trainings', icon: 'calendar' },
+  { key: 'communications', label: 'Communications', href: '/communications', icon: 'bell' },
   { key: 'statistics', label: 'Statistics', href: '/statistics', icon: 'chart' },
   { key: 'profile', label: 'Profile', href: '/profile', icon: 'person' },
 ];
@@ -20,11 +21,12 @@ export function activeNavKey(pathname: string): NavKey | null {
   switch (first) {
     case 'trainings':
       return 'trainings';
-    // The bell and the announcements are reached from Home.
+    // Announcements and the notification centre belong to the Communications tab.
+    case 'communications':
     case 'activity':
     case 'notifications':
     case 'announcements':
-      return 'home';
+      return 'communications';
     case 'statistics':
       return 'statistics';
     case 'profile':

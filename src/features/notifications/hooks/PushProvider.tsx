@@ -15,6 +15,7 @@ import { useSession } from '@/features/community/hooks/SessionProvider';
 import { recordConsent } from '@/features/legal/api/consents';
 import { consentKeys } from '@/features/legal/api/keys';
 import { applyConsentEvent, isConsentCurrent } from '@/features/legal/domain/consentCache';
+import { clearPushIntent, readPushIntent } from '@/features/legal/api/pushIntentStorage';
 import { useMyConsents } from '@/features/legal/hooks/useConsents';
 import { authStorage } from '@/lib/authStorage';
 import type { MyConsents } from '@/lib/database.types';
@@ -238,6 +239,26 @@ export function PushProvider({ children }: { children: ReactNode }) {
     }
     await requestPermissionStep();
   };
+
+  // The first-launch screen's "turn on notifications" tick: act on it once, as soon as the account
+  // exists and the consents are known. It is the person's own earlier tap, so this is an explicit
+  // choice, not a default. The note is cleared first so a failure never retries by itself.
+  const intentHandled = useRef(false);
+  useEffect(() => {
+    if (intentHandled.current || !nativeAvailable || consents === null) return;
+    intentHandled.current = true;
+    let active = true;
+    (async () => {
+      if (!(await readPushIntent())) return;
+      await clearPushIntent();
+      if (active) await enable();
+    })().catch((error: unknown) => reportError('push.intent', error));
+    return () => {
+      active = false;
+    };
+    // `enable` is recreated every render; the ref guard makes this run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nativeAvailable, consents]);
 
   const dismissPrompt = () => {
     setDismissed(true);

@@ -36,7 +36,7 @@ describe('Q8 deep links and routes after P2', () => {
 
   it('every route has a sidebar owner and a page title', () => {
     const routes: [string, string][] = [
-      ['/', 'home'], ['/notifications', 'home'], ['/activity', 'home'], ['/announcements', 'home'], [`/announcements/${ID}`, 'home'],
+      ['/', 'home'], ['/notifications', 'communications'], ['/activity', 'communications'], ['/announcements', 'communications'], [`/announcements/${ID}`, 'communications'],
       ['/trainings', 'trainings'], [`/trainings/${ID}/edit`, 'trainings'], ['/statistics', 'statistics'], ['/profile', 'profile'],
       ['/members', 'profile'], ['/privacy', 'profile'], ['/invitations', 'profile'], ['/community-settings', 'profile'],
       ['/attendance-history', 'profile'], ['/add-community/join-code', 'profile'],

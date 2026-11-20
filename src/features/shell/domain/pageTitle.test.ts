@@ -11,6 +11,7 @@ describe('titleForPath', () => {
     ['/trainings/abc-123', 'Event · TrainHive'],
     ['/trainings/abc-123/edit', 'Edit event · TrainHive'],
     ['/trainings/abc-123/attendance', 'Attendance · TrainHive'],
+    ['/communications', 'Communications · TrainHive'],
     ['/activity', 'Notifications · TrainHive'],
     ['/notifications', 'Notifications · TrainHive'],
     ['/announcements', 'Announcements · TrainHive'],
