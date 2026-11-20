@@ -49,8 +49,8 @@ export function useUpdateTraining(sessionId: string) {
 
 export function useCancelTraining(sessionId: string) {
   const queryClient = useQueryClient();
-  return useMutation<TrainingSession, AppError, void>({
-    mutationFn: () => cancelTraining(sessionId),
+  return useMutation<TrainingSession, AppError, string | null>({
+    mutationFn: (reason) => cancelTraining(sessionId, reason),
     onSuccess: (session) => applySavedSession(queryClient, session),
     onError: (error) => {
       reportError('training.cancel', error);

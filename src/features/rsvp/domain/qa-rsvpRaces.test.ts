@@ -55,6 +55,7 @@ function makeSession(id: string, overrides: Partial<TrainingSession> = {}): Trai
     going_count: 7,
     status: 'scheduled',
     cancel_reason: null,
+    cancellation_reason: null,
     decided_at: null,
     cancelled_at: null,
     cancelled_by: null,

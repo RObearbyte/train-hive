@@ -184,7 +184,7 @@ const finalizeDoesNotDeadlockWithDeletion: Probe = async () => {
 const RECORD = 'public.record_attendance(uuid, uuid, public.attendance_status, text)';
 const LOCK_SESSION = 'private.lock_session_for_attendance(uuid)';
 const POLICY = 'attendance_records_select_own_or_organizer';
-const CANCEL = 'public.cancel_training(uuid)';
+const CANCEL = 'public.cancel_training(uuid, text)';
 const UPDATE = 'public.update_training(uuid, jsonb)';
 const SESSION_ENDED = 'private.session_ended(timestamptz, timestamptz, timestamptz)';
 

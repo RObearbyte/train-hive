@@ -59,6 +59,7 @@ function makeSession(overrides: Partial<TrainingSession> = {}): TrainingSession 
     going_count: 4,
     status: 'scheduled',
     cancel_reason: null,
+    cancellation_reason: null,
     decided_at: null,
     cancelled_at: null,
     cancelled_by: null,

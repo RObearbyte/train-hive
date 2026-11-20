@@ -172,7 +172,7 @@ describe('notifications per kind', () => {
     const cancelled = await notifications("kind = 'training_cancelled' and related_session_id = $1", [short.id]);
     expect(cancelled).toHaveLength(3);
     expect(cancelled[0].title).toBe('Training cancelled: Tempo');
-    expect(cancelled[0].body).toMatch(/ - not enough participants\.$/);
+    expect(cancelled[0].body).toMatch(/ - Not enough participants: 0 of 2 needed.$/);
   });
 
   it.each([

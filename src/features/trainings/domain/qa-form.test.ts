@@ -162,6 +162,7 @@ describe('editing: untouched timestamps are sent back exactly (no accidental cha
       going_count: 0,
       status: 'scheduled',
       cancel_reason: null,
+      cancellation_reason: null,
       decided_at: null,
       cancelled_at: null,
       cancelled_by: null,

@@ -261,6 +261,7 @@ describe('optimistic RSVP on non-training events (real QueryClient)', () => {
       going_count: going,
       status: kind === 'training' ? 'scheduled' : 'confirmed',
       cancel_reason: null,
+      cancellation_reason: null,
       decided_at: null,
       cancelled_at: null,
       cancelled_by: null,

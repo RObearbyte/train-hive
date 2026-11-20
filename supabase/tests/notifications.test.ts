@@ -137,7 +137,7 @@ describe('training notifications: recipients', () => {
       sorted([p.organizerId, p.secondOrganizer, p.memberIds[0], p.memberIds[2], p.memberIds[3]]),
     );
     const [n] = await notifications("kind = 'training_cancelled' and user_id = $1", [p.memberIds[0]]);
-    expect(n.body).toMatch(/not enough participants\.$/);
+    expect(n.body).toMatch(/Not enough participants: 1 of 3 needed.$/);
     expect(await recipients('training_confirmed', session.id)).toEqual([]);
   });
 

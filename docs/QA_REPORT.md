@@ -1204,6 +1204,7 @@ Setup: two accounts, **Ana** (organizer) and **Bob** (member), plus a second com
 124. Home as Bob: Next up (never a past event), Coming up, Latest announcements, "See all". As an organizer a "Needs attendance" list appears after an event.
 125. Quick invite: Ana sees the round "Invite" button on Home and Events; Bob (member) does not. Switch Bob to the community where he is organizer: it appears; switch back: it disappears. Tap: a code appears with Copy and Share; "Create another" makes a second; close during creation and check Invitations for an unseen extra code (O2). Redeem with a third account: works once, a second use is refused.
 126. Set the phone clock 40 days back and tap Invite: an error (O1). Restore the clock.
+127. Ana cancels an event and types a reason ("Pitch is flooded."): Bob's notification ends with "Reason: Pitch is flooded.", and the event card and details show "Reason: Pitch is flooded.". Cancel another event with the field empty: no reason line. Paste 301 characters: the field shows an error and the button does nothing. A training below its minimum at its deadline shows "Reason: Not enough participants: N of M needed."
 
 ### What was run (Q8)
 

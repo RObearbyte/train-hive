@@ -11,6 +11,7 @@ import {
 import { RsvpControl } from '@/features/rsvp/components/RsvpControl';
 import { KindChip } from '@/features/trainings/components/KindChip';
 import { OrganizerActions } from '@/features/trainings/components/OrganizerActions';
+import { cancellationReasonLine } from '@/features/trainings/domain/cancellation';
 import { courseLine } from '@/features/trainings/domain/events';
 import { buildMapsLink, type MapsPlatform } from '@/features/trainings/domain/maps';
 import {
@@ -205,6 +206,7 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
           ) : null}
         </View>
         <Banner tone={bannerTone(status)} message={statusExplanation(status, summary, deadlineText)} />
+        {cancellationReasonLine(session) !== null ? <Text>{cancellationReasonLine(session)}</Text> : null}
       </View>
 
       {/* Organizers: record or correct attendance (the server authorizes it again). */}

@@ -359,8 +359,10 @@ export function updateTraining(
   );
 }
 
-export function cancelTraining(userId: string, sessionId: string): Promise<Session> {
-  return asUser(userId, (db) => rpcRow<Session>(db, 'cancel_training', [sessionId]));
+export function cancelTraining(userId: string, sessionId: string, reason?: string | null): Promise<Session> {
+  return asUser(userId, (db) =>
+    rpcRow<Session>(db, 'cancel_training', reason === undefined ? [sessionId] : [sessionId, reason]),
+  );
 }
 
 export function setRsvp(userId: string, sessionId: string, response: RsvpResponse): Promise<RsvpResult> {

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Modal, StyleSheet, View } from 'react-native';
 
 import { Banner, Button, Card, Text, useTheme } from '@/ui';
@@ -14,6 +15,8 @@ export interface ConfirmDialogProps {
   pending?: boolean;
   /** Why the confirmed action failed, shown inside the dialog. */
   error?: string | null;
+  /** Extra content between the message and the buttons (e.g. an input). */
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -31,6 +34,7 @@ export function ConfirmDialog({
   destructive = false,
   pending = false,
   error = null,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -52,6 +56,7 @@ export function ConfirmDialog({
             <Text variant="heading">{title}</Text>
             <Text color="textMuted">{message}</Text>
           </View>
+          {children}
           {error ? <Banner tone="error" message={error} /> : null}
           <View style={{ gap: spacing.sm }}>
             <Button

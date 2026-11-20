@@ -131,11 +131,17 @@ export async function updateTraining(
 }
 
 /**
- * Cancels a training (organizer only). Already cancelled returns the row
+ * Cancels an event (organizer only) with an optional note of up to 300 characters (null = none). Already cancelled returns the row
  * unchanged. Throws AppError: `session_not_cancellable`, `forbidden`, `not_found`, ...
  */
-export async function cancelTraining(sessionId: string): Promise<TrainingSession> {
-  const { data, error } = await getSupabase().rpc('cancel_training', { p_session_id: sessionId });
+export async function cancelTraining(
+  sessionId: string,
+  reason: string | null = null,
+): Promise<TrainingSession> {
+  const { data, error } = await getSupabase().rpc('cancel_training', {
+    p_session_id: sessionId,
+    p_reason: reason,
+  });
   if (error) throw toAppError(error);
   return data;
 }

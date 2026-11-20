@@ -6,6 +6,7 @@ import type { RsvpResponse, TrainingSession } from '@/lib/database.types';
 import { formatDateTimeRange, formatSessionWhen, isValidTimeZone } from '@/lib/datetime';
 import { Card, Divider, Icon, ProgressBar, StatusBadge, Text, statusMeta, useTheme } from '@/ui';
 
+import { cancellationReasonLine } from '../domain/cancellation';
 import { courseLine, kindInfo } from '../domain/events';
 import {
   cardAccessibilityLabel,
@@ -59,6 +60,7 @@ export function TrainingCard({
   const badgeLabel = statusBadgeLabel(status, summary);
   const lines = participationLines(summary, status);
   const course = courseLine(session);
+  const cancellationLine = cancellationReasonLine(session);
   const participation = [lines.count, lines.need, lines.spots]
     .filter((part): part is string => part !== null)
     .join(', ');
@@ -141,6 +143,11 @@ export function TrainingCard({
           ) : null}
           {needsAttendance ? <NeedsAttendanceCue /> : null}
         </View>
+        {cancellationLine !== null ? (
+          <Text variant="label" color="textMuted" numberOfLines={2}>
+            {cancellationLine}
+          </Text>
+        ) : null}
 
         {/* Am I going (as text when there is no control below) */}
         {showRsvp ? null : (

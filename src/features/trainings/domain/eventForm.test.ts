@@ -274,6 +274,7 @@ function makeSession(kind: EventKind, overrides: Partial<TrainingSession> = {}):
     going_count: 4,
     status: kind === 'training' ? 'scheduled' : 'confirmed',
     cancel_reason: null,
+    cancellation_reason: null,
     decided_at: null,
     cancelled_at: null,
     cancelled_by: null,

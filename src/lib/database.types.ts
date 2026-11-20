@@ -317,6 +317,7 @@ export type Database = {
           obstacle_count: number | null;
           event_notes: string | null;
           cancel_reason: Database['public']['Enums']['cancel_reason'] | null;
+          cancellation_reason: string | null;
           decided_at: string | null;
           cancelled_at: string | null;
           cancelled_by: string | null;
@@ -355,6 +356,7 @@ export type Database = {
           obstacle_count?: number | null;
           event_notes?: string | null;
           cancel_reason?: Database['public']['Enums']['cancel_reason'] | null;
+          cancellation_reason?: string | null;
           decided_at?: string | null;
           cancelled_at?: string | null;
           cancelled_by?: string | null;
@@ -391,6 +393,7 @@ export type Database = {
           obstacle_count?: number | null;
           event_notes?: string | null;
           cancel_reason?: Database['public']['Enums']['cancel_reason'] | null;
+          cancellation_reason?: string | null;
           decided_at?: string | null;
           cancelled_at?: string | null;
           cancelled_by?: string | null;
@@ -1031,7 +1034,7 @@ export type Database = {
         Returns: Database['public']['Tables']['training_sessions']['Row'];
       };
       cancel_training: {
-        Args: { p_session_id: string };
+        Args: { p_session_id: string; p_reason?: string | null };
         Returns: Database['public']['Tables']['training_sessions']['Row'];
       };
       set_rsvp: {

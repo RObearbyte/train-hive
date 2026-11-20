@@ -4,9 +4,9 @@ import { View } from 'react-native';
 import { ConfirmDialog } from '@/features/community/components/ConfirmDialog';
 import type { TrainingSession } from '@/lib/database.types';
 import { userMessage } from '@/lib/errors';
-import { Banner, Button, Text, useTheme } from '@/ui';
+import { Banner, Button, Text, TextField, useTheme } from '@/ui';
 
-import { isEditable } from '../domain/schema';
+import { checkCancellationReason, MAX_CANCELLATION_REASON } from '../domain/cancellation';import { isEditable } from '../domain/schema';
 import { useCancelTraining } from '../hooks/useTrainingMutations';
 
 export interface OrganizerActionsProps {
@@ -22,6 +22,8 @@ export function OrganizerActions({ session, onEdit }: OrganizerActionsProps) {
   const { spacing } = useTheme();
   const cancel = useCancelTraining(session.id);
   const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState('');
+  const reasonCheck = checkCancellationReason(reason);
 
   const canEdit = isEditable(session.status);
   const canCancel = session.status === 'scheduled' || session.status === 'confirmed';
@@ -32,8 +34,8 @@ export function OrganizerActions({ session, onEdit }: OrganizerActionsProps) {
 
   const closeDialog = () => setConfirming(false);
   const confirmCancel = () => {
-    if (cancel.isPending) return;
-    cancel.mutate(undefined, {
+    if (cancel.isPending || !reasonCheck.ok) return;
+    cancel.mutate(reasonCheck.value, {
       onSuccess: closeDialog,
       onError: (error) => {
         // Completed or already has attendance: nothing to retry, so close and explain on the
@@ -64,6 +66,7 @@ export function OrganizerActions({ session, onEdit }: OrganizerActionsProps) {
           icon="ban"
           onPress={() => {
             cancel.reset();
+            setReason('');
             setConfirming(true);
           }}
           fullWidth
@@ -81,7 +84,19 @@ export function OrganizerActions({ session, onEdit }: OrganizerActionsProps) {
         error={failure}
         onConfirm={confirmCancel}
         onCancel={closeDialog}
-      />
+      >
+        <TextField
+          label="Reason (optional)"
+          helper={`Shown to members. ${reason.trim().length} of ${MAX_CANCELLATION_REASON} characters`}
+          value={reason}
+          onChangeText={setReason}
+          error={reasonCheck.ok ? undefined : reasonCheck.message}
+          editable={!cancel.isPending}
+          multiline
+          autoCapitalize="sentences"
+          style={{ minHeight: 72, textAlignVertical: 'top' }}
+        />
+      </ConfirmDialog>
     </View>
   );
 }
