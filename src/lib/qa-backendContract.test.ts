@@ -318,6 +318,12 @@ describe('QA contract: RPCs called by the app', () => {
         'set_member_role',
         'remove_member',
         'leave_community',
+        'get_event_feed',
+        'get_event_feed_unread',
+        'create_event_post',
+        'reply_to_event_post',
+        'delete_event_post',
+        'mark_event_feed_read',
       ]),
     );
   });

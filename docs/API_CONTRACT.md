@@ -817,3 +817,75 @@ Enum `event_kind` (`EventKind`), table `event_subtypes` (`EventSubtype`), `train
 - Notification `training_cancelled`: body ends `... - cancelled by the organizer. Reason: <reason>` (reason whitespace-collapsed, cut to 200 characters; whole body still limited to 500), or `... - Not enough participants: N of M needed.` for an auto-cancel. Without a reason the text is unchanged.
 - App: `cancelTraining(sessionId, reason?)`; the cancel dialog has an optional multiline field (max 300); the event card and details show `Reason: ...` for a cancelled event. `TrainingSession` gains `cancellation_reason: string | null`.
 - Hosted deployment: `db push --remote` after an app build that sends `p_reason` is not required (old apps call `cancel_training(uuid)` and PostgREST resolves it to the new function through the default), but old apps will not show the reason.
+
+---
+
+# Event feed (P4, append-only)
+
+Migration `20261129000100_event_feed.sql`. Plan: `docs/EVENTS_PLAN.md` section 4. Tests: `supabase/tests/event-feed.test.ts`, plus the privilege matrix (`qa-privileges.test.ts`) and the Realtime list (`rls.test.ts`). All functions below: `security definer`, `set search_path = ''`, `authenticated` only (anon and service_role: no execute); errors are raised (`P0001`, message = code). No consent gate (posting is part of the service, like RSVP and attendance; no in-community write checks consent, see G1); push consent and preferences apply at send time as for every kind.
+
+## Rules
+
+- **Who:** active organizers of the event's community write top-level posts; every active member (organizers included) replies, one level only. Organizers delete any post; the author of a reply (still an active member) may delete their own reply. Members cannot delete top-level posts or other people's replies.
+- **Posting window:** posts and replies are accepted on an event of any status (scheduled, confirmed, cancelled, completed) until **30 days after its end** (`ends_at`, else `starts_at + 2 hours`); afterwards `event_closed`. Reading, marking read and deleting stay allowed.
+- **Rate limit:** at most **5 top-level posts per organizer per event per rolling hour** (deleted posts included; replies not counted). The 6th is **refused with `rate_limited`** and nothing is written (no post, no notification). Counted under the organizer's membership lock (`FOR NO KEY UPDATE`), exact under concurrency.
+- **Text hygiene:** body through `private.clean_required_text` (multiline), the same cleaner as event notes/title/description: C0/C1 controls and bidi embedding/override/isolate controls stripped, CR LF / CR / U+2028 / U+2029 → LF, trimmed; empty or invisible-only → `validation_failed:body`; over 1000 characters after cleaning → `validation_failed:body`.
+- **Leaving / removal:** the member's posts and replies stay (as announcements and attendance history), shown with their name and `author_role: null`; a removed member can no longer read the feed (RLS and RPCs: active members only) and is not notified.
+
+## Tables (RLS on, SELECT only for `authenticated`)
+
+| Table | Columns | Who can select |
+|---|---|---|
+| `event_posts` | `id`, `session_id` + `community_id` (composite FK → `training_sessions(id, community_id)`, cascade), `author_id? → profiles` (set null; null = deleted account, show "Former member"), `parent_id?` (composite FK `(parent_id, session_id)` → `event_posts(id, session_id)`, cascade: a reply belongs to the same event), `body?` (1..1000; null exactly when deleted), `created_at` (server clock when the post was written), `deleted_at?` | active members of the community (deleted rows are visible as tombstones without a body) |
+| `event_feed_reads` | `session_id` (cascade), `user_id → profiles` (cascade), `last_read_at`; pk both | own rows only |
+
+Realtime publication `supabase_realtime` adds `event_posts` (RLS filters per subscriber; subscribe with `session_id=eq.<id>`). A deletion arrives as an UPDATE (body null, `deleted_at` set). `event_feed_reads` is not published.
+
+## RPCs
+
+`create_event_post(p_session_id uuid, p_body text) → event_posts`
+- Errors in order: `not_authenticated`, `not_found` (unknown / null event), `forbidden` (members, removed organizers, other communities' organizers), `event_closed`, `validation_failed:body`, then after the locks `forbidden` (removed / demoted meanwhile) and `rate_limited`.
+- Notifies (`event_post`) the active members whose RSVP for the event is `going`, never the author.
+
+`reply_to_event_post(p_post_id uuid, p_body text) → event_posts`
+- Errors in order: `not_authenticated`, `not_found` (unknown / null post), `not_a_member`, `not_a_top_level_post` (the target is a reply), `post_deleted`, `event_closed`, `validation_failed:body`; after the locks `not_a_member` / `post_deleted` again (a concurrent delete wins).
+- Notifies (`event_reply`) only the parent post's author, when that is not the caller and the author is still an active member.
+
+`delete_event_post(p_post_id uuid) → event_posts`
+- Soft delete: `deleted_at` set, `body` null. Deleting a top-level post deletes its replies the same way. The in-app notifications quoting the deleted posts (`event_post:<id>` / `event_reply:<id>`) are deleted, their push jobs cascade. Already deleted: returned unchanged.
+- Errors: `not_authenticated`, `not_found`, `forbidden` (re-checked under the membership and post locks).
+
+`mark_event_feed_read(p_session_id uuid) → event_feed_reads`
+- Active member. Moves the caller's cursor to the server's now (never backwards) and marks the caller's unread `event_post` / `event_reply` notifications of that event read. Errors: `not_authenticated`, `not_found`, `not_a_member`.
+- Exactness: writers hold a shared per-event advisory lock and take `created_at` from the clock after it; the cursor takes it exclusively. A post being written while the cursor moves commits first, and a post started later gets a later `created_at`, so a post is never counted as read before it was visible.
+
+`get_event_feed(p_session_id uuid) → jsonb` (`EventFeed`)
+```
+{ session_id, community_id, is_organizer, closes_at, is_open, can_post (is_organizer and is_open), can_reply (is_open),
+  last_read_at (null = never opened), post_count, unread_count,
+  posts: [ { id, parent_id: null, author_id, author_name, author_role ('organizer'|'member'|null), body, created_at, is_unread, can_delete,
+             replies: [ { id, parent_id, author_id, author_name, author_role, body, created_at, is_unread, can_delete } ] } ] }
+```
+- Top-level posts newest first, replies oldest first. Deleted posts and the replies of a deleted post are left out. `author_role` is the author's current active role, null when no longer a member; `author_id` / `author_name` null for a deleted account. `can_delete`: the caller is an organizer, or it is the caller's own reply. Counts include replies. **Unread** = not written by the caller and `created_at > last_read_at` (everything of others when the caller never opened the feed). Not paginated. Errors: `not_authenticated`, `not_found`, `not_a_member`.
+
+`get_event_feed_unread(p_community_id uuid) → jsonb` (`EventFeedUnread[]`)
+- `[ { session_id, post_count, unread_count, last_post_at } ]` for every event of the community with visible posts, latest activity first. Same counting rules. Errors: `not_authenticated`, `not_a_member` (also for unknown / null communities).
+
+## Notification kinds (added to `notification_kind`)
+
+| Kind | Fired when | Recipients | Title / body | Dedupe key | Deep link |
+|---|---|---|---|---|---|
+| `event_post` | `create_event_post` | active members with RSVP `going`, minus the author | `New post: <event title>` / post preview (whitespace collapsed, 200 chars) | `event_post:<post id>` | `/events/<event id>/feed` |
+| `event_reply` | `reply_to_event_post` | the parent post's author (active, not the replier) | `New reply: <event title>` / `<replier name>: <preview>` | `event_reply:<reply id>` | `/events/<event id>/feed` |
+
+- `related_session_id` = the event. `notifications_deep_link_check` now allows `/activity`, `/trainings/<uuid>`, `/announcements/<uuid>` and `/events/<uuid>/feed` (lowercase uuid, nothing else). **App:** add `/events/<uuid>/feed` to `src/features/notifications/domain/deepLink.ts` and a route for it (it can show the event details scrolled to the feed); until then the app ignores these links.
+- Push preferences: both kinds fall in the `training_updates` category of `claim_notification_jobs` (its `else` branch; unchanged, no new preference column), then push consent (`no_push_consent`), exactly like the training kinds. Push expiry: one day.
+
+## GDPR
+
+- **Export** (`export_my_data`): `authored.event_posts: [ { post_id, session_id, community_id, community_name, event_title, parent_id, body, created_at, deleted_at } ]` (the caller's posts and replies; deleted ones with `body: null`), `event_feed_reads: [ { session_id, community_id, event_title, last_read_at } ]`, `truncated.event_posts`, `truncated.event_feed_reads`; the README mentions both. Nothing of other members.
+- **Erasure** (`private.erase_user`, so `delete_my_account`): the user's **replies are deleted**, together with the `event_reply` notifications that quote them; the user's **top-level posts stay without author** (`author_id` null, as announcements), so other members' replies under them survive; the user's read cursors are deleted. `DeleteMyAccountResult` is unchanged.
+
+New error codes: `not_a_top_level_post`, `post_deleted`, `event_closed`, `validation_failed:body` (event posts); `rate_limited` (already used by announcements and the export) for the post limit. Existing ones used: `not_authenticated`, `not_found`, `not_a_member`, `forbidden`.
+
+TypeScript (`src/lib/database.types.ts`): tables `event_posts` (`EventPost`), `event_feed_reads` (`EventFeedRead`); `EventFeed`, `EventFeedItem`, `EventFeedUnread`; `NotificationKind` gains `event_post`, `event_reply`; `MyDataExport` gains `event_feed_reads`, `authored.event_posts` and the two `truncated` keys.

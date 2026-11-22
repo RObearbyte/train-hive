@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { isRunningInExpoGo } from 'expo';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { eventFeedKeys } from '@/features/eventFeed/api/keys';
 import { invalidateUnlessRsvpPending } from '@/features/rsvp/domain/rsvpCache';
 import { trainingKeys } from '@/features/trainings/api/keys';
 import { reportError } from '@/lib/logger';
@@ -144,6 +145,7 @@ export function useNotificationLinks(): void {
     const stopTap = onNotificationTap(handleTap);
     const stopReceived = onNotificationReceived(() => {
       void queryClient.invalidateQueries({ queryKey: activityKeys.all });
+      void queryClient.invalidateQueries({ queryKey: eventFeedKeys.all });
       invalidateUnlessRsvpPending(queryClient, { queryKey: trainingKeys.lists() });
       invalidateUnlessRsvpPending(queryClient, { queryKey: trainingKeys.details() });
     });

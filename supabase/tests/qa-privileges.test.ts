@@ -41,6 +41,13 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   my_deletion_blockers: 'authenticated',
   remove_member: 'authenticated',
   set_member_role: 'authenticated',
+  // P4: event feed.
+  create_event_post: 'authenticated',
+  delete_event_post: 'authenticated',
+  get_event_feed: 'authenticated',
+  get_event_feed_unread: 'authenticated',
+  mark_event_feed_read: 'authenticated',
+  reply_to_event_post: 'authenticated',
   cancel_announcement: 'authenticated',
   cancel_training: 'authenticated',
   claim_notification_jobs: 'service_role',
@@ -277,6 +284,12 @@ describe('QA function privileges', () => {
       ['select public.export_my_data()', []],
       ['select public.my_deletion_blockers()', []],
       ['select public.delete_my_account()', []],
+      ['select public.create_event_post($1, $2)', [session.id, 'Hi']],
+      ['select public.reply_to_event_post($1, $2)', [session.id, 'Hi']],
+      ['select public.delete_event_post($1)', [session.id]],
+      ['select public.mark_event_feed_read($1)', [session.id]],
+      ['select public.get_event_feed($1)', [session.id]],
+      ['select public.get_event_feed_unread($1)', [communityId]],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
@@ -366,6 +379,38 @@ describe('QA table privileges', () => {
       "select relrowsecurity from pg_class where oid = 'public.event_subtypes'::regclass",
     );
     expect(rls).toEqual([{ relrowsecurity: true }]);
+  });
+
+  it('the event feed tables: authenticated SELECT only, anon nothing, RLS on, one own-scope policy each (P4)', async () => {
+    const { rows } = await admin.query<{ role: string; table: string; privilege: string }>(
+      `select r.role, t.name as table, p.privilege
+       from unnest(array['anon', 'authenticated']) as r(role)
+       cross join unnest(array['event_posts', 'event_feed_reads']) as t(name)
+       cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
+       where has_table_privilege(r.role, 'public.' || t.name, p.privilege)
+          or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+              and has_any_column_privilege(r.role, 'public.' || t.name, p.privilege))
+       order by 1, 2, 3`,
+    );
+    expect(rows).toEqual([
+      { role: 'authenticated', table: 'event_feed_reads', privilege: 'SELECT' },
+      { role: 'authenticated', table: 'event_posts', privilege: 'SELECT' },
+    ]);
+    const { rows: rls } = await admin.query<{ relname: string; relrowsecurity: boolean }>(
+      `select relname, relrowsecurity from pg_class
+       where oid in ('public.event_posts'::regclass, 'public.event_feed_reads'::regclass) order by relname`,
+    );
+    expect(rls.every((r) => r.relrowsecurity)).toBe(true);
+    const { rows: policies } = await admin.query<{ tablename: string; policyname: string; cmd: string; qual: string }>(
+      `select tablename, policyname, cmd, qual from pg_policies
+       where schemaname = 'public' and tablename in ('event_posts', 'event_feed_reads') order by tablename`,
+    );
+    expect(policies.map((p) => [p.tablename, p.policyname, p.cmd])).toEqual([
+      ['event_feed_reads', 'event_feed_reads_select_own', 'SELECT'],
+      ['event_posts', 'event_posts_select_members', 'SELECT'],
+    ]);
+    expect(policies[0].qual).toContain('auth.uid()');
+    expect(policies[1].qual).toContain('is_active_member(community_id)');
   });
 
   it('the data-export log in private grants nothing to any API role (G2)', async () => {

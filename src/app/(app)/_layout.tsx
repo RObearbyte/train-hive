@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { View } from 'react-native';
 
 import { ConsentGate } from '@/features/legal/components/ConsentGate';
+import { useEventFeedRealtime } from '@/features/eventFeed/hooks/useEventFeedRealtime';
 import { PushProvider } from '@/features/notifications/hooks/PushProvider';
 import { useActivityRealtime } from '@/features/notifications/hooks/useActivityRealtime';
 import { useNotificationLinks } from '@/features/notifications/hooks/useNotificationLinks';
@@ -18,6 +19,7 @@ function AppStack() {
   // Live channels for the whole signed-in area; they close when this layout unmounts.
   useTrainingsRealtime();
   useActivityRealtime();
+  useEventFeedRealtime();
   // Notification taps (including a cold start) -> allowlisted deep links.
   useNotificationLinks();
 

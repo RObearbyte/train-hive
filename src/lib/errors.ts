@@ -39,6 +39,9 @@ export const BACKEND_ERROR_CODES = [
   'last_organizer',
   'cannot_change_own_role',
   'cannot_remove_self',
+  'not_a_top_level_post',
+  'post_deleted',
+  'event_closed',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -221,6 +224,9 @@ const MESSAGES: Record<AppErrorCode, string> = {
   cannot_change_own_role: 'You cannot change your own role. Ask another organizer to do it.',
   cannot_remove_self:
     'You cannot remove yourself here. Use "Leave this community" in your profile instead.',
+  not_a_top_level_post: 'You can reply to a post, but not to a reply.',
+  post_deleted: 'That post was deleted.',
+  event_closed: 'The discussion for this event is closed. It stays readable.',
   app_update_required:
     'Our terms or privacy notice changed and this version of TrainHive cannot show the new text. Please update the app and try again.',
   network_error: 'No connection. Check your internet and try again.',

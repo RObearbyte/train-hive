@@ -545,6 +545,7 @@ describe('trainings and RSVPs under RLS', () => {
     expect(rows.map((row) => row.tablename)).toEqual([
       'announcements',
       'attendance_records',
+      'event_posts',
       'memberships',
       'notifications',
       'training_rsvps',

@@ -9,6 +9,25 @@ describe('parseAppLink', () => {
     expect(parseAppLink(`/trainings/${ID}`)).toEqual({ kind: 'training', id: ID });
     expect(parseAppLink(`/announcements/${ID}`)).toEqual({ kind: 'announcement', id: ID });
     expect(parseAppLink('/activity')).toEqual({ kind: 'activity' });
+    expect(parseAppLink(`/events/${ID}/feed`)).toEqual({ kind: 'eventFeed', id: ID });
+    expect(parseAppLink(`/events/${ID.toUpperCase()}/feed`)).toEqual({ kind: 'eventFeed', id: ID });
+    expect(hrefForLink({ kind: 'eventFeed', id: ID })).toBe(`/events/${ID}/feed`);
+  });
+
+  it.each([
+    `/events/${ID}`,
+    `/events/${ID}/feed/`,
+    `/events/${ID}/feed?x=1`,
+    `/events/${ID}/feed#x`,
+    `/events/${ID}/other`,
+    `/events/${ID}/feed/extra`,
+    '/events/not-a-uuid/feed',
+    '/events//feed',
+    `events/${ID}/feed`,
+    `//events/${ID}/feed`,
+    `/event/${ID}/feed`,
+  ])('rejects the event feed look-alike %s', (raw) => {
+    expect(parseAppLink(raw)).toBeNull();
   });
 
   it('normalizes the id to lower case', () => {

@@ -14,6 +14,8 @@ const KIND_ICON: Record<NotificationKind, IconName> = {
   training_cancelled: 'ban',
   training_reminder: 'clock',
   announcement_published: 'megaphone',
+  event_post: 'megaphone',
+  event_reply: 'people',
 };
 
 type Props = {

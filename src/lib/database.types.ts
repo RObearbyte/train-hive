@@ -942,6 +942,71 @@ export type Database = {
           },
         ];
       };
+      /**
+       * P4: event feed. Organizer top-level posts (`parent_id` null) and member replies (one
+       * level). Readable by active members of the community. Write only through the RPCs.
+       */
+      event_posts: {
+        Row: {
+          id: string;
+          session_id: string;
+          community_id: string;
+          /** null once the author deleted their account ("Former member"). */
+          author_id: string | null;
+          parent_id: string | null;
+          /** null exactly when the post is deleted. */
+          body: string | null;
+          created_at: string;
+          deleted_at: string | null;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: 'event_posts_session_fkey';
+            columns: ['session_id', 'community_id'];
+            isOneToOne: false;
+            referencedRelation: 'training_sessions';
+            referencedColumns: ['id', 'community_id'];
+          },
+          {
+            foreignKeyName: 'event_posts_author_id_fkey';
+            columns: ['author_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'event_posts_parent_fkey';
+            columns: ['parent_id', 'session_id'];
+            isOneToOne: false;
+            referencedRelation: 'event_posts';
+            referencedColumns: ['id', 'session_id'];
+          },
+        ];
+      };
+      /** P4: the caller's read cursor per event (own rows only). Written by `mark_event_feed_read`. */
+      event_feed_reads: {
+        Row: { session_id: string; user_id: string; last_read_at: string };
+        Insert: never;
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: 'event_feed_reads_session_id_fkey';
+            columns: ['session_id'];
+            isOneToOne: false;
+            referencedRelation: 'training_sessions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'event_feed_reads_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -1293,6 +1358,50 @@ export type Database = {
         Args: { p_community_id: string; p_window: StatisticsWindow };
         Returns: Json;
       };
+      // P4: event feed.
+      /**
+       * Active organizer of the event's community; top-level post. Raises `not_authenticated`,
+       * `not_found`, `forbidden`, `event_closed` (30 days after the event's end),
+       * `validation_failed:body` (1..1000 after cleaning), `rate_limited` (5 posts per organizer
+       * per event per rolling hour; nothing written).
+       */
+      create_event_post: {
+        Args: { p_session_id: string; p_body: string };
+        Returns: Database['public']['Tables']['event_posts']['Row'];
+      };
+      /**
+       * Active member; reply to a top-level, not deleted post. Raises `not_authenticated`,
+       * `not_found`, `not_a_member`, `not_a_top_level_post`, `post_deleted`, `event_closed`,
+       * `validation_failed:body`.
+       */
+      reply_to_event_post: {
+        Args: { p_post_id: string; p_body: string };
+        Returns: Database['public']['Tables']['event_posts']['Row'];
+      };
+      /**
+       * Soft delete (body cleared), a top-level post takes its replies. Active organizers: any
+       * post; the author (active member): own replies only. Idempotent; allowed after the feed
+       * closed. Raises `not_authenticated`, `not_found`, `forbidden`.
+       */
+      delete_event_post: {
+        Args: { p_post_id: string };
+        Returns: Database['public']['Tables']['event_posts']['Row'];
+      };
+      /** Active member; moves the caller's cursor to now. Raises `not_authenticated`, `not_found`, `not_a_member`. */
+      mark_event_feed_read: {
+        Args: { p_session_id: string };
+        Returns: Database['public']['Tables']['event_feed_reads']['Row'];
+      };
+      /** Active member. Returns an `EventFeed`. Raises `not_authenticated`, `not_found`, `not_a_member`. */
+      get_event_feed: {
+        Args: { p_session_id: string };
+        Returns: Json;
+      };
+      /** Active member. Returns `EventFeedUnread[]`. Raises `not_authenticated`, `not_a_member`. */
+      get_event_feed_unread: {
+        Args: { p_community_id: string };
+        Returns: Json;
+      };
     };
     Enums: {
       membership_role: 'organizer' | 'member';
@@ -1310,7 +1419,11 @@ export type Database = {
         | 'training_confirmed'
         | 'training_cancelled'
         | 'training_reminder'
-        | 'announcement_published';
+        | 'announcement_published'
+        /** P4: a new organizer post (to members going to the event). */
+        | 'event_post'
+        /** P4: a reply to the recipient's post. */
+        | 'event_reply';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -1363,6 +1476,56 @@ export type NotificationPreferences = Tables<'notification_preferences'>;
 export type NotificationDeliveryJob = Tables<'notification_delivery_jobs'>;
 export type AnnouncementStatus = Enums<'announcement_status'>;
 export type NotificationKind = Enums<'notification_kind'>;
+
+/** P4: a row of `event_posts`. */
+export type EventPost = Tables<'event_posts'>;
+/** P4: a row of `event_feed_reads`. */
+export type EventFeedRead = Tables<'event_feed_reads'>;
+
+/** P4: one post or reply in `get_event_feed`. */
+export type EventFeedItem = {
+  id: string;
+  parent_id: string | null;
+  /** null for a deleted account: show "Former member". */
+  author_id: string | null;
+  author_name: string | null;
+  /** The author's current active role in the community, else null. */
+  author_role: MembershipRole | null;
+  body: string;
+  created_at: string;
+  /** Not written by the caller and created after the caller's cursor. */
+  is_unread: boolean;
+  /** The caller may delete it: organizers any post, authors their own replies. */
+  can_delete: boolean;
+};
+
+/** P4: result of `get_event_feed`. Top-level posts newest first, replies oldest first; deleted ones left out. */
+export type EventFeed = {
+  session_id: string;
+  community_id: string;
+  /** The caller is an active organizer (may delete any post). */
+  is_organizer: boolean;
+  /** Posts and replies are accepted until then (30 days after the event's end). */
+  closes_at: string;
+  is_open: boolean;
+  /** is_organizer and is_open. */
+  can_post: boolean;
+  /** is_open (every active member may reply). */
+  can_reply: boolean;
+  last_read_at: string | null;
+  /** Posts plus replies. */
+  post_count: number;
+  unread_count: number;
+  posts: (EventFeedItem & { parent_id: null; replies: EventFeedItem[] })[];
+};
+
+/** P4: one row of `get_event_feed_unread` (events of the community with visible posts). */
+export type EventFeedUnread = {
+  session_id: string;
+  post_count: number;
+  unread_count: number;
+  last_post_at: string;
+};
 
 /** Why a claimed job has no tokens (`claim_notification_jobs`; first match wins, in this order). */
 export type NotificationSkipReason =
@@ -1706,6 +1869,13 @@ export type MyDataExport = {
     announcement_title: string;
     read_at: string;
   }[];
+  /** P4: the caller's read cursors of event discussions. */
+  event_feed_reads: {
+    session_id: string;
+    community_id: string;
+    event_title: string;
+    last_read_at: string;
+  }[];
   /** Token values are never exported. */
   push_devices: {
     device_id: string;
@@ -1726,6 +1896,18 @@ export type MyDataExport = {
       scheduled_for: string | null;
       published_at: string | null;
       created_at: string;
+    }[];
+    /** P4: the caller's event posts and replies; a deleted one has `body: null`. */
+    event_posts: {
+      post_id: string;
+      session_id: string;
+      community_id: string;
+      community_name: string;
+      event_title: string;
+      parent_id: string | null;
+      body: string | null;
+      created_at: string;
+      deleted_at: string | null;
     }[];
     events_organized: {
       session_id: string;
@@ -1769,8 +1951,10 @@ export type MyDataExport = {
     | 'consents'
     | 'notifications'
     | 'announcement_reads'
+    | 'event_feed_reads'
     | 'push_devices'
     | 'authored_announcements'
+    | 'event_posts'
     | 'events_organized'
     | 'invitation_codes'
     | 'invitation_attempts'

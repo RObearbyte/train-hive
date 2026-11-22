@@ -8,6 +8,7 @@ import {
   AttendanceEntryPoint,
   MyAttendanceOutcome,
 } from '@/features/attendance/components/AttendanceEntryPoint';
+import { DiscussionEntry } from '@/features/eventFeed/components/DiscussionEntry';
 import { RsvpControl } from '@/features/rsvp/components/RsvpControl';
 import { KindChip } from '@/features/trainings/components/KindChip';
 import { OrganizerActions } from '@/features/trainings/components/OrganizerActions';
@@ -310,6 +311,8 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
         <Divider />
         <RsvpControl session={session} myResponse={myResponse} now={now} />
       </Card>
+
+      <DiscussionEntry sessionId={session.id} communityId={session.community_id} />
 
       <Participants sessionId={session.id} />
 

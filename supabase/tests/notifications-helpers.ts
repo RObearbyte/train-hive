@@ -27,7 +27,9 @@ export type NotificationKind =
   | 'training_confirmed'
   | 'training_cancelled'
   | 'training_reminder'
-  | 'announcement_published';
+  | 'announcement_published'
+  | 'event_post'
+  | 'event_reply';
 
 export interface NotificationRow {
   id: string;
