@@ -38,7 +38,9 @@ import { useFinalizeAttendance, useRecordAttendance } from '../hooks/useAttendan
 import { useAttendanceSheet } from '../hooks/useAttendanceSheet';
 import { AddAttendeeModal } from './AddAttendeeModal';
 import { AttendanceRow } from './AttendanceRow';
+import { attendanceListText } from '../domain/attendanceText';
 import { AuditHistoryModal } from './AuditHistoryModal';
+import { CopyAttendanceActions } from './CopyAttendanceActions';
 import { ReasonDialog } from './ReasonDialog';
 
 type MarkAllState =
@@ -257,6 +259,12 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
   const nameOf = (userId: string) =>
     sheet.entries.find((entry) => entry.user_id === userId)?.display_name ?? 'Member';
 
+  const listText = attendanceListText({
+    title: session?.title ?? null,
+    when: session ? formatDateTimeRange(session.starts_at, session.ends_at, zone) : null,
+    entries: sheet.entries,
+  });
+
   const header = (
     <View style={{ gap: spacing.md }}>
       {back}
@@ -322,6 +330,8 @@ export function AttendanceScreen({ sessionId }: { sessionId: string }) {
         onPress={() => setAddOpen(true)}
         fullWidth
       />
+
+      <CopyAttendanceActions text={listText} />
 
       {markAll.phase === 'running' ? (
         <Banner

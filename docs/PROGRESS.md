@@ -75,3 +75,6 @@ Make the web build a first-class way to use TrainHive: responsive desktop layout
 - NOT verified: hosted Supabase, Realtime delivery, push of the new kinds, device/browser UI.
 - Open decisions for the owner: (1) `reply_to_event_post` has no rate limit (a member could spam an organizer with reply notifications): add a per-member hourly cap? (2) Legal texts do not yet mention event posts/replies (stored, visible to the community; replies deleted with the account, top-level posts kept without author): decide on wording and version bump. (3) Realtime does not deliver hard DELETEs (account erasure) live; they appear on next refetch. (4) No unread badge on event cards yet.
 - Owner actions: migrations through `20261129000100` still need `npx supabase@latest db push --remote`, only AFTER the new APK is installed (see deployment order above). Next: P3 "About you" profile page, then P5, G3.
+
+## 2026-11-22 — Copy / share the attendance list
+- Organizer attendance screen: "Copy list" and "Share" buttons produce plain text (title, time, counts, then Present / Absent / Not recorded groups sorted by name, walk-ins marked). Pure formatter `attendanceListText` with unit tests; no backend change. Not yet checked on a device.
