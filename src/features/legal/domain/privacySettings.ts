@@ -42,18 +42,18 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
   profile_demographics: {
     title: 'Birth year and gender',
     description:
-      'Optional. Used only for statistics: organizers see grouped numbers for groups of 5 or more, never your individual answer.',
+      'Optional. Used only for statistics: organizers see grouped numbers for groups of 5 or more, never your individual answer. Add or change them in Profile, then About you.',
     withdrawTitle: 'Withdraw consent for birth year and gender?',
     withdrawMessage:
-      'The birth year and gender you gave will be deleted. You can give them again later.',
+      'The birth year and gender stored for you will be deleted from TrainHive for good, and you will no longer be counted in the grouped statistics. You can give them again later.',
   },
   emergency_contact: {
     title: 'Emergency contact and T-shirt size',
     description:
-      'Optional. Visible to organizers of your community, for safety at events and for race kits. Tell your contact that you gave their details.',
-    withdrawTitle: 'Withdraw consent for emergency contact?',
+      'Optional. Visible to the organizers of your communities, for safety at events and for race kits. Tell your contact that you gave their details. Add, change or clear them in Profile, then About you.',
+    withdrawTitle: 'Withdraw consent for emergency contact and T-shirt size?',
     withdrawMessage:
-      'Your emergency contact and T-shirt size will be deleted and organizers will no longer see them. You can give them again later.',
+      'Your emergency contact and T-shirt size will be deleted from TrainHive for good, and organizers will no longer see them. You can give them again later.',
   },
   workout_logs: {
     title: 'Workout logs',

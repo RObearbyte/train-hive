@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { aboutYouKeys } from '@/features/aboutYou/api/keys';
 import { useSession } from '@/features/community/hooks/SessionProvider';
 import type { ConsentEvent, ConsentPurpose, MyConsents } from '@/lib/database.types';
 import { toAppError, type AppError } from '@/lib/errors';
@@ -72,7 +73,13 @@ export function useSetConsent() {
       reportError('consents.set', error);
       if (snapshot) queryClient.setQueryData(snapshot.key, snapshot.previous);
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: consentKeys.all }),
+    onSettled: async () => {
+      // Withdrawing birth year / gender or the emergency contact deletes the stored details: read them again.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: consentKeys.all }),
+        queryClient.invalidateQueries({ queryKey: aboutYouKeys.all }),
+      ]);
+    },
   });
 }
 

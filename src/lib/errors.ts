@@ -53,6 +53,7 @@ export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
 export type AppErrorCode = BackendErrorCode | 'network_error' | 'app_update_required' | 'unknown';
 
 const VALIDATION_PREFIX = 'validation_failed';
+const CONSENT_PREFIX = 'consent_required';
 
 const BACKEND_CODE_SET: ReadonlySet<string> = new Set(BACKEND_ERROR_CODES);
 
@@ -62,7 +63,7 @@ function isBackendErrorCode(value: string): value is BackendErrorCode {
 
 export class AppError extends Error {
   readonly code: AppErrorCode;
-  /** Column name for `validation_failed:<field>`, e.g. `max_participants`. */
+  /** Column name for `validation_failed:<field>` (e.g. `max_participants`), or the purpose of `consent_required:<purpose>`. */
   readonly field: string | undefined;
   /** The value that was thrown / returned, kept for logging. */
   readonly original: unknown;
@@ -96,6 +97,11 @@ export function parseErrorCode(
   if (text.startsWith(`${VALIDATION_PREFIX}:`)) {
     const field = text.slice(VALIDATION_PREFIX.length + 1).trim();
     return { code: 'validation_failed', field: field === '' ? undefined : field };
+  }
+  // `consent_required:<purpose>` (About you): the purpose travels in `field`.
+  if (text.startsWith(`${CONSENT_PREFIX}:`)) {
+    const purpose = text.slice(CONSENT_PREFIX.length + 1).trim();
+    return { code: 'consent_required', field: purpose === '' ? undefined : purpose };
   }
   return isBackendErrorCode(text) ? { code: text, field: undefined } : null;
 }
@@ -266,6 +272,21 @@ const FIELD_LABELS: Record<string, string> = {
   device_label: 'device name',
   window: 'time period',
   limit: 'page size',
+  input: 'details',
+  birth_year: 'birth year',
+  gender: 'gender',
+  emergency_contact_name: "emergency contact's name",
+  emergency_contact_phone: "emergency contact's phone number",
+  emergency_contact_relationship: 'relationship to your emergency contact',
+  tshirt_size: 'T-shirt size',
+};
+
+/** `consent_required:<purpose>` on the About-you page: which agreement is missing. */
+const CONSENT_FIELD_MESSAGES: Record<string, string> = {
+  profile_demographics:
+    'To save your birth year or gender, please agree to the statistics notice first, then try again.',
+  emergency_contact:
+    'To save your emergency contact or T-shirt size, please agree to sharing them with organizers first, then try again.',
 };
 
 /**
@@ -273,6 +294,9 @@ const FIELD_LABELS: Record<string, string> = {
  * unparsed value; anything unrecognized gets the generic fallback.
  */
 export function userMessage(code: AppErrorCode | (string & {}), field?: string): string {
+  if (code === 'consent_required' && field !== undefined && Object.hasOwn(CONSENT_FIELD_MESSAGES, field)) {
+    return CONSENT_FIELD_MESSAGES[field];
+  }
   if (code === 'validation_failed' && field !== undefined) {
     const label = FIELD_LABELS[field];
     if (label !== undefined) return `The ${label} is not valid. Please check it and try again.`;

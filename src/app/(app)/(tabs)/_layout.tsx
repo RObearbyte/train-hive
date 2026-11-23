@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router/js-tabs';
 
+import { AboutYouRedirect } from '@/features/aboutYou/components/AboutYouRedirect';
 import { badgeText } from '@/features/notifications/domain/unread';
 import { useActivity } from '@/features/notifications/hooks/useActivity';
 import { useLayout } from '@/features/shell/hooks/useLayout';
@@ -20,32 +21,34 @@ export default function TabsLayout() {
   // Display only: announcements and notifications the server says are unread.
   const unread = badgeText(useActivity().unreadCount);
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: sidebar
-          ? { display: 'none' }
-          : { backgroundColor: colors.surface, borderTopColor: colors.border },
-        tabBarLabelStyle: { fontSize: typography.caption.fontSize, fontWeight: '600' },
-        tabBarBadgeStyle: { backgroundColor: colors.accent, color: colors.onAccent },
-        sceneStyle: { backgroundColor: colors.background },
-      }}
-    >
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tabIcon('home') }} />
-      <Tabs.Screen name="trainings" options={{ title: 'Events', tabBarIcon: tabIcon('calendar') }} />
-      <Tabs.Screen
-        name="communications"
-        options={{
-          title: 'Communications',
-          tabBarIcon: tabIcon('bell'),
-          tabBarBadge: unread ?? undefined,
-          tabBarAccessibilityLabel: unread ? `Communications, ${unread} unread` : 'Communications',
+    <AboutYouRedirect>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textMuted,
+          tabBarStyle: sidebar
+            ? { display: 'none' }
+            : { backgroundColor: colors.surface, borderTopColor: colors.border },
+          tabBarLabelStyle: { fontSize: typography.caption.fontSize, fontWeight: '600' },
+          tabBarBadgeStyle: { backgroundColor: colors.accent, color: colors.onAccent },
+          sceneStyle: { backgroundColor: colors.background },
         }}
-      />
-      <Tabs.Screen name="statistics" options={{ title: 'Statistics', tabBarIcon: tabIcon('chart') }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('person') }} />
-    </Tabs>
+      >
+        <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tabIcon('home') }} />
+        <Tabs.Screen name="trainings" options={{ title: 'Events', tabBarIcon: tabIcon('calendar') }} />
+        <Tabs.Screen
+          name="communications"
+          options={{
+            title: 'Communications',
+            tabBarIcon: tabIcon('bell'),
+            tabBarBadge: unread ?? undefined,
+            tabBarAccessibilityLabel: unread ? `Communications, ${unread} unread` : 'Communications',
+          }}
+        />
+        <Tabs.Screen name="statistics" options={{ title: 'Statistics', tabBarIcon: tabIcon('chart') }} />
+        <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('person') }} />
+      </Tabs>
+    </AboutYouRedirect>
   );
 }

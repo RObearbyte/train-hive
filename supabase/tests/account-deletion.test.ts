@@ -305,6 +305,8 @@ describe('delete_my_account: export consistency', () => {
       'public.invitation_codes.created_by': ex.authored.invitation_codes.length,
       'public.invitation_attempts.user_id': ex.technical.invitation_attempts.length,
       'private.data_export_log.user_id': ex.technical.data_export_requests.length,
+      // P3: About you.
+      'private.member_about_you.user_id': ex.extensions.about_you ? 1 : 0,
     };
     const nonZero = Object.fromEntries(Object.entries(expected).filter(([, n]) => n > 0));
     // Every place the database refers to the victim is a section of the export, with the same count.

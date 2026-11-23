@@ -12,6 +12,7 @@
  *    cache and in-memory onboarding state. Each cleanup failure is collected as
  *    a warning and the remaining steps still run.
  */
+import { aboutYouPromptStorageKey } from '@/features/aboutYou/domain/prompt';
 import { activeCommunityStorageKey } from '@/features/community/domain/activeCommunity';
 import { ACCEPTANCE_STORAGE_KEY } from '@/features/legal/domain/acceptance';
 import { PUSH_PROMPT_DISMISSED_KEY } from '@/features/notifications/domain/pushState';
@@ -21,10 +22,12 @@ export const SIGN_OUT_TITLE = 'Sign out of TrainHive?';
 export const SIGN_OUT_MESSAGE =
   'You will lose access to this account on this device. TrainHive accounts are anonymous: without a login there is no way to get it back.';
 
-/** Every record kept on this device that belongs to the account or its choices. */
+/** Every record kept on this device that belongs to the account or its choices (including the "About you page seen" note). */
 export function storedKeysToClear(input: { userId: string | null; authStorageKey: string }): string[] {
   const keys = [input.authStorageKey, ACCEPTANCE_STORAGE_KEY, PUSH_PROMPT_DISMISSED_KEY];
-  if (input.userId !== null) keys.push(activeCommunityStorageKey(input.userId));
+  if (input.userId !== null) {
+    keys.push(activeCommunityStorageKey(input.userId), aboutYouPromptStorageKey(input.userId));
+  }
   return keys;
 }
 

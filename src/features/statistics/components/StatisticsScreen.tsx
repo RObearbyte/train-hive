@@ -3,7 +3,9 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 
+import { CommunityProfileCard } from '@/features/aboutYou/components/CommunityProfileCard';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { FEATURES } from '@/features/legal/constants';
 import { ScreenHeader } from '@/features/shell/components/ScreenHeader';
 import type { StatisticsWindow } from '@/lib/database.types';
 import { toAppError, userMessage } from '@/lib/errors';
@@ -124,7 +126,11 @@ export function StatisticsScreen() {
       ) : view === 'me' ? (
         <MyParticipation communityId={communityId} window={window} />
       ) : (
-        <CommunityOverview communityId={communityId} window={window} />
+        <>
+          <CommunityOverview communityId={communityId} window={window} />
+          {/* Organizers only (this view is); the numbers are today's, whatever the period filter says. */}
+          {FEATURES.demographics ? <CommunityProfileCard communityId={communityId} /> : null}
+        </>
       )}
     </Screen>
   );

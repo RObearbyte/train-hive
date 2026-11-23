@@ -2,10 +2,13 @@ import { Redirect, useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { EmergencyListSection } from '@/features/aboutYou/components/EmergencyListSection';
+import { MemberEmergencySection } from '@/features/aboutYou/components/MemberEmergencySection';
 import { RoleBadge } from '@/features/communities/components/YourCommunities';
 import { ConfirmDialog } from '@/features/community/components/ConfirmDialog';
 import { useSession } from '@/features/community/hooks/SessionProvider';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
+import { FEATURES } from '@/features/legal/constants';
 import { ResponsiveModal } from '@/features/shell/components/ResponsiveModal';
 import { formatLongDate, isValidTimeZone } from '@/lib/datetime';
 import { userMessage } from '@/lib/errors';
@@ -164,9 +167,9 @@ function MembersBody({
                     subtitle={`Joined ${formatLongDate(entry.joinedAt, safeZone)}`}
                     leading={<Avatar name={name} size={36} />}
                     trailing={<RoleBadge role={role} />}
-                    showChevron={actions.length > 0}
-                    accessibilityLabel={`${name}${isSelf ? ', you' : ''}, ${role}, joined ${formatLongDate(entry.joinedAt, safeZone)}${actions.length > 0 ? '. Open actions' : ''}`}
-                    onPress={actions.length > 0 ? () => setTarget(entry) : undefined}
+                    showChevron
+                    accessibilityLabel={`${name}${isSelf ? ', you' : ''}, ${role}, joined ${formatLongDate(entry.joinedAt, safeZone)}. Open details${actions.length > 0 ? ' and actions' : ''}`}
+                    onPress={() => setTarget(entry)}
                     testID={`member-row-${entry.userId}`}
                   />
                 </View>
@@ -216,15 +219,22 @@ function MembersBody({
   return (
     <Screen scroll onRefresh={refresh} refreshing={roster.isRefetching}>
       {header}
-      <Text color="textMuted">{`Everyone in ${communityName}. Tap a person to change their role or remove them.`}</Text>
+      <Text color="textMuted">{`Everyone in ${communityName}. Tap a person to see what they shared with organizers, change their role or remove them.`}</Text>
       {notice ? <Banner tone="success" message={notice} /> : null}
       {body}
+
+      {FEATURES.emergencyContact && split && split.active.length > 0 ? (
+        <EmergencyListSection communityId={communityId} communityName={communityName} />
+      ) : null}
 
       <ResponsiveModal visible={target !== null} onClose={() => setTarget(null)} variant="sheet">
         {target ? (
           <View style={{ gap: spacing.md }} accessibilityViewIsModal>
             <Text variant="heading">{targetName}</Text>
             <Text color="textMuted">{target.role === 'organizer' ? 'Organizer' : 'Member'}</Text>
+            {FEATURES.emergencyContact ? (
+              <MemberEmergencySection communityId={communityId} userId={target.userId} />
+            ) : null}
             {targetActions.map((action) => (
               <Button
                 key={action}

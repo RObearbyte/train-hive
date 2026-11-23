@@ -36,6 +36,17 @@ function payload(overrides: Record<string, unknown> = {}): MyDataExport {
   } as unknown as MyDataExport;
 }
 
+describe('the About-you details in the summary', () => {
+  it('are named when the file holds them, and only then', () => {
+    const aboutYou = { birth_year: 1990, gender: null, emergency_contact_name: null, emergency_contact_phone: null, emergency_contact_relationship: null, tshirt_size: 'M', created_at: '', updated_at: '' };
+    const withDetails = summarizeExport(payload({ extensions: { about_you: aboutYou } }));
+    expect(withDetails.parts.at(-1)).toBe('your About-you details');
+    expect(exportSuccessMessage(withDetails)).toMatch(/and your About-you details. Keep the file private/);
+    expect(summarizeExport(payload({ extensions: { about_you: null } })).parts).not.toContain('your About-you details');
+    expect(summarizeExport(payload()).parts).not.toContain('your About-you details');
+  });
+});
+
 describe('exportFileName', () => {
   it('uses the server date (UTC date part)', () => {
     expect(exportFileName('2026-11-20T23:59:59Z')).toBe('trainhive-data-2026-11-20.json');

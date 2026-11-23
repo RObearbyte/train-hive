@@ -889,3 +889,76 @@ Realtime publication `supabase_realtime` adds `event_posts` (RLS filters per sub
 New error codes: `not_a_top_level_post`, `post_deleted`, `event_closed`, `validation_failed:body` (event posts); `rate_limited` (already used by announcements and the export) for the post limit. Existing ones used: `not_authenticated`, `not_found`, `not_a_member`, `forbidden`.
 
 TypeScript (`src/lib/database.types.ts`): tables `event_posts` (`EventPost`), `event_feed_reads` (`EventFeedRead`); `EventFeed`, `EventFeedItem`, `EventFeedUnread`; `NotificationKind` gains `event_post`, `event_reply`; `MyDataExport` gains `event_feed_reads`, `authored.event_posts` and the two `truncated` keys.
+
+---
+
+# About you (P3, append-only)
+
+Migration `20261130000100_about_you.sql`. Plan: `docs/EVENTS_PLAN.md` section 3, `docs/GDPR_PLAN.md` sections 1-2. Tests: `supabase/tests/about-you.test.ts`, plus the privilege matrix (`qa-privileges.test.ts`) and the GDPR suites (`data-export.test.ts`, `account-deletion.test.ts`). All functions below: `security definer`, `set search_path = ''`, `authenticated` only (anon and service_role: no execute); errors are raised (`P0001`, message = code).
+
+## Storage
+
+`private.member_about_you` (one row per member, `user_id` → `profiles`, cascade): `birth_year?`, `gender?` (`woman` | `man` | `other` | `prefer_not_to_say`), `emergency_contact_name?` (1-80), `emergency_contact_phone?` (1-30), `emergency_contact_relationship?` (1-40), `tshirt_size?` (`XS` | `S` | `M` | `L` | `XL` | `XXL`), `created_at`, `updated_at`. Every field optional. An emergency contact is name + phone (relationship optional) or nothing; a row with no field is deleted. The table is in the `private` schema: **no API role (anon, authenticated, service_role) holds any privilege on it**, not even SELECT; everything goes through the functions below. Not in the Realtime publication.
+
+## Consent (G1 ledger)
+
+| Field | Needed to SET it | Withdrawal (`withdraw_consent`) |
+|---|---|---|
+| `birth_year`, `gender` | current `profile_demographics` | `profile_demographics` deletes both |
+| `emergency_contact_*`, `tshirt_size` | current `emergency_contact` (GDPR_PLAN groups them: safety at events, race kits) | `emergency_contact` deletes the three contact fields and the T-shirt size |
+
+- Clearing a field (null) never needs consent. Withdrawing deletes the covered fields in the same transaction, also when no grant is on record (`changed: false`, nothing written to the ledger), like push tokens since Q7-2. `withdraw_consent`'s result shape is unchanged.
+- Defence in depth: organizer reads and the demographics ignore a field whose consent is not current.
+- Saving and withdrawing take the per-user consent lock (`private.lock_consents`), so a save can never interleave with a withdrawal.
+
+## RPCs (own data)
+
+`get_my_about_you() → jsonb` (`AboutYou`)
+```
+{ has_data, birth_year, gender, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+  tshirt_size, updated_at (null = nothing stored), birth_year_min, birth_year_max,
+  consents: { profile_demographics: boolean, emergency_contact: boolean } }
+```
+- `birth_year_min` / `birth_year_max` = server year (UTC) - 100 / - 16 (minimum age 16): use them for the picker, not the device clock. Works without a profile (all null). Errors: `not_authenticated`.
+
+`save_my_about_you(p_input jsonb) → jsonb` (`AboutYou`)
+- **Partial update:** `p_input` is an object with any of `birth_year`, `gender`, `emergency_contact_name`, `emergency_contact_phone`, `emergency_contact_relationship`, `tshirt_size`. A key that is **absent** leaves the field unchanged; a key with **`null` clears** it. Unknown keys or a non-object → `validation_failed:input`. A save that leaves no field deletes the row.
+- Validation: `birth_year` JSON integer in [server year - 100, server year - 16]; `gender` exact lowercase value; `tshirt_size` any case, trimmed, stored upper case; texts through `private.clean_required_text` single-line (controls and bidi controls stripped, whitespace collapsed, trimmed, empty / invisible-only refused), name ≤ 80, relationship ≤ 40, phone ≤ 30 characters made of digits, spaces and `+ ( ) . / -` with 6-20 digits. Empty strings are refused (send `null` to clear).
+- Errors in order: `not_authenticated`, `validation_failed:input`, `validation_failed:<field>`, then after the locks `not_a_member` (no profile: never joined, or account being deleted), `consent_required:profile_demographics` (setting birth year / gender), `consent_required:emergency_contact` (setting a contact field or the T-shirt size), and `validation_failed:emergency_contact_name` / `validation_failed:emergency_contact_phone` when the merged contact would be incomplete (to remove a contact send all three as null).
+
+`clear_my_about_you() → jsonb` (`AboutYou & { cleared }`)
+- Deletes all the caller's details. Consents stay as they are. `cleared: false` when nothing was stored. Errors: `not_authenticated`.
+
+## RPCs (organizers)
+
+`get_member_emergency_info(p_community_id uuid, p_user_id uuid) → jsonb` (`MemberEmergencyInfo`)
+```
+{ community_id, user_id, display_name, role, emergency_contact_name, emergency_contact_phone,
+  emergency_contact_relationship, tshirt_size, has_emergency_contact, updated_at }
+```
+- Caller: active organizer of the community. Target: an **active** member of that community (organizers included). Never returns birth year or gender. Fields null when not given, and all four null when the member's `emergency_contact` consent is not current.
+- Errors: `not_authenticated`, `forbidden` (not an active organizer there; also null / unknown community), `validation_failed:user_id`, `not_found` (unknown user, member who left or was removed, member of another community).
+
+`list_community_emergency_info(p_community_id uuid) → jsonb` (`CommunityEmergencyList`)
+- `{ community_id, members: [MemberEmergencyInfo without community_id], truncated }`: active members (organizers included) with a current `emergency_contact` consent and an emergency contact or a T-shirt size, by display name, at most 500. Errors: `not_authenticated`, `forbidden`.
+
+**Leaving / removal / demotion:** checked at read time from `memberships`, so access ends the moment a member leaves (`leave_community`) or is removed (`remove_member`), and an organizer who is demoted or removed loses access at once. A member active in another community stays visible to that community's organizers.
+
+`get_community_demographics(p_community_id uuid) → jsonb` (`CommunityDemographics`)
+```
+{ community_id, min_group_size: 5, member_count, reference_year,
+  age_bands: [ { key, count, suppressed } ],   -- under_18, 18_29, 30_39, 40_49, 50_59, 60_plus, not_provided
+  genders:   [ { key, count, suppressed } ] }  -- woman, man, other, prefer_not_to_say, not_provided
+```
+- Caller: active organizer. Population: the community's **active** members (organizers included); a missing field or one without current consent is `not_provided`. Age = `reference_year` (server, UTC) - birth year (the age reached this calendar year). Errors: `not_authenticated`, `forbidden`.
+- **Suppression rule (each dimension separately; `count` null when suppressed):** (1) every cell below 5 (0 included) is suppressed; (2) while the suppressed cells are only one, or add up to less than 5, the smallest remaining cell (first in the listed order on ties) is suppressed too; (3) stop when nothing is suppressed, when at least two suppressed cells add up to 5 or more, or when everything is suppressed. Why: the organizer knows `member_count` (the member list), so the sum of the suppressed cells can always be derived by subtraction; the rule makes that sum cover at least 5 people over at least 2 categories, so no group below 5 (and no "nobody / everybody else is X" fact) can be recovered by differencing. There is no age × gender cross-table.
+- **Known limits (not prevented):** differencing over time (asking before and after one member joins, leaves or edits can reveal that member's band); an organizer of two communities with overlapping members can compare the two results. The app should not offer history or comparisons of these numbers.
+
+## GDPR
+
+- **Export** (`export_my_data`): `extensions.about_you: { birth_year, gender, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, tshirt_size, created_at, updated_at } | null` (always present); the README mentions it.
+- **Erasure** (`private.erase_user`, so `delete_my_account`): the row is deleted (explicitly, and by the cascade from `profiles`). `DeleteMyAccountResult` is unchanged.
+
+New error codes: `consent_required:profile_demographics`, `consent_required:emergency_contact`, `validation_failed:input`, `validation_failed:birth_year`, `validation_failed:gender`, `validation_failed:emergency_contact_name`, `validation_failed:emergency_contact_phone`, `validation_failed:emergency_contact_relationship`, `validation_failed:tshirt_size`. Existing ones used: `not_authenticated`, `not_a_member`, `forbidden`, `not_found`, `validation_failed:user_id`.
+
+TypeScript (`src/lib/database.types.ts`): functions `get_my_about_you`, `save_my_about_you`, `clear_my_about_you`, `get_member_emergency_info`, `list_community_emergency_info`, `get_community_demographics`; types `AboutYou`, `AboutYouInput`, `AboutYouGender`, `TshirtSize`, `ClearAboutYouResult`, `MemberEmergencyInfo`, `CommunityEmergencyList`, `DemographicsCell`, `AgeBand`, `CommunityDemographics`; `MyDataExport.extensions.about_you`. No table type (the table is not reachable by the API).

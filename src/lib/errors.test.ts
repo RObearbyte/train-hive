@@ -288,6 +288,39 @@ describe('GDPR G1 consent codes', () => {
   });
 });
 
+describe('About you (P3) codes', () => {
+  it('parses consent_required:<purpose> and keeps the purpose as the field', () => {
+    const error = toAppError(pgError('consent_required:emergency_contact'));
+    expect(error.code).toBe('consent_required');
+    expect(error.field).toBe('emergency_contact');
+    expect(toAppError(pgError('consent_required:profile_demographics')).field).toBe('profile_demographics');
+    expect(toAppError(pgError('consent_required:')).field).toBeUndefined();
+  });
+
+  it('says which agreement is missing, and falls back to the terms text for the plain code', () => {
+    expect(userMessage('consent_required', 'profile_demographics')).toMatch(/birth year or gender/);
+    expect(userMessage('consent_required', 'emergency_contact')).toMatch(/emergency contact or T-shirt size/);
+    expect(userMessage('consent_required', 'something_else')).toBe(userMessage('consent_required'));
+  });
+
+  it('names the About-you fields in validation messages', () => {
+    for (const field of [
+      'input',
+      'birth_year',
+      'gender',
+      'emergency_contact_name',
+      'emergency_contact_phone',
+      'emergency_contact_relationship',
+      'tshirt_size',
+    ]) {
+      const error = toAppError(pgError(`validation_failed:${field}`));
+      expect(error.field).toBe(field);
+      expect(userMessage(error.code, error.field)).not.toBe(userMessage('validation_failed'));
+      expect(userMessage(error.code, error.field)).not.toContain('_');
+    }
+  });
+});
+
 describe('GDPR G2 organizer tools', () => {
   it('parses the member-management codes', () => {
     for (const code of ['last_organizer', 'cannot_change_own_role', 'cannot_remove_self'] as const) {

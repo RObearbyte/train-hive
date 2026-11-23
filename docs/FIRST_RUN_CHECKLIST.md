@@ -58,3 +58,13 @@ For every problem: the screen, what you tapped, the exact text of any error, and
 - **Pushes stop for old members:** they have not accepted the new push consent yet; open the app and enable notifications once.
 - **`db push` partly applied:** do not re-run migrations by hand; paste the output and I'll tell you how to continue.
 - **Deleting an account fails on the hosted project:** the plan has a fallback (an Edge Function with the admin API), documented in `docs/API_CONTRACT.md` ("GDPR G2"); tell me and I'll build it.
+
+## F. Extra step since the About-you page (legal version 2)
+
+This build bundles privacy/terms version **2**, but the hosted server still holds version 1. After `db push --remote` AND installing the new APK, run once in the Supabase SQL editor:
+
+```sql
+select public.admin_set_legal_version('terms','2'), public.admin_set_legal_version('privacy','2');
+```
+
+Until then, new joins from this build are refused as "app update required". Afterwards every existing member sees "We updated our terms" once. Run it only when the build with version 2 is installed on every phone you want to keep working (older builds are refused afterwards).

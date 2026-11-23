@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ConsentPurpose } from '@/lib/database.types';
 
 import { applyConsentEvent, isConsentCurrent, optimisticConsent } from './consentCache';
-import type { LegalFeatures } from '../constants';
+import { BUNDLED_TERMS_PRIVACY_VERSION, type LegalFeatures } from '../constants';
 import { OPTIONAL_PURPOSES } from './consentState';
 import {
   PURPOSE_COPY,
@@ -50,12 +50,29 @@ describe('optional rows', () => {
     expect(PURPOSE_COPY.profile_demographics.withdrawMessage).toMatch(/deleted/);
   });
 
-  it('shows only the consents that exist now: push notifications while the later features are off', () => {
-    expect(optionalRows(neverRecorded()).map((row) => row.purpose)).toEqual(['push_notifications']);
-    expect(visibleOptionalPurposes()).toEqual(['push_notifications']);
+  it('shows only the consents that exist now: push, birth year and gender, emergency contact (workout logs are not built)', () => {
+    const shipped = ['push_notifications', 'profile_demographics', 'emergency_contact'];
+    expect(optionalRows(neverRecorded()).map((row) => row.purpose)).toEqual(shipped);
+    expect(visibleOptionalPurposes()).toEqual(shipped);
   });
 
-  it('a flag adds exactly its own switch', () => {
+  it('describes the two About-you purposes correctly and says withdrawing deletes the stored data', () => {
+    const demographics = PURPOSE_COPY.profile_demographics;
+    expect(demographics.description).toMatch(/groups of 5 or more/);
+    expect(demographics.description).toMatch(/never your individual answer/);
+    expect(demographics.withdrawMessage).toMatch(/birth year and gender stored for you will be deleted/);
+    const emergency = PURPOSE_COPY.emergency_contact;
+    expect(emergency.title).toBe('Emergency contact and T-shirt size');
+    expect(emergency.description).toMatch(/organizers of your communities/);
+    expect(emergency.withdrawTitle).toMatch(/T-shirt size/);
+    expect(emergency.withdrawMessage).toMatch(/emergency contact and T-shirt size will be deleted/);
+    expect(emergency.withdrawMessage).toMatch(/organizers will no longer see them/);
+  });
+
+  it('a flag adds exactly its own switch (all off is push only)', () => {
+    expect(visibleOptionalPurposes({ demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false })).toEqual([
+      'push_notifications',
+    ]);
     const base: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
     expect(visibleOptionalPurposes({ ...base, demographics: true })).toEqual(['push_notifications', 'profile_demographics']);
     expect(visibleOptionalPurposes({ ...base, emergencyContact: true })).toEqual(['push_notifications', 'emergency_contact']);
@@ -67,7 +84,7 @@ describe('optional rows', () => {
 describe('required rows', () => {
   it('shows the accepted version and date once accepted', () => {
     const [terms, age] = requiredRows(accepted());
-    expect(terms).toMatchObject({ purpose: 'terms_privacy', accepted: true, version: 'terms:1|privacy:1' });
+    expect(terms).toMatchObject({ purpose: 'terms_privacy', accepted: true, version: BUNDLED_TERMS_PRIVACY_VERSION });
     expect(terms.at).not.toBeNull();
     expect(age).toMatchObject({ purpose: 'age_16', accepted: true });
   });

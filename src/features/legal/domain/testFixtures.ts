@@ -1,5 +1,7 @@
 import type { ConsentPurpose, ConsentState, MyConsents } from '@/lib/database.types';
 
+import { BUNDLED_TERMS_PRIVACY_VERSION, PRIVACY_VERSION, TERMS_VERSION } from '../constants';
+
 const NEVER: ConsentState = { granted: false, current: false, document_version: null, at: null };
 
 export function consentState(overrides: Partial<ConsentState> = {}): ConsentState {
@@ -10,14 +12,17 @@ export function grantedState(version: string | null, at = '2026-11-01T10:00:00.0
   return { granted: true, current: true, document_version: version, at };
 }
 
-/** `my_consents()` for someone who has never recorded anything (a member from before the ledger). */
+/**
+ * `my_consents()` for someone who has never recorded anything (a member from before the ledger).
+ * The server's published texts are the ones this build bundles, so a version bump needs no edit here.
+ */
 export function neverRecorded(overrides: Partial<MyConsents> = {}): MyConsents {
   return {
-    terms_version: '1',
+    terms_version: TERMS_VERSION,
     terms_effective_at: '2026-11-01T00:00:00.000Z',
-    privacy_version: '1',
+    privacy_version: PRIVACY_VERSION,
     privacy_effective_at: '2026-11-01T00:00:00.000Z',
-    terms_privacy_version: 'terms:1|privacy:1',
+    terms_privacy_version: BUNDLED_TERMS_PRIVACY_VERSION,
     needs_terms_acceptance: true,
     consents: {
       terms_privacy: NEVER,
@@ -39,7 +44,7 @@ export function accepted(extra: Partial<Record<ConsentPurpose, ConsentState>> = 
     needs_terms_acceptance: false,
     consents: {
       ...base.consents,
-      terms_privacy: grantedState('terms:1|privacy:1'),
+      terms_privacy: grantedState(BUNDLED_TERMS_PRIVACY_VERSION),
       age_16: grantedState('1'),
       ...extra,
     },

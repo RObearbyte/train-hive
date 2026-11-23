@@ -42,10 +42,12 @@ function textOf(doc: LegalDocument): string {
 }
 
 describe('version constants', () => {
-  it('match the versions seeded on the server', () => {
-    expect(TERMS_VERSION).toBe('1');
-    expect(PRIVACY_VERSION).toBe('1');
-    expect(BUNDLED_TERMS_PRIVACY_VERSION).toBe('terms:1|privacy:1');
+  // Version 2 describes About you (birth year, gender, emergency contact, T-shirt size). The server is seeded
+  // with '1': publish '2' with admin_set_legal_version when this build is in use, so members are asked again.
+  it('are version 2, the texts that describe About you', () => {
+    expect(TERMS_VERSION).toBe('2');
+    expect(PRIVACY_VERSION).toBe('2');
+    expect(BUNDLED_TERMS_PRIVACY_VERSION).toBe('terms:2|privacy:2');
   });
 
   it('the combined version fits the server pattern for a version string', () => {
@@ -234,6 +236,8 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
 });
 
 const OFF: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
+/** What ships now: About you is built (backend, app and these texts); workout logs and event posts are not described yet. */
+const SHIPPED: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: false, eventPosts: false };
 const ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
 const SINGLE: [keyof LegalFeatures, RegExp][] = [
   ['demographics', /birth year|gender|groups of 5/i],
@@ -243,8 +247,8 @@ const SINGLE: [keyof LegalFeatures, RegExp][] = [
 ];
 
 describe('later-phase features appear in the texts only when their flag is on', () => {
-  it('ships with every flag off', () => {
-    expect(FEATURES).toEqual(OFF);
+  it('ships with About you on and the later features still off', () => {
+    expect(FEATURES).toEqual(SHIPPED);
   });
 
   it.each(LEGAL_DOC_KINDS)('%s: with every flag off, no later-phase feature is mentioned', (kind) => {
@@ -254,8 +258,35 @@ describe('later-phase features appear in the texts only when their flag is on', 
     expect(text).not.toMatch(/special-category/);
   });
 
-  it.each(LEGAL_DOC_KINDS)('%s: the default is the shipped state (all off)', (kind) => {
-    expect(textOf(buildLegalDocument(kind, FAKE))).toBe(textOf(buildLegalDocument(kind, FAKE, OFF)));
+  it.each(LEGAL_DOC_KINDS)('%s: the default is the shipped state', (kind) => {
+    expect(textOf(buildLegalDocument(kind, FAKE))).toBe(textOf(buildLegalDocument(kind, FAKE, SHIPPED)));
+    expect(textOf(buildLegalDocument(kind, FAKE))).not.toBe(textOf(buildLegalDocument(kind, FAKE, OFF)));
+  });
+
+  it('privacy (shipped): says what About you stores, why, who sees it and how long it is kept', () => {
+    const text = textOf(buildLegalDocument('privacy', FAKE));
+    expect(text).toMatch(/Birth year and gender \(optional\)/);
+    expect(text).toMatch(/Emergency contact and T-shirt size \(optional\)/);
+    expect(text).toMatch(/name, phone number and relationship/);
+    expect(text).toMatch(/safety at events and for race kits/);
+    expect(text).toMatch(/visible to the organizers of the communities you belong to/);
+    expect(text).toMatch(/Other members cannot see them/);
+    expect(text).toMatch(/never shown to organizers one by one/);
+    expect(text).toMatch(/groups of 5 or more people: smaller groups are hidden/);
+    expect(text).toMatch(/Birth year and gender: kept until you withdraw your consent \(which deletes them\), clear them yourself or delete your account/);
+    expect(text).toMatch(/Emergency contact and T-shirt size: kept until you withdraw your consent/);
+    expect(text).toMatch(/Profile, then About you/);
+    expect(text).toMatch(/explicit consent/);
+    expect(text).toMatch(/Notification texts never contain emergency contact details/);
+    // Still not promised: workout logs and event discussions.
+    expect(text).not.toMatch(/workout|event discussions|replies/i);
+  });
+
+  it('terms (shipped): organizers must treat the shared emergency contact and T-shirt size with care', () => {
+    const text = textOf(buildLegalDocument('terms', FAKE));
+    expect(text).toMatch(/emergency contact and T-shirt size\) with particular care/);
+    expect(text).toMatch(/only for safety at events and for race kits/);
+    expect(text).not.toMatch(/workout/i);
   });
 
   it('privacy: each flag adds its own text and nothing of the others', () => {

@@ -92,6 +92,8 @@ export function summarizeExport(payload: MyDataExport): ExportSummary {
     const count = spec.count(payload);
     if (count > 0) parts.push(`${count} ${count === 1 ? spec.label[0] : spec.label[1]}`);
   }
+  // About you (birth year, gender, emergency contact, T-shirt size): present only when the person stored something.
+  if (payload.extensions?.about_you) parts.push('your About-you details');
   const truncated: string[] = [];
   const flags = (payload.truncated ?? {}) as Record<string, unknown>;
   for (const [key, label] of Object.entries(TRUNCATED_LABELS)) {

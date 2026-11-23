@@ -377,6 +377,17 @@ export async function buildFullLife(): Promise<FullLife> {
   await asUser(victim, (db) => rpcRow(db, 'set_notification_preferences', [true, false, true, true]));
   await asUser(victim, (db) => rpc(db, 'record_consent', ['workout_logs']));
   await asUser(victim, (db) => rpc(db, 'withdraw_consent', ['workout_logs']));
+  // P3: About you (emergency contact with its consent, T-shirt size).
+  await asUser(victim, (db) => rpc(db, 'record_consent', ['emergency_contact']));
+  await asUser(victim, (db) =>
+    rpc(db, 'save_my_about_you', [
+      JSON.stringify({
+        emergency_contact_name: 'Contact Person',
+        emergency_contact_phone: '+40 700 000 000',
+        tshirt_size: 'L',
+      }),
+    ]),
+  );
   await asUser(victim, (db) => rpc(db, 'preview_invitation', ['ZZZZZZZZ']));
   const invitation = await asUser(victim, (db) =>
     rpcRow<{ id: string }>(db, 'create_invitation', [alpha.communityId]),

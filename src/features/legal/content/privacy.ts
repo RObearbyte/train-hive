@@ -100,7 +100,7 @@ export function buildPrivacyNotice(
                     {
                       label: 'Birth year and gender (optional)',
                       value:
-                        'Only if you choose to give them, to produce statistics for your community. Basis: your explicit consent, which you can withdraw at any time.',
+                        'Only if you choose to give them, to give your organizers grouped statistics about the community (for example how many members are in each age band). Basis: your explicit consent, which you can withdraw at any time. They are kept until you withdraw your consent, clear them or delete your account.',
                     },
                   ]
                 : []),
@@ -109,7 +109,7 @@ export function buildPrivacyNotice(
                     {
                       label: 'Emergency contact and T-shirt size (optional)',
                       value:
-                        'Only if you choose to give them, for safety at events and for race kits. The emergency contact is another person: please tell them you gave their details. Basis: your explicit consent.',
+                        "Only if you choose to give them: the name, phone number and relationship of a person to contact in an emergency, and your T-shirt size. They are used for safety at events and for race kits. The emergency contact is another person: please tell them you gave their details. Basis: your explicit consent, which you can withdraw at any time. They are kept until you withdraw your consent, clear them or delete your account; organizers can no longer see them once you leave a community.",
                     },
                   ]
                 : []),
@@ -147,12 +147,12 @@ export function buildPrivacyNotice(
               'Organizers of your community also see your membership, your RSVPs and your attendance records.',
               ...(features.emergencyContact
                 ? [
-                    'Your emergency contact and T-shirt size are visible to organizers of your community only if you consented to share them.',
+                    'If you gave them, your emergency contact (name, phone number, relationship) and T-shirt size are visible to the organizers of the communities you belong to, for safety at events and for race kits. Other members cannot see them. You can clear them at any time.',
                   ]
                 : []),
               ...(features.demographics
                 ? [
-                    'Birth year and gender are never shown to organizers one by one. Organizers see only grouped statistics, and only for groups of 5 or more people.',
+                    'Birth year and gender are never shown to organizers one by one. Organizers see only grouped statistics, and only for groups of 5 or more people: smaller groups are hidden. In a very small community even grouped numbers can point to a person, so TrainHive also hides a larger group when showing it would reveal a smaller one.',
                   ]
                 : []),
               ...(features.workoutLogs
@@ -216,6 +216,14 @@ export function buildPrivacyNotice(
               `Records of failed code attempts (used to stop guessing): deleted after ${RETENTION.failedAttemptsHours} hours.`,
               'Push device identifiers (tokens): deleted when you turn push notifications off, when you delete your account, and when a device stops working, within 30 days.',
               `Account data (name, membership, RSVPs, attendance${features.eventPosts ? ', posts' : ''}${optionalConsents ? ', optional data you gave' : ''}, your consent records): kept until you delete your account. When you delete it, attendance counts and the attendance change history stay without your name or identifier.`,
+              ...(features.demographics
+                ? ['Birth year and gender: kept until you withdraw your consent (which deletes them), clear them yourself or delete your account.']
+                : []),
+              ...(features.emergencyContact
+                ? [
+                    'Emergency contact and T-shirt size: kept until you withdraw your consent (which deletes them), clear them yourself or delete your account.',
+                  ]
+                : []),
               'Consent records are kept as proof of what you agreed to and when, for as long as your account exists.',
             ],
           },
@@ -240,6 +248,16 @@ export function buildPrivacyNotice(
                 ? 'Withdraw or give consent: Profile, then Privacy. Each optional consent has its own switch, and turning one off takes effect at once.'
                 : 'Withdraw or give consent: Profile, then Privacy. Push notifications have their own switch, and turning it off takes effect at once.',
               'Correct your name: Profile, then Change name.',
+              ...(features.demographics || features.emergencyContact
+                ? [
+                    `Correct or clear what you gave (${[
+                      features.demographics ? 'birth year and gender' : null,
+                      features.emergencyContact ? 'emergency contact and T-shirt size' : null,
+                    ]
+                      .filter((part): part is string => part !== null)
+                      .join(', ')}): Profile, then About you. Withdrawing the consent in Profile, then Privacy, deletes them too.`,
+                  ]
+                : []),
               'Download your data: Profile, then Privacy, then Download my data. You get a file with the data we hold about you. You can do this up to 10 times per hour.',
               'Delete your account: Profile, then Privacy, then Delete my account. This deletes your profile, memberships, RSVPs, notifications, push devices and consent records, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you published stay visible to your community; after you delete your account they are no longer linked to you. In a very small community these anonymous counts can still point to a person. If you are the only organizer of a community that still has other members, hand over to another organizer first (Profile, then Members). A community in which you are the only member is deleted together with your account.',
               'Leave a community: Profile, then Leave this community. You lose access to it, and your attendance history stays in its records until you delete your account.',

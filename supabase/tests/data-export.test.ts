@@ -23,7 +23,19 @@ describe('export_my_data: content', () => {
     expect(ex.format_version).toBe(1);
     expect(typeof ex.README).toBe('string');
     expect(ex.README.length).toBeGreaterThan(100);
-    expect(ex.extensions).toEqual({});
+    // P3: the victim's About-you row.
+    expect(ex.extensions).toEqual({
+      about_you: {
+        birth_year: null,
+        gender: null,
+        emergency_contact_name: 'Contact Person',
+        emergency_contact_phone: '+40 700 000 000',
+        emergency_contact_relationship: null,
+        tshirt_size: 'L',
+        created_at: expect.any(String),
+        updated_at: expect.any(String),
+      },
+    });
     expect(ex.account).toMatchObject({ user_id: life.victim, is_anonymous: true });
     expect(ex.profile).toMatchObject({ display_name: 'Victor Victim' });
 
@@ -68,6 +80,7 @@ describe('export_my_data: content', () => {
       'push_notifications:true',
       'workout_logs:true',
       'workout_logs:false',
+      'emergency_contact:true',
     ]);
     expect(ex.notification_preferences).toMatchObject({ push_enabled: true, training_reminders: false });
     expect(ex.notifications.length).toBeGreaterThan(5);

@@ -94,11 +94,11 @@ describe('writesFor', () => {
     const staleTerms = neverRecorded({
       consents: {
         ...neverRecorded().consents,
-        terms_privacy: consentState({ granted: true, current: false, document_version: 'terms:1|privacy:1', at: 'x' }),
+        terms_privacy: consentState({ granted: true, current: false, document_version: 'terms:0|privacy:0', at: 'x' }),
         age_16: grantedState('1'),
       },
     });
-    expect(writesFor(staleTerms)).toEqual([{ purpose: 'terms_privacy', documentVersion: 'terms:1|privacy:1' }]);
+    expect(writesFor(staleTerms)).toEqual([{ purpose: 'terms_privacy', documentVersion: BUNDLED_TERMS_PRIVACY_VERSION }]);
     expect(writesFor(accepted())).toEqual([]);
   });
 });
@@ -118,19 +118,19 @@ describe('planRecording (before redeem_invitation / create_community_with_code)'
   it('records both purposes right after the session exists when the device acknowledged the same texts', () => {
     expect(planRecording({ local: LOCAL_OK, server: neverRecorded() })).toEqual({
       action: 'record',
-      writes: [{ purpose: 'terms_privacy', documentVersion: 'terms:1|privacy:1' }, { purpose: 'age_16' }],
+      writes: [{ purpose: 'terms_privacy', documentVersion: BUNDLED_TERMS_PRIVACY_VERSION }, { purpose: 'age_16' }],
     });
   });
 
   it('a local note for texts newer than this build is not current, so the person is asked again', () => {
-    const bumped = neverRecorded({ terms_privacy_version: 'terms:2|privacy:1' });
-    const local = createLocalAcceptance('terms:2|privacy:1', NOW);
-    // This build bundles terms:1, so a local note for terms:2 cannot be current: the app must be updated.
+    const bumped = neverRecorded({ terms_privacy_version: 'terms:9|privacy:9' });
+    const local = createLocalAcceptance('terms:9|privacy:9', NOW);
+    // This build bundles other versions, so a local note for terms:9 cannot be current: the app must be updated.
     expect(planRecording({ local, server: bumped })).toEqual({ action: 'ask_user' });
   });
 
   it('refuses to record when the server wants texts this build does not contain', () => {
-    const bumped = neverRecorded({ terms_privacy_version: 'terms:2|privacy:1' });
+    const bumped = neverRecorded({ terms_privacy_version: 'terms:9|privacy:9' });
     expect(planRecording({ local: LOCAL_OK, server: bumped })).toEqual({ action: 'app_outdated' });
   });
 
@@ -146,7 +146,7 @@ describe('planGateAcceptance ("We updated our terms")', () => {
   it('records for a member with no records when this build shows the current texts', () => {
     expect(planGateAcceptance(neverRecorded())).toEqual({
       action: 'record',
-      writes: [{ purpose: 'terms_privacy', documentVersion: 'terms:1|privacy:1' }, { purpose: 'age_16' }],
+      writes: [{ purpose: 'terms_privacy', documentVersion: BUNDLED_TERMS_PRIVACY_VERSION }, { purpose: 'age_16' }],
     });
   });
 
@@ -155,7 +155,7 @@ describe('planGateAcceptance ("We updated our terms")', () => {
   });
 
   it('asks for an app update when the server texts are newer than the bundled ones', () => {
-    const newer = neverRecorded({ terms_privacy_version: 'terms:1|privacy:2' });
+    const newer = neverRecorded({ terms_privacy_version: 'terms:9|privacy:9' });
     expect(bundledMatchesServer(newer)).toBe(false);
     expect(planGateAcceptance(newer)).toEqual({ action: 'app_outdated' });
   });

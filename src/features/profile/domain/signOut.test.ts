@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { aboutYouPromptStorageKey } from '@/features/aboutYou/domain/prompt';
 import { activeCommunityStorageKey } from '@/features/community/domain/activeCommunity';
 import { ACCEPTANCE_STORAGE_KEY } from '@/features/legal/domain/acceptance';
 import { PUSH_PROMPT_DISMISSED_KEY } from '@/features/notifications/domain/pushState';
@@ -48,12 +49,13 @@ describe('sign-out confirmation text', () => {
 });
 
 describe('storedKeysToClear', () => {
-  it('covers the session, the first-launch acknowledgement, the push prompt choice and the active community', () => {
+  it('covers the session, the first-launch acknowledgement, the push prompt choice, the active community and the About-you note', () => {
     expect(storedKeysToClear(INPUT)).toEqual([
       'trainhive-auth',
       ACCEPTANCE_STORAGE_KEY,
       PUSH_PROMPT_DISMISSED_KEY,
       activeCommunityStorageKey(USER),
+      aboutYouPromptStorageKey(USER),
     ]);
   });
 
@@ -74,6 +76,7 @@ describe('runSignOut', () => {
       `remove:${ACCEPTANCE_STORAGE_KEY}`,
       `remove:${PUSH_PROMPT_DISMISSED_KEY}`,
       `remove:${activeCommunityStorageKey(USER)}`,
+      `remove:${aboutYouPromptStorageKey(USER)}`,
       'removeExportedFiles',
       'clearQueryCache',
       'resetInMemoryState',

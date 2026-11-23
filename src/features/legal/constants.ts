@@ -19,12 +19,17 @@ export const LEGAL_REVIEWED = false;
 
 export const DRAFT_BANNER_TEXT = 'Draft — to be reviewed by a lawyer before launch';
 
-/** Versions of the bundled texts. They must match `legal_documents` on the server (seeded as '1'). */
-export const TERMS_VERSION = '1';
-export const PRIVACY_VERSION = '1';
+/**
+ * Versions of the bundled texts. They must match `legal_documents` on the server (seeded as '1'):
+ * version '2' (About you: birth year, gender, emergency contact, T-shirt size) is published on the
+ * server with `select public.admin_set_legal_version('terms','2'), public.admin_set_legal_version('privacy','2');`
+ * when the new app build is in use, which makes every member accept the updated texts.
+ */
+export const TERMS_VERSION = '2';
+export const PRIVACY_VERSION = '2';
 
 /** When the bundled texts were last changed (shown in the documents). */
-export const LEGAL_LAST_UPDATED = '2026-11-19';
+export const LEGAL_LAST_UPDATED = '2026-11-23';
 
 /** The combined string the server stores for `terms_privacy`: `terms:<v>|privacy:<v>`. */
 export const BUNDLED_TERMS_PRIVACY_VERSION = `terms:${TERMS_VERSION}|privacy:${PRIVACY_VERSION}`;
@@ -84,8 +89,8 @@ export type LegalFeatures = {
 };
 
 export const FEATURES: LegalFeatures = {
-  demographics: false,
-  emergencyContact: false,
+  demographics: true,
+  emergencyContact: true,
   workoutLogs: false,
   eventPosts: false,
 };

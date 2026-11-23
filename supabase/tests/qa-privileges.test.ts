@@ -48,6 +48,13 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   get_event_feed_unread: 'authenticated',
   mark_event_feed_read: 'authenticated',
   reply_to_event_post: 'authenticated',
+  // P3: About you.
+  clear_my_about_you: 'authenticated',
+  get_community_demographics: 'authenticated',
+  get_member_emergency_info: 'authenticated',
+  get_my_about_you: 'authenticated',
+  list_community_emergency_info: 'authenticated',
+  save_my_about_you: 'authenticated',
   cancel_announcement: 'authenticated',
   cancel_training: 'authenticated',
   claim_notification_jobs: 'service_role',
@@ -102,6 +109,8 @@ const TARGET_USER_ARGS: Record<string, string[]> = {
   // G2: an organizer changes another member's role or removes them. `p_role` is the new role.
   remove_member: ['p_user_id'],
   set_member_role: ['p_user_id', 'p_role'],
+  // P3: an organizer reads one active member's emergency contact / T-shirt size (read-only).
+  get_member_emergency_info: ['p_user_id'],
 };
 
 /** Where each target-member function checks that the caller is an active organizer. */
@@ -113,6 +122,7 @@ const ORGANIZER_CHECK: Record<string, string> = {
   // G2: checked before the locks and again after them (private.lock_caller_organizer).
   remove_member: 'not public.is_organizer(p_community_id)',
   set_member_role: 'not public.is_organizer(p_community_id)',
+  get_member_emergency_info: 'not public.is_organizer(p_community_id)',
 };
 
 interface FunctionRow {
@@ -290,6 +300,12 @@ describe('QA function privileges', () => {
       ['select public.mark_event_feed_read($1)', [session.id]],
       ['select public.get_event_feed($1)', [session.id]],
       ['select public.get_event_feed_unread($1)', [communityId]],
+      ['select public.get_my_about_you()', []],
+      ['select public.save_my_about_you($1)', ['{}']],
+      ['select public.clear_my_about_you()', []],
+      ['select public.get_member_emergency_info($1, $2)', [communityId, organizerId]],
+      ['select public.list_community_emergency_info($1)', [communityId]],
+      ['select public.get_community_demographics($1)', [communityId]],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
@@ -421,6 +437,18 @@ describe('QA table privileges', () => {
        where has_table_privilege(r.role, 'private.data_export_log', p.privilege)
           or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
               and has_any_column_privilege(r.role, 'private.data_export_log', p.privilege))`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('the About-you table in private grants nothing to any API role (P3)', async () => {
+    const { rows } = await admin.query<{ role: string; privilege: string }>(
+      `select r.role, p.privilege
+       from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
+       cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
+       where has_table_privilege(r.role, 'private.member_about_you', p.privilege)
+          or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+              and has_any_column_privilege(r.role, 'private.member_about_you', p.privilege))`,
     );
     expect(rows).toEqual([]);
   });

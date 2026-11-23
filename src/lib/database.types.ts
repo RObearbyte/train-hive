@@ -1402,6 +1402,45 @@ export type Database = {
         Args: { p_community_id: string };
         Returns: Json;
       };
+      /** P3: the caller's own details. Returns an `AboutYou`. Raises `not_authenticated`. */
+      get_my_about_you: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      /**
+       * P3: partial update (`AboutYouInput`: absent key = unchanged, null = clear). Returns an
+       * `AboutYou`. Raises `not_authenticated`, `validation_failed:input` / `validation_failed:<field>`,
+       * `not_a_member` (no profile), `consent_required:profile_demographics`,
+       * `consent_required:emergency_contact`.
+       */
+      save_my_about_you: {
+        Args: { p_input: Json };
+        Returns: Json;
+      };
+      /** P3: deletes all the caller's details (consents unchanged). Returns `AboutYou & { cleared }`. */
+      clear_my_about_you: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      /**
+       * P3: active organizer of the community; target an active member. Returns a
+       * `MemberEmergencyInfo`. Raises `not_authenticated`, `forbidden`, `validation_failed:user_id`,
+       * `not_found`.
+       */
+      get_member_emergency_info: {
+        Args: { p_community_id: string; p_user_id: string };
+        Returns: Json;
+      };
+      /** P3: active organizer. Returns a `CommunityEmergencyList` (cap 500). Raises `not_authenticated`, `forbidden`. */
+      list_community_emergency_info: {
+        Args: { p_community_id: string };
+        Returns: Json;
+      };
+      /** P3: active organizer. Returns `CommunityDemographics` (cells < 5 suppressed). Raises `not_authenticated`, `forbidden`. */
+      get_community_demographics: {
+        Args: { p_community_id: string };
+        Returns: Json;
+      };
     };
     Enums: {
       membership_role: 'organizer' | 'member';
@@ -1525,6 +1564,96 @@ export type EventFeedUnread = {
   post_count: number;
   unread_count: number;
   last_post_at: string;
+};
+
+/** P3: gender choices on the About-you page. */
+export type AboutYouGender = 'woman' | 'man' | 'other' | 'prefer_not_to_say';
+
+/** P3: T-shirt sizes (stored upper case; the server accepts any case). */
+export type TshirtSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL';
+
+/**
+ * P3: input of `save_my_about_you`. Partial update: a key that is absent leaves the field
+ * unchanged, `null` clears it. Unknown keys are refused (`validation_failed:input`).
+ */
+export type AboutYouInput = {
+  /** Integer between `birth_year_min` and `birth_year_max` of `AboutYou` (server year - 100 .. - 16). Needs `profile_demographics` consent. */
+  birth_year?: number | null;
+  /** Needs `profile_demographics` consent. */
+  gender?: AboutYouGender | null;
+  /** 1-80 characters after text hygiene. Needs `emergency_contact` consent; a contact needs name + phone. */
+  emergency_contact_name?: string | null;
+  /** Digits, spaces, + ( ) . / -; 6-20 digits; at most 30 characters. Needs `emergency_contact` consent. */
+  emergency_contact_phone?: string | null;
+  /** Optional, 1-40 characters. Needs `emergency_contact` consent. */
+  emergency_contact_relationship?: string | null;
+  /** Needs `emergency_contact` consent (withdrawing it deletes the size too). */
+  tshirt_size?: TshirtSize | Lowercase<TshirtSize> | null;
+};
+
+/** P3: result of `get_my_about_you` / `save_my_about_you` (and `clear_my_about_you`, plus `cleared`). */
+export type AboutYou = {
+  has_data: boolean;
+  birth_year: number | null;
+  gender: AboutYouGender | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relationship: string | null;
+  tshirt_size: TshirtSize | null;
+  /** null when nothing is stored. */
+  updated_at: string | null;
+  /** Allowed birth-year range from the server's clock (use these, not the device clock). */
+  birth_year_min: number;
+  birth_year_max: number;
+  /** Whether the consent each part needs is current. */
+  consents: { profile_demographics: boolean; emergency_contact: boolean };
+};
+
+/** P3: result of `clear_my_about_you`. `cleared` is false when nothing was stored. */
+export type ClearAboutYouResult = AboutYou & { cleared: boolean };
+
+/** P3: what an organizer sees of one active member (never birth year or gender). */
+export type MemberEmergencyInfo = {
+  /** Only in `get_member_emergency_info`. */
+  community_id?: string;
+  user_id: string;
+  display_name: string;
+  role: MembershipRole;
+  /** The three contact fields are null unless `has_emergency_contact`; all four are null without a current `emergency_contact` consent. */
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relationship: string | null;
+  tshirt_size: TshirtSize | null;
+  has_emergency_contact: boolean;
+  /** null when the member stored nothing. */
+  updated_at: string | null;
+};
+
+/** P3: result of `list_community_emergency_info`: members with a contact or a T-shirt size, by name, at most 500. */
+export type CommunityEmergencyList = {
+  community_id: string;
+  members: MemberEmergencyInfo[];
+  truncated: boolean;
+};
+
+/** P3: one cell of `get_community_demographics`. `count` is null when suppressed. */
+export type DemographicsCell<K extends string> = { key: K; count: number | null; suppressed: boolean };
+
+export type AgeBand = 'under_18' | '18_29' | '30_39' | '40_49' | '50_59' | '60_plus' | 'not_provided';
+
+/**
+ * P3: result of `get_community_demographics` over the community's active members. Every shown
+ * cell is at least `min_group_size` (5); suppressed cells are at least two and add up to 5 or
+ * more, or every cell of the dimension is suppressed. No age x gender cross-table.
+ */
+export type CommunityDemographics = {
+  community_id: string;
+  min_group_size: number;
+  member_count: number;
+  /** Server year used for ages (age = reference_year - birth year). */
+  reference_year: number;
+  age_bands: DemographicsCell<AgeBand>[];
+  genders: DemographicsCell<AboutYouGender | 'not_provided'>[];
 };
 
 /** Why a claimed job has no tokens (`claim_notification_jobs`; first match wins, in this order). */
@@ -1938,8 +2067,20 @@ export type MyDataExport = {
     invitation_attempts: { attempted_at: string; success: boolean }[];
     data_export_requests: { requested_at: string }[];
   };
-  /** P3 (About you) and P5 (workout logs) add their sections here; empty until then. */
-  extensions: Record<string, Json>;
+  /** P3 (About you) and P5 (workout logs) add their sections here. */
+  extensions: {
+    /** P3: the caller's About-you details; null when none are stored. */
+    about_you: {
+      birth_year: number | null;
+      gender: AboutYouGender | null;
+      emergency_contact_name: string | null;
+      emergency_contact_phone: string | null;
+      emergency_contact_relationship: string | null;
+      tshirt_size: TshirtSize | null;
+      created_at: string;
+      updated_at: string;
+    } | null;
+  };
   /** true for a section that had more than 5000 items. */
   truncated: Record<
     | 'memberships'

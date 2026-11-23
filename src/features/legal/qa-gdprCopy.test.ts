@@ -25,19 +25,36 @@ const privacyText = JSON.stringify(buildPrivacyNotice(config as never));
 const termsText = JSON.stringify(buildTerms(config as never));
 
 describe('texts versus what exists', () => {
-  // Q7-7 (fixed): the texts name only features that exist; later phases flip a flag in constants.ts.
-  it('Q7-7: the notice names no unbuilt data item or rule while the feature flags are off', () => {
-    expect(FEATURES).toEqual({ demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false });
-    for (const [phrase, column] of [
-      ['Birth year and gender', 'birth_year'],
-      ['Emergency contact', 'tshirt_size'],
-      ['Workout logs', 'public.workout_logs '],
-    ] as const) {
-      expect(privacyText.includes(phrase), phrase).toBe(false);
-      expect(migrations.includes(column), `${phrase} -> ${column}`).toBe(false);
+  // Q7-7 (fixed, updated for P3): the texts name a data item exactly when its flag is on AND the migrations
+  // build it; later phases flip a flag in constants.ts in the same change that ships the feature.
+  it('Q7-7: the notice describes About you (flags on, migration present) and nothing unbuilt (flags off)', () => {
+    expect(FEATURES).toEqual({ demographics: true, emergencyContact: true, workoutLogs: false, eventPosts: false });
+    const items = [
+      { flag: FEATURES.demographics, phrase: 'Birth year and gender', column: 'birth_year' },
+      { flag: FEATURES.emergencyContact, phrase: 'Emergency contact and T-shirt size', column: 'tshirt_size' },
+      { flag: FEATURES.workoutLogs, phrase: 'Workout logs', column: 'public.workout_logs ' },
+    ];
+    for (const { flag, phrase, column } of items) {
+      // The text mentions the data exactly when the flag is on...
+      expect(privacyText.includes(phrase), `notice: ${phrase}`).toBe(flag);
+      // ...and a flag is on only when the migrations really store that data (and off while they do not).
+      expect(migrations.includes(column), `migration: ${phrase} -> ${column}`).toBe(flag);
     }
-    expect(privacyText).not.toContain('groups of 5 or more');
-    expect(termsText).not.toMatch(/emergency contact|workout/i);
+    // The 5-person rule is stated because demographics exist; the Terms ask organizers to protect the contact, not workouts.
+    expect(privacyText).toContain('groups of 5 or more');
+    expect(termsText).toMatch(/emergency contact/i);
+    expect(termsText).not.toMatch(/workout/i);
+    expect(privacyText).not.toMatch(/workout/i);
+  });
+
+  it('Q7-7: with the About-you flags off the texts say nothing about the data (the guard for a flag that is false)', () => {
+    const off = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
+    const privacyOff = JSON.stringify(buildPrivacyNotice(config as never, off));
+    const termsOff = JSON.stringify(buildTerms(config as never, off));
+    for (const phrase of ['Birth year and gender', 'Emergency contact', 'Workout logs', 'groups of 5 or more']) {
+      expect(privacyOff.includes(phrase), phrase).toBe(false);
+    }
+    expect(termsOff).not.toMatch(/emergency contact|workout/i);
   });
 
   it('Q7-7: with every flag on, the notice names each item and the 5-person rule', () => {
@@ -90,7 +107,13 @@ describe('local cleanup after sign out and account deletion', () => {
 
   it('the stored acknowledgement, push prompt flag, session and active community are cleared', () => {
     const signOut = read('src', 'features', 'profile', 'domain', 'signOut.ts');
-    for (const key of ['ACCEPTANCE_STORAGE_KEY', 'PUSH_PROMPT_DISMISSED_KEY', 'authStorageKey', 'activeCommunityStorageKey']) {
+    for (const key of [
+      'ACCEPTANCE_STORAGE_KEY',
+      'PUSH_PROMPT_DISMISSED_KEY',
+      'authStorageKey',
+      'activeCommunityStorageKey',
+      'aboutYouPromptStorageKey',
+    ]) {
       expect(signOut).toContain(key);
     }
   });

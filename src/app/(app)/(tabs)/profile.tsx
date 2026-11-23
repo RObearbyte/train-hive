@@ -3,6 +3,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { aboutYouAvailable } from '@/features/aboutYou/domain/prompt';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { YourCommunities } from '@/features/communities/components/YourCommunities';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
@@ -103,6 +104,18 @@ export default function ProfileScreen() {
           </View>
         )}
       </Card>
+
+      {aboutYouAvailable() ? (
+        <Card>
+          <ListItem
+            title="About you"
+            subtitle="Birth year, gender, emergency contact and T-shirt size. All optional."
+            leading={<Icon name="person" size={22} color="primary" />}
+            onPress={() => router.push('/about-you' as Href)}
+            testID="profile-about-you"
+          />
+        </Card>
+      ) : null}
 
       <View style={{ gap: spacing.sm }}>
         <Text variant="heading">Community</Text>

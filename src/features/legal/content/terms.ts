@@ -86,7 +86,7 @@ export function buildTerms(config: LegalConfig, features: LegalFeatures = FEATUR
               'correct a record when a member reasonably asks you to, and pass on to us any request to delete information;',
               ...(features.emergencyContact
                 ? [
-                    'treat optional information members have shared (such as an emergency contact) with particular care, and keep it confidential.',
+                    'treat optional information members have shared (such as an emergency contact and T-shirt size) with particular care: use it only for safety at events and for race kits, and keep it confidential.',
                   ]
                 : []),
             ],
