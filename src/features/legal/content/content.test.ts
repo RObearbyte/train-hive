@@ -236,8 +236,8 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
 });
 
 const OFF: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
-/** What ships now: About you is built (backend, app and these texts); workout logs and event posts are not described yet. */
-const SHIPPED: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: false, eventPosts: false };
+/** What ships now: About you and workout logs are built (backend, app and these texts); event posts are not described yet. */
+const SHIPPED: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: false };
 const ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
 const SINGLE: [keyof LegalFeatures, RegExp][] = [
   ['demographics', /birth year|gender|rounded to the nearest 5/i],
@@ -247,7 +247,7 @@ const SINGLE: [keyof LegalFeatures, RegExp][] = [
 ];
 
 describe('later-phase features appear in the texts only when their flag is on', () => {
-  it('ships with About you on and the later features still off', () => {
+  it('ships with About you and workout logs on and the later features still off', () => {
     expect(FEATURES).toEqual(SHIPPED);
   });
 
@@ -279,9 +279,20 @@ describe('later-phase features appear in the texts only when their flag is on', 
     expect(text).toMatch(/Emergency contact and T-shirt size: kept until you withdraw your consent/);
     expect(text).toMatch(/Profile, then About you/);
     expect(text).toMatch(/explicit consent/);
-    expect(text).toMatch(/Notification texts never contain emergency contact details/);
-    // Still not promised: workout logs and event discussions.
-    expect(text).not.toMatch(/workout|event discussions|replies/i);
+    expect(text).toMatch(/Notification texts never contain workout data or emergency contact details/);
+    // Still not promised: event discussions.
+    expect(text).not.toMatch(/event discussions|replies/i);
+  });
+
+  it('privacy (shipped): says what workout logs hold, why, who sees them and how long they are kept', () => {
+    const text = textOf(buildLegalDocument('privacy', FAKE));
+    expect(text).toContain('Workout logs (optional)');
+    expect(text).toContain('exercises (names, repetitions and weights), distance, time, pace and notes');
+    expect(text).toMatch(/special-category data/);
+    expect(text).toMatch(/no member and no organizer can see an individual log/);
+    expect(text).toMatch(/only once at least 5 members have contributed/);
+    expect(text).toContain('Workout logs: kept until you delete them, withdraw your consent (which deletes all of them) or delete your account');
+    expect(text).toMatch(/Profile, then My workouts/);
   });
 
   it('terms (shipped): organizers must treat the shared emergency contact and T-shirt size with care', () => {

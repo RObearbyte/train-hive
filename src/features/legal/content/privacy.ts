@@ -118,7 +118,7 @@ export function buildPrivacyNotice(
                     {
                       label: 'Workout logs (optional)',
                       value:
-                        'Exercises, weights, distance, time, pace and notes you choose to record, for your own progress and for community totals. Because this can reveal health-related information, we treat it as special-category data. Basis: your explicit consent, which you can withdraw at any time.',
+                        "Only if you choose to save them, after an event you took part in: exercises (names, repetitions and weights), distance, time, pace and notes, together with the title, date and type of the event. They are used to show you your own history and totals, and to give organizers rounded community totals. Because this can reveal health-related information, we treat it as special-category data. Basis: your explicit consent, which you can withdraw at any time. They are kept until you delete them, withdraw your consent or delete your account.",
                     },
                   ]
                 : []),
@@ -156,7 +156,9 @@ export function buildPrivacyNotice(
                   ]
                 : []),
               ...(features.workoutLogs
-                ? ['Workout logs are private to you. Organizers and members see only group totals.']
+                ? [
+                    'Your workout logs are private to you: no member and no organizer can see an individual log. Organizers see only approximate community totals (for example the total distance and the number of sessions logged), rounded, and only once at least 5 members have contributed to the period shown. The totals count only members who are still in the community and have agreed to workout logs. You can delete a log at any time.',
+                  ]
                 : []),
               'We do not sell your data and we do not share it for advertising.',
             ],
@@ -219,6 +221,11 @@ export function buildPrivacyNotice(
               ...(features.demographics
                 ? ['Birth year and gender: kept until you withdraw your consent (which deletes them), clear them yourself or delete your account.']
                 : []),
+              ...(features.workoutLogs
+                ? [
+                    'Workout logs: kept until you delete them, withdraw your consent (which deletes all of them) or delete your account. If you leave a community, your logs stay yours but no longer count in its totals.',
+                  ]
+                : []),
               ...(features.emergencyContact
                 ? [
                     'Emergency contact and T-shirt size: kept until you withdraw your consent (which deletes them), clear them yourself or delete your account.',
@@ -256,6 +263,11 @@ export function buildPrivacyNotice(
                     ]
                       .filter((part): part is string => part !== null)
                       .join(', ')}): Profile, then About you. Withdrawing the consent in Profile, then Privacy, deletes them too.`,
+                  ]
+                : []),
+              ...(features.workoutLogs
+                ? [
+                    'Change or delete your workout logs: Profile, then My workouts, then open a log. Withdrawing the consent in Profile, then Privacy, deletes all of them.',
                   ]
                 : []),
               'Download your data: Profile, then Privacy, then Download my data. You get a file with the data we hold about you. You can do this up to 10 times per hour.',

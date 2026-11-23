@@ -35,6 +35,8 @@ describe('export_my_data: content', () => {
         created_at: expect.any(String),
         updated_at: expect.any(String),
       },
+      // P5: the victim withdrew the workout_logs consent, which deletes every log.
+      workout_logs: [],
     });
     expect(ex.account).toMatchObject({ user_id: life.victim, is_anonymous: true });
     expect(ex.profile).toMatchObject({ display_name: 'Victor Victim' });

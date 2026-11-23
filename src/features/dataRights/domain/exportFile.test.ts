@@ -47,6 +47,17 @@ describe('the About-you details in the summary', () => {
   });
 });
 
+describe('the workout logs in the summary', () => {
+  it('are counted when the file holds some, and only then', () => {
+    const log = { log_id: 'l1', session_id: 's1', log_type: 'running' };
+    expect(summarizeExport(payload({ extensions: { workout_logs: [log, log] } })).parts).toContain('2 workout logs');
+    expect(summarizeExport(payload({ extensions: { workout_logs: [log] } })).parts).toContain('1 workout log');
+    expect(summarizeExport(payload({ extensions: { workout_logs: [] } })).parts.join(' ')).not.toMatch(/workout/);
+    expect(summarizeExport(payload()).parts.join(' ')).not.toMatch(/workout/);
+    expect(summarizeExport(payload({ truncated: { workout_logs: true } })).truncated).toContain('workout logs');
+  });
+});
+
 describe('exportFileName', () => {
   it('uses the server date (UTC date part)', () => {
     expect(exportFileName('2026-11-20T23:59:59Z')).toBe('trainhive-data-2026-11-20.json');

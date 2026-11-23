@@ -36,7 +36,7 @@ Consent is **granular, optional, not pre-ticked, withdrawable as easily as given
 | Terms of use + privacy notice acknowledgement, age confirmation (16+) | First launch, before any account data is stored (this is information plus a contract acceptance, not "consent" to processing) | Cannot use the app |
 | `profile_demographics` (birth year, gender) | On the "About you" page | Fields are not stored; page skippable |
 | `emergency_contact` | Same page, separate toggle | Not stored |
-| `workout_logs` | First time the member opens the workout log (and from the push prompt) | Logs cannot be saved; no log prompts |
+| `workout_logs` | First time the member opens the workout log (and from the push prompt) | Logs cannot be saved. The post-event prompt is sent regardless (owner decision 2026-11-23: a neutral reminder with no workout data); saving needs the consent, asked on the log screen |
 | `push_notifications` | In-context prompt before the OS permission dialog (already designed this way); OS permission is a second gate | In-app notifications still work |
 | Marketing / analytics | **Not offered** (none exists). If ever added, a new consent is required | n/a |
 

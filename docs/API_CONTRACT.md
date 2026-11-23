@@ -968,3 +968,111 @@ Migration `20261130000100_about_you.sql`. Plan: `docs/EVENTS_PLAN.md` section 3,
 New error codes: `consent_required:profile_demographics`, `consent_required:emergency_contact`, `validation_failed:input`, `validation_failed:birth_year`, `validation_failed:gender`, `validation_failed:emergency_contact_name`, `validation_failed:emergency_contact_phone`, `validation_failed:emergency_contact_relationship`, `validation_failed:tshirt_size`. Existing ones used: `not_authenticated`, `not_a_member`, `forbidden`, `not_found`, `validation_failed:user_id`.
 
 TypeScript (`src/lib/database.types.ts`): functions `get_my_about_you`, `save_my_about_you`, `clear_my_about_you`, `get_member_emergency_info`, `list_community_emergency_info`, `get_community_demographics`; types `AboutYou`, `AboutYouInput`, `AboutYouGender`, `TshirtSize`, `ClearAboutYouResult`, `MemberEmergencyInfo`, `CommunityEmergencyList`, `DemographicsCell`, `AgeBand`, `CommunityDemographics`; `MyDataExport.extensions.about_you`. No table type (the table is not reachable by the API).
+
+---
+
+# Workout logs (P5, append-only)
+
+Migration `20261201000100_workout_logs.sql`. Plan: `docs/EVENTS_PLAN.md` section 5, `docs/GDPR_PLAN.md`; definitions: `docs/STATS_DEFINITIONS.md` "Workout statistics (P5)". Tests: `supabase/tests/workout-logs.test.ts`, plus the privilege matrix (`qa-privileges.test.ts`) and the GDPR suites (`data-export.test.ts`, `account-deletion.test.ts`, `about-you.test.ts`). All functions below: `security definer`, `set search_path = ''`, `authenticated` only unless stated (anon and service_role: no execute); errors are raised (`P0001`, message = code).
+
+## Storage
+
+`private.workout_logs`: one row per (member, event), unique `(user_id, session_id)`. Columns: `id`, `user_id → profiles` (cascade), `session_id` (no foreign key: a log outlives its event), `community_id`, `log_type` (`strength` | `running` | `race`), event snapshot `event_title`, `event_starts_at`, `event_kind`, `event_subtype` (refreshed on every save), `distance_m?` (1..1 000 000), `duration_s?` (1..604 800), `pace_s_per_km?` (generated: `round(duration_s × 1000 / distance_m)`, null unless both), `exercises?` (strength: JSON array), `strength_volume_kg?` (strength: Σ reps × weight_kg), `notes?` (1..1000), `created_at`, `updated_at`. `private.workout_prompt_runs(session_id → training_sessions cascade, sent_at)`: the events the prompt job has handled. Both tables are in the `private` schema: **no API role (anon, authenticated, service_role) holds any privilege on them**; not in the Realtime publication. **Logs are private to their owner: no function returns another member's log, organizers included.**
+
+## Log type (derived from the event, never chosen by the client)
+
+| Event | `log_type` |
+|---|---|
+| kind `race` (trail_running, asphalt_running, ocr) | `race` |
+| kind `training` / `sports_event` whose activity type is `running`, `trail_running` or `ocr` | `running` |
+| kind `training` / `sports_event` whose activity type is `strength` or `functional_fitness` (CrossFit events included) | `strength` |
+| anything else: `social` events, activity `other` (training "Other", public trainings) | not loggable (`not_loggable`, no prompt) |
+
+## Who can log
+
+An **active member** of the event's community whose RSVP is **`going`** OR whose attendance is recorded **`present`** (walk-ins included), on a **`confirmed` or `completed`** event whose **end has passed** (end = `ends_at`, else `starts_at + 2 hours`). There is no upper time limit. Reading, listing and deleting one's own logs need neither membership nor consent.
+
+## Consent (G1 ledger)
+
+- **Saving** a log requires a current **`workout_logs`** consent, otherwise `consent_required:workout_logs` (nothing written). The app should ask for it on the log screen (`has_consent` in `get_my_workout_log`) with `record_consent('workout_logs', <privacy version>)`, then save.
+- **Withdrawing** (`withdraw_consent('workout_logs')`) deletes **every** log of the member in the same transaction, also when no grant is on record (`changed: false`), like push tokens and About you. Result shape unchanged.
+- The **prompt is sent regardless of consent** (owner decision 2026-11-23: a neutral reminder). Saving and withdrawing take the per-user consent lock, so a save never interleaves with a withdrawal.
+- Defence in depth: the community totals ignore logs of members without a current consent.
+
+## RPCs (own logs)
+
+`save_workout_log(p_session_id uuid, p_input jsonb) → jsonb` (`WorkoutLog`)
+- **Creates or replaces the whole log** (not a partial update: a key left out is cleared). `p_input` by log type, unknown keys → `validation_failed:input`:
+  - `strength`: `{ exercises?: [ { name, sets: [ { reps, weight_kg? } ] } ], notes? }`; at least one exercise or a note (else `validation_failed:exercises`). At most 30 exercises (`validation_failed:exercises`, also for a non-array, a non-object item or an extra key); `name` string, single-line text hygiene, 1..80 (`validation_failed:exercise_name`); `sets` 1..20 objects with only `reps` / `weight_kg` (`validation_failed:sets`); `reps` JSON integer 1..1000 (`validation_failed:reps`); `weight_kg` JSON number 0..1000 in steps of 0.25, absent / null = 0 (bodyweight) (`validation_failed:weight_kg`). Stored normalized (`{ name, sets: [ { reps, weight_kg } ] }`).
+  - `running`: `{ distance_m?, duration_s?, notes? }`; at least one of distance / duration (else `validation_failed:distance_m`).
+  - `race`: `{ distance_m?, duration_s, notes? }`; `duration_s` = finish time, required (`validation_failed:duration_s`). The app can prefill the distance from the event's `distance_km` (`get_my_workout_log`).
+  - `distance_m` JSON integer 1..1 000 000 (`validation_failed:distance_m`), `duration_s` JSON integer 1..604 800 = 7 days (`validation_failed:duration_s`), `notes` multiline text hygiene (`private.clean_required_text`: controls and bidi controls stripped, line breaks normalized, trimmed), at most 1000 characters, blank = no note, invisible-only or over 1000 → `validation_failed:notes`.
+  - Pace is computed by the database (`pace_s_per_km`).
+- Errors in order: `not_authenticated`, `validation_failed:input` (not an object), `not_found` (unknown / null event), `not_a_member`, `not_loggable` (kind / activity, or status `scheduled` / `cancelled`), `event_not_ended`, `not_eligible` (neither going nor present), `validation_failed:input` (key not allowed for this type), `validation_failed:<field>`, then after the locks `not_a_member` (no profile: account being deleted), `consent_required:workout_logs`, `not_found` (event deleted meanwhile).
+
+`get_my_workout_log(p_session_id uuid) → jsonb` (`WorkoutLogScreen`)
+```
+{ session_id, community_id,
+  event: { title, starts_at, ends_at, event_kind, event_subtype, distance_km, status } | null,   -- null: event deleted
+  log_type: 'strength'|'running'|'race'|null,                                                    -- null: not loggable
+  can_log, cannot_log_reason: null|'not_a_member'|'not_loggable'|'event_not_ended'|'not_eligible'|'not_found',
+  has_consent, log: WorkoutLog | null }
+```
+- A member who left keeps read access to their own log (`can_log: false`, `not_a_member`). Errors: `not_authenticated`, `not_found` (unknown event and no own log), `not_a_member` (event exists, caller not an active member and has no log of it).
+
+`WorkoutLog`:
+```
+{ id, session_id, community_id, log_type, event_title, event_starts_at, event_kind, event_subtype,
+  distance_m, duration_s, pace_s_per_km, exercises: [ { name, sets: [ { reps, weight_kg } ] } ] | null,
+  strength_volume_kg, notes, created_at, updated_at }
+```
+
+`delete_my_workout_log(p_session_id uuid) → jsonb` → `{ session_id, deleted }` (false when there was none). Works after leaving and for a deleted event. Errors: `not_authenticated`.
+
+`list_my_workout_logs(p_limit integer default 20, p_before timestamptz default null) → jsonb` → `{ logs: WorkoutLog[], next_before }`
+- The caller's logs in every community (also ones left), newest event first (`event_starts_at desc, id desc`). `p_before`: only events that started strictly before it. A page holds `p_limit` logs plus any further logs with the same event start as the last one (a page boundary never splits a tie); pass `next_before` as `p_before` for the next page (null = no more). Errors: `not_authenticated`, `validation_failed:limit` (not 1..100).
+
+## Statistics
+
+`get_my_workout_stats(p_community_id uuid default null, p_from timestamptz default null, p_to timestamptz default null) → jsonb` (`MyWorkoutStats`)
+```
+{ community_id, from, to, sessions_logged, running_sessions, race_sessions, strength_sessions,
+  total_distance_m, total_duration_s, average_pace_s_per_km (null when no log has both), pace_sessions,
+  strength_volume_kg, strength_sets }
+```
+- Own logs only; `p_community_id` null = all; window on the event start recorded in the log, `p_from <= start <= p_to`. Errors: `not_authenticated`, `validation_failed:range` (`p_from > p_to`). Definitions: `docs/STATS_DEFINITIONS.md`.
+
+`get_community_workout_stats(p_community_id uuid, p_window text default '30d') → jsonb` (`CommunityWorkoutStats`)
+```
+{ community_id, window, from, to, min_contributors: 5, insufficient_data,
+  members_contributing, sessions_logged, total_distance_km, total_duration_minutes, average_pace_s_per_km }
+```
+- **Organizers only** (active organizer of the community); members get `forbidden` (decision: members see no community totals). Population: logs of the community's non-cancelled events starting in the window (`7d` / `30d` / `90d` / `all`, as the attendance statistics), by members who are **active now** and hold a current consent (leaving removes a member's contribution at once; their own logs stay).
+- **Publication rule:** nothing (all metrics null, `insufficient_data: true`) unless **at least 5 distinct members** logged in the window; each metric also needs 5 contributors of its own (distance: 5 with a distance; time: 5 with a duration; pace: 5 with both), else null; shown values are **rounded**: members and sessions to the nearest 5, distance to the nearest km, time to the nearest 5 minutes, pace to the nearest 5 s/km. The app must present them as approximate ("about 25 sessions"). Known limit: differencing over time (see `STATS_DEFINITIONS.md`).
+- Errors: `not_authenticated`, `forbidden` (also null / unknown community), `validation_failed:window`.
+
+## The post-event prompt (notification kind `workout_log_prompt`)
+
+`enqueue_workout_log_prompts() → integer` (**service_role** only; pg_cron job `trainhive_workout_log_prompts`, every minute, same guarded pattern as the other jobs: a warning with the manual `cron.schedule` command when pg_cron is unusable).
+
+| Kind | Fired when | Recipients | Title / body | Dedupe key | Deep link |
+|---|---|---|---|---|---|
+| `workout_log_prompt` | an event's end + 15 minutes has passed (end = `ends_at`, else `starts_at + 2 h`), the event is `confirmed` or `completed`, loggable, and its end lies within the **last 7 days** (no backfill flood on the first run) | active members whose RSVP is `going` (organizers included) who have no log of it yet; **regardless of the `workout_logs` consent** | `How did it go?` / `Log your workout: <event title>` | `workout_log_prompt:<event id>` | `/events/<event id>/log` |
+
+- Idempotent: each event is claimed once in `private.workout_prompt_runs`, and the dedupe key stops a second notification per member (tested: repeated and concurrent runs send one each). Cancelled, scheduled (undecided), unloggable, future and older-than-7-days events get nothing; neither do members who are not going or no longer active.
+- `related_session_id` = the event. `notifications_deep_link_check` now allows `/activity`, `/trainings/<uuid>`, `/announcements/<uuid>`, `/events/<uuid>/feed` and **`/events/<uuid>/log`** (lowercase uuid, nothing else).
+- Push: preference category **`training_updates`** (the `else` branch of `claim_notification_jobs`, unchanged), then push consent at send time, like every kind. Push expiry: one day. Texts carry no workout data.
+- **App:** add `/events/<uuid>/log` to `src/features/notifications/domain/deepLink.ts` and a route `events/[id]/log`; add `workout_log_prompt` to `KIND_ICON` in `src/features/notifications/components/NotificationRow.tsx` (its `Record<NotificationKind, IconName>` does not typecheck without it).
+
+## GDPR
+
+- **Export** (`export_my_data`): `extensions.workout_logs: [ WorkoutLog without id, with log_id ]` (oldest event first, at most 5000) and `truncated.workout_logs`; the README mentions it. Nothing of other members.
+- **Erasure** (`private.erase_user`, so `delete_my_account`): every log of the user is deleted (explicitly, and by the cascade from `profiles`). `DeleteMyAccountResult` is unchanged.
+- **Withdrawal:** see Consent. **Leaving / removal:** the member keeps their logs (personal data); they no longer count in that community's totals.
+- **Event deleted** (only when its community is deleted with its last member's account): the log stays with its snapshot; `get_my_workout_log` returns `event: null`, `cannot_log_reason: 'not_found'`; it can still be deleted by session id.
+
+New error codes: `not_loggable`, `event_not_ended`, `not_eligible`, `consent_required:workout_logs`, `validation_failed:exercises`, `validation_failed:exercise_name`, `validation_failed:sets`, `validation_failed:reps`, `validation_failed:weight_kg`, `validation_failed:distance_m`, `validation_failed:duration_s`, `validation_failed:notes`, `validation_failed:limit`, `validation_failed:range`. Existing ones used: `not_authenticated`, `not_found`, `not_a_member`, `forbidden`, `validation_failed:input`, `validation_failed:window`.
+
+TypeScript (`src/lib/database.types.ts`): functions `save_workout_log`, `get_my_workout_log`, `delete_my_workout_log`, `list_my_workout_logs`, `get_my_workout_stats`, `get_community_workout_stats`, `enqueue_workout_log_prompts`; types `WorkoutLogType`, `WorkoutSet`, `WorkoutExercise`, `WorkoutLogInput`, `WorkoutLog`, `WorkoutLogBlockReason`, `WorkoutLogScreen`, `DeleteWorkoutLogResult`, `WorkoutLogPage`, `MyWorkoutStats`, `CommunityWorkoutStats`; `NotificationKind` gains `workout_log_prompt`; `MyDataExport.extensions.workout_logs` (optional: absent in files exported before P5) and `truncated.workout_logs`. No table type (the tables are not reachable by the API).
+
+Legal / app notes: `FEATURES.workoutLogs` stays false until the app ships. The tripwire `src/features/legal/qa-gdprCopy.test.ts` looks for `public.workout_logs ` in the migrations, but the table is `private.workout_logs`, so the app task must update that check when it turns the flag on. The privacy notice must then describe the logs (what, why, owner only, organizers see only rounded totals from 5 members, deleted on withdrawal or account deletion).

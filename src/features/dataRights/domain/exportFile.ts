@@ -63,6 +63,7 @@ const COUNTED_SECTIONS: CountSpec[] = [
 
 const TRUNCATED_LABELS: Record<string, string> = {
   memberships: 'memberships',
+  workout_logs: 'workout logs',
   rsvps: 'RSVPs',
   attendance: 'attendance records',
   attendance_changes: 'attendance changes',
@@ -94,6 +95,9 @@ export function summarizeExport(payload: MyDataExport): ExportSummary {
   }
   // About you (birth year, gender, emergency contact, T-shirt size): present only when the person stored something.
   if (payload.extensions?.about_you) parts.push('your About-you details');
+  // Workout logs (P5): absent in files exported before P5; named only when the person has logs.
+  const workoutLogs = payload.extensions?.workout_logs?.length ?? 0;
+  if (workoutLogs > 0) parts.push(`${workoutLogs} ${workoutLogs === 1 ? 'workout log' : 'workout logs'}`);
   const truncated: string[] = [];
   const flags = (payload.truncated ?? {}) as Record<string, unknown>;
   for (const [key, label] of Object.entries(TRUNCATED_LABELS)) {

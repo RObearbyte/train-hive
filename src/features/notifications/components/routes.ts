@@ -13,3 +13,8 @@ export const announcementsListHref = '/announcements' as Href;
 
 /** The discussion of an event (also the target of the `event_post` / `event_reply` deep link). */
 export const eventFeedHref = (sessionId: string) => `/events/${sessionId}/feed` as Href;
+
+/** The workout log of an event (also the target of the `workout_log_prompt` deep link). */
+export const workoutLogHref = (sessionId: string) => `/events/${sessionId}/log` as Href;
+/** The member's own list of logged workouts. */
+export const myWorkoutsHref = '/my-workouts' as Href;

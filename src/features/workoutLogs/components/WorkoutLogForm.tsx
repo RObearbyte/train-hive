@@ -1,0 +1,330 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useEffect, useMemo, useState } from 'react';
+import { Controller, useFieldArray, useForm, useWatch, type Control, type Resolver } from 'react-hook-form';
+import { View } from 'react-native';
+
+import { ConsentCheckbox } from '@/features/legal/components/ConsentCheckbox';
+import type { WorkoutLogScreen, WorkoutLogType } from '@/lib/database.types';
+import { Banner, Button, Card, IconButton, Text, TextField, useTheme } from '@/ui';
+
+import {
+  EXERCISE_NAME_MAX,
+  MAX_EXERCISES,
+  MAX_SETS,
+  NOTES_MAX,
+  WORKOUT_CONSENT_LABEL,
+  WORKOUT_CONSENT_TEXT,
+  buildInput,
+  createWorkoutSchema,
+  emptyExercise,
+  formFieldFor,
+  formValuesFrom,
+  livePace,
+  logSignature,
+  workoutLogErrorMessage,
+  EMPTY_SET,
+  type WorkoutFormValues,
+} from '../domain/workoutLog';
+import { useSaveWorkoutLog } from '../hooks/useWorkoutLogs';
+
+function NotesField({ control }: { control: Control<WorkoutFormValues> }) {
+  return (
+    <Controller
+      control={control}
+      name="notes"
+      render={({ field, fieldState }) => (
+        <TextField
+          ref={field.ref}
+          label="Notes (optional)"
+          helper={`At most ${NOTES_MAX} characters.`}
+          value={field.value}
+          onChangeText={field.onChange}
+          onBlur={field.onBlur}
+          error={fieldState.error?.message}
+          multiline
+          numberOfLines={4}
+          style={{ minHeight: 96, textAlignVertical: 'top' }}
+          testID="workout-notes"
+        />
+      )}
+    />
+  );
+}
+
+function StrengthFields({ control }: { control: Control<WorkoutFormValues> }) {
+  const { spacing } = useTheme();
+  const { fields, append, remove } = useFieldArray({ control, name: 'exercises' });
+  return (
+    <View style={{ gap: spacing.md }}>
+      {fields.map((exercise, index) => (
+        <ExerciseCard key={exercise.id} control={control} index={index} onRemove={() => remove(index)} />
+      ))}
+      <Button
+        label="Add exercise"
+        variant="secondary"
+        icon="plus"
+        disabled={fields.length >= MAX_EXERCISES}
+        onPress={() => append(emptyExercise())}
+        testID="workout-add-exercise"
+      />
+    </View>
+  );
+}
+
+function ExerciseCard({
+  control,
+  index,
+  onRemove,
+}: {
+  control: Control<WorkoutFormValues>;
+  index: number;
+  onRemove: () => void;
+}) {
+  const { spacing } = useTheme();
+  const { fields, append, remove } = useFieldArray({ control, name: `exercises.${index}.sets` });
+  return (
+    <Card style={{ gap: spacing.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm }}>
+        <Controller
+          control={control}
+          name={`exercises.${index}.name`}
+          render={({ field, fieldState }) => (
+            <TextField
+              ref={field.ref}
+              label={`Exercise ${index + 1}`}
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              error={fieldState.error?.message}
+              maxLength={EXERCISE_NAME_MAX * 2}
+              containerStyle={{ flex: 1 }}
+            />
+          )}
+        />
+        <IconButton icon="trash" color="danger" accessibilityLabel={`Remove exercise ${index + 1}`} onPress={onRemove} />
+      </View>
+      {fields.map((set, setIndex) => (
+        <View key={set.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
+          <Controller
+            control={control}
+            name={`exercises.${index}.sets.${setIndex}.reps`}
+            render={({ field, fieldState }) => (
+              <TextField
+                ref={field.ref}
+                label={`Set ${setIndex + 1} reps`}
+                value={field.value}
+                onChangeText={field.onChange}
+                onBlur={field.onBlur}
+                error={fieldState.error?.message}
+                keyboardType="number-pad"
+                containerStyle={{ flex: 1 }}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            name={`exercises.${index}.sets.${setIndex}.weight`}
+            render={({ field, fieldState }) => (
+              <TextField
+                ref={field.ref}
+                label="Weight (kg)"
+                helper="Empty = bodyweight"
+                value={field.value}
+                onChangeText={field.onChange}
+                onBlur={field.onBlur}
+                error={fieldState.error?.message}
+                keyboardType="decimal-pad"
+                containerStyle={{ flex: 1 }}
+              />
+            )}
+          />
+          <View style={{ paddingTop: spacing.xl }}>
+            <IconButton
+              icon="close"
+              accessibilityLabel={`Remove set ${setIndex + 1} of exercise ${index + 1}`}
+              disabled={fields.length <= 1}
+              onPress={() => remove(setIndex)}
+            />
+          </View>
+        </View>
+      ))}
+      <Button
+        label="Add set"
+        variant="ghost"
+        size="sm"
+        icon="plus"
+        disabled={fields.length >= MAX_SETS}
+        onPress={() => append({ ...EMPTY_SET })}
+      />
+    </Card>
+  );
+}
+
+function EnduranceFields({
+  control,
+  logType,
+}: {
+  control: Control<WorkoutFormValues>;
+  logType: WorkoutLogType;
+}) {
+  const { spacing } = useTheme();
+  const distanceKm = useWatch({ control, name: 'distanceKm' });
+  const time = useWatch({ control, name: 'time' });
+  const pace = livePace({ distanceKm, time });
+  return (
+    <View style={{ gap: spacing.md }}>
+      <Controller
+        control={control}
+        name="distanceKm"
+        render={({ field, fieldState }) => (
+          <TextField
+            ref={field.ref}
+            label="Distance (km)"
+            helper={logType === 'race' ? 'Filled in from the event; change it if you ran a different distance.' : 'For example 10 or 10.5'}
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            keyboardType="decimal-pad"
+            testID="workout-distance"
+          />
+        )}
+      />
+      <Controller
+        control={control}
+        name="time"
+        render={({ field, fieldState }) => (
+          <TextField
+            ref={field.ref}
+            label={logType === 'race' ? 'Finish time (h:mm:ss)' : 'Time (h:mm:ss)'}
+            helper="For example 1:05:30 or 25:10"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            keyboardType="numbers-and-punctuation"
+            autoCapitalize="none"
+            testID="workout-time"
+          />
+        )}
+      />
+      <View accessible accessibilityLabel={pace ? `Pace: ${pace}` : 'Pace: enter distance and time'} accessibilityLiveRegion="polite">
+        <Text variant="caption" color="textMuted">
+          Pace
+        </Text>
+        <Text variant="heading">{pace ?? '—'}</Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The log form for the log type the server chose. Saving records the `workout_logs` agreement
+ * first when it is not on record (the person ticks the box), then saves the whole log.
+ */
+export function WorkoutLogForm({
+  screen,
+  logType,
+  onSaved,
+}: {
+  screen: WorkoutLogScreen;
+  logType: WorkoutLogType;
+  onSaved: () => void;
+}) {
+  const { spacing } = useTheme();
+  const save = useSaveWorkoutLog(screen.session_id);
+  const schema = useMemo(() => createWorkoutSchema(logType), [logType]);
+  const signature = logSignature(screen);
+  const { control, handleSubmit, reset, setError } = useForm<WorkoutFormValues>({
+    resolver: zodResolver(schema) as Resolver<WorkoutFormValues>,
+    defaultValues: formValuesFrom(logType, screen.log, screen.event?.distance_km ?? null),
+  });
+  const [agree, setAgree] = useState(false);
+  const [agreeError, setAgreeError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // Start again from the server's copy when it changes (after a save or a delete).
+  useEffect(() => {
+    reset(formValuesFrom(logType, screen.log, screen.event?.distance_km ?? null));
+    // `screen` is covered by its signature.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, reset]);
+
+  const needsConsent = !screen.has_consent;
+
+  const submit = handleSubmit(onValid, (errors) => {
+    // A problem with the list as a whole (nothing to save) has no field to sit under.
+    const message = errors.exercises?.message ?? errors.exercises?.root?.message;
+    if (message) setProblem(message);
+  });
+
+  function onValid(values: WorkoutFormValues) {
+    if (save.isPending) return;
+    setProblem(null);
+    if (needsConsent && !agree) {
+      setAgreeError('Tick the box to agree before saving.');
+      return;
+    }
+    setAgreeError(null);
+    save.mutate(
+      { input: buildInput(logType, values), recordConsent: needsConsent },
+      {
+        onSuccess: onSaved,
+        onError: (error) => {
+          const field = error.code === 'validation_failed' ? formFieldFor(error.field, logType) : null;
+          if (field === 'notes' || field === 'distanceKm' || field === 'time') {
+            setError(field, { message: workoutLogErrorMessage(error) });
+          } else {
+            setProblem(workoutLogErrorMessage(error));
+          }
+        },
+      },
+    );
+  }
+
+  return (
+    <View style={{ gap: spacing.lg }}>
+      {problem ? <Banner tone="error" message={problem} /> : null}
+
+      {logType === 'strength' ? <StrengthFields control={control} /> : <EnduranceFields control={control} logType={logType} />}
+      <NotesField control={control} />
+
+      <Card style={{ gap: spacing.sm }}>
+        <Text variant="heading">Your privacy</Text>
+        <Text color="textMuted">{WORKOUT_CONSENT_TEXT}</Text>
+        {needsConsent ? (
+          <>
+            <ConsentCheckbox
+              testID="workout-consent"
+              label={WORKOUT_CONSENT_LABEL}
+              checked={agree}
+              onChange={(checked) => {
+                setAgree(checked);
+                if (checked) setAgreeError(null);
+              }}
+            />
+            {agreeError ? (
+              <Text variant="caption" color="danger" accessibilityLiveRegion="polite">
+                {agreeError}
+              </Text>
+            ) : null}
+          </>
+        ) : (
+          <Text variant="caption" color="success">
+            You agreed to this. You can turn it off in Profile, then Privacy.
+          </Text>
+        )}
+      </Card>
+
+      <Button
+        label={screen.log ? 'Save changes' : 'Save workout log'}
+        loading={save.isPending}
+        fullWidth
+        onPress={() => {
+          void submit();
+        }}
+        testID="workout-save"
+      />
+    </View>
+  );
+}

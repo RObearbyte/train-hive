@@ -837,7 +837,8 @@ describe('GDPR: export and erasure', () => {
     const pack = await createPack(2);
     const [m, m2] = pack.memberIds;
     const year = await serverYear();
-    expect((await exportMyData(m)).extensions).toEqual({ about_you: null });
+    // P5 added extensions.workout_logs (empty here).
+    expect((await exportMyData(m)).extensions).toEqual({ about_you: null, workout_logs: [] });
 
     await grantConsents(m, BOTH);
     await grantConsents(m2, BOTH);
@@ -853,6 +854,7 @@ describe('GDPR: export and erasure', () => {
         created_at: expect.any(String),
         updated_at: expect.any(String),
       },
+      workout_logs: [],
     });
     expect(JSON.stringify(ex)).not.toContain('Other Contact');
     expect(ex.README).toContain('extensions.about_you');

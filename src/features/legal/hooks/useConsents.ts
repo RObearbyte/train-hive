@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { aboutYouKeys } from '@/features/aboutYou/api/keys';
+import { workoutKeys } from '@/features/workoutLogs/api/keys';
 import { useSession } from '@/features/community/hooks/SessionProvider';
 import type { ConsentEvent, ConsentPurpose, MyConsents } from '@/lib/database.types';
 import { toAppError, type AppError } from '@/lib/errors';
@@ -73,11 +74,16 @@ export function useSetConsent() {
       reportError('consents.set', error);
       if (snapshot) queryClient.setQueryData(snapshot.key, snapshot.previous);
     },
-    onSettled: async () => {
+    onSettled: async (_event, _error, variables) => {
+      // Withdrawing workout logs deletes every log: nothing of them may linger in memory.
+      if (variables.purpose === 'workout_logs' && !variables.granted) {
+        queryClient.removeQueries({ queryKey: workoutKeys.all });
+      }
       // Withdrawing birth year / gender or the emergency contact deletes the stored details: read them again.
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: consentKeys.all }),
         queryClient.invalidateQueries({ queryKey: aboutYouKeys.all }),
+        queryClient.invalidateQueries({ queryKey: workoutKeys.all }),
       ]);
     },
   });

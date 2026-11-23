@@ -45,13 +45,15 @@ describe('optional rows', () => {
       expect(copy.withdrawMessage.length).toBeGreaterThan(30);
     }
     expect(PURPOSE_COPY.push_notifications.withdrawMessage).toMatch(/delete the push tokens/);
-    expect(PURPOSE_COPY.workout_logs.withdrawMessage).toMatch(/deleted/);
+    expect(PURPOSE_COPY.workout_logs.withdrawMessage).toMatch(/All your workout logs will be deleted for good/);
+    expect(PURPOSE_COPY.workout_logs.description).toMatch(/organizers never see an individual log/);
+    expect(PURPOSE_COPY.workout_logs.description).toMatch(/at least 5 members/);
     expect(PURPOSE_COPY.emergency_contact.withdrawMessage).toMatch(/deleted/);
     expect(PURPOSE_COPY.profile_demographics.withdrawMessage).toMatch(/deleted/);
   });
 
-  it('shows only the consents that exist now: push, birth year and gender, emergency contact (workout logs are not built)', () => {
-    const shipped = ['push_notifications', 'profile_demographics', 'emergency_contact'];
+  it('shows only the consents that exist now: push, birth year and gender, emergency contact, workout logs', () => {
+    const shipped = ['push_notifications', 'profile_demographics', 'emergency_contact', 'workout_logs'];
     expect(optionalRows(neverRecorded()).map((row) => row.purpose)).toEqual(shipped);
     expect(visibleOptionalPurposes()).toEqual(shipped);
   });

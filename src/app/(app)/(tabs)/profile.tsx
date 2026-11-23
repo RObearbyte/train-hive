@@ -6,6 +6,8 @@ import { View } from 'react-native';
 import { aboutYouAvailable } from '@/features/aboutYou/domain/prompt';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { YourCommunities } from '@/features/communities/components/YourCommunities';
+import { FEATURES } from '@/features/legal/constants';
+import { myWorkoutsHref } from '@/features/notifications/components/routes';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { NotificationSettings } from '@/features/notifications/components/NotificationSettings';
 import { LeaveCommunitySection } from '@/features/members/components/LeaveCommunitySection';
@@ -145,6 +147,18 @@ export default function ProfileScreen() {
             leading={<Icon name="check-circle" size={22} color="primary" />}
             onPress={() => router.push('/attendance-history')}
           />
+          {FEATURES.workoutLogs ? (
+            <>
+              <Divider />
+              <ListItem
+                title="My workouts"
+                subtitle="Workouts you logged. Private to you."
+                leading={<Icon name="edit" size={22} color="primary" />}
+                onPress={() => router.push(myWorkoutsHref)}
+                testID="profile-my-workouts"
+              />
+            </>
+          ) : null}
           {isOrganizer ? (
             <>
               <Divider />

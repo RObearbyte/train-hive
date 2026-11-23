@@ -27,12 +27,12 @@ const termsText = JSON.stringify(buildTerms(config as never));
 describe('texts versus what exists', () => {
   // Q7-7 (fixed, updated for P3): the texts name a data item exactly when its flag is on AND the migrations
   // build it; later phases flip a flag in constants.ts in the same change that ships the feature.
-  it('Q7-7: the notice describes About you (flags on, migration present) and nothing unbuilt (flags off)', () => {
-    expect(FEATURES).toEqual({ demographics: true, emergencyContact: true, workoutLogs: false, eventPosts: false });
+  it('Q7-7: the notice describes About you and workout logs (flags on, migrations present) and nothing unbuilt (flags off)', () => {
+    expect(FEATURES).toEqual({ demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: false });
     const items = [
       { flag: FEATURES.demographics, phrase: 'Birth year and gender', column: 'birth_year' },
       { flag: FEATURES.emergencyContact, phrase: 'Emergency contact and T-shirt size', column: 'tshirt_size' },
-      { flag: FEATURES.workoutLogs, phrase: 'Workout logs', column: 'public.workout_logs ' },
+      { flag: FEATURES.workoutLogs, phrase: 'Workout logs', column: 'private.workout_logs' },
     ];
     for (const { flag, phrase, column } of items) {
       // The text mentions the data exactly when the flag is on...
@@ -40,12 +40,17 @@ describe('texts versus what exists', () => {
       // ...and a flag is on only when the migrations really store that data (and off while they do not).
       expect(migrations.includes(column), `migration: ${phrase} -> ${column}`).toBe(flag);
     }
-    // The 5-person rule is stated because demographics exist; the Terms ask organizers to protect the contact, not workouts.
+    // The group rules are stated because the data exists: 20 answers for demographics, 5 contributors for workout totals.
     expect(privacyText).toContain('rounded to the nearest 5');
     expect(privacyText).toContain('at least 20 members');
+    expect(privacyText).toContain('only once at least 5 members have contributed');
+    expect(privacyText).toContain('no member and no organizer can see an individual log');
+    expect(privacyText).toContain('Workout logs: kept until you delete them, withdraw your consent');
     expect(termsText).toMatch(/emergency contact/i);
+    // The Terms ask organizers to protect the contact; they say nothing about workouts.
     expect(termsText).not.toMatch(/workout/i);
-    expect(privacyText).not.toMatch(/workout/i);
+    // Event discussions (feature flag still false) must not be promised.
+    expect(privacyText).not.toMatch(/event discussions/i);
   });
 
   it('Q7-7: with the About-you flags off the texts say nothing about the data (the guard for a flag that is false)', () => {

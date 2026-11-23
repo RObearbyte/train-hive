@@ -1,4 +1,4 @@
-# TrainHive — Statistics definitions (Milestone 4)
+# TrainHive — Statistics definitions (Milestone 4; workout statistics P5 at the end)
 
 The single source of truth for every number shown in the Statistics tab. The SQL functions, the app copy and the tests must all follow this file. Change it first, then the code.
 
@@ -66,3 +66,38 @@ Let `S` = finalized, non-cancelled sessions in the window (no per-member eligibi
 - Session start moved across a window boundary.
 - Boundaries: a session exactly at the window edge; month buckets across a DST change and a year boundary in the community timezone.
 - Visibility: a member cannot read another member's statistics or the organizer overview; organizers can read any member of their community; no cross-community access.
+
+## Workout statistics (P5)
+
+Computed live from the workout logs (`private.workout_logs`, migration `20261201000100_workout_logs.sql`). A log belongs to one member and one event; its type comes from the event: `running` (running, trail running, OCR activities), `race` (race events), `strength` (strength, functional fitness, CrossFit events). Logs are private: individual logs are only ever returned to their owner; organizers see only the rounded community totals below.
+
+### Personal (`get_my_workout_stats`, the member's own logs only)
+
+Let `L` = the member's logs, optionally only those of one community's events, optionally only those whose event start (as recorded in the log, refreshed on every save) lies in `[from, to]` (both inclusive, either bound optional). Logs of communities the member left still count (they are the member's own).
+
+| Metric | Definition |
+|---|---|
+| **Sessions logged** | `|L|` (also split into running, race and strength sessions) |
+| **Total distance** | sum of `distance_m` over `L` (logs without a distance add nothing) |
+| **Total time** | sum of `duration_s` over `L` (strength logs have no duration) |
+| **Average pace** | `round(1000 × Σ duration_s / Σ distance_m)` seconds per km over the logs that have **both** a distance and a duration (a distance-weighted average, not the mean of the per-log paces); `null` when there is none. `pace_sessions` = how many logs it uses |
+| **Pace of one log** | `round(1000 × duration_s / distance_m)` seconds per km, computed by the database; `null` unless both are known |
+| **Strength volume** | sum of `reps × weight_kg` over every set of every strength log in `L` (bodyweight sets count 0 kg) |
+| **Strength sets** | number of sets in the strength logs of `L` |
+
+Rounding: half away from zero (= half up for these positive values). Empty `L`: counts and sums 0, average pace `null`.
+
+### Community (`get_community_workout_stats`, organizers only; members never see community totals)
+
+Let `C` = the logs of the community's events whose (current) start lies in the window (`7d`, `30d`, `90d`, `all`, as the attendance statistics: `[now − N × 24 h, now]`), excluding cancelled events, written by members who are **active members now** and hold a current `workout_logs` consent. A member who leaves or is removed drops out at once (their own logs stay theirs).
+
+**Publication rule (the same idea as the About-you demographics: approximate group totals only):**
+1. Nothing is shown (`insufficient_data`, every metric `null`) unless at least **5 distinct members** contributed a log to `C`.
+2. Each metric additionally needs **5 distinct contributors of its own**: total distance needs 5 members with a distance, total time 5 with a duration, average pace 5 with both; otherwise that metric is `null`.
+3. Shown values are rounded: members contributing and sessions logged to the nearest **5**, total distance to the nearest **km**, total time to the nearest **5 minutes**, average pace (computed as for personal stats, from the exact sums) to the nearest **5 seconds per km**.
+
+There is no per-member breakdown, no per-event breakdown and no strength volume at community level. Known limit (as for demographics): an organizer who compares the totals before and after one member's log appears, or who adds accounts, can estimate that member's contribution to within the rounding; the 5-member and per-metric minimums make a single answer non-identifying, not repeated differencing.
+
+### Edge cases covered by `supabase/tests/workout-logs.test.ts`
+
+Pace rounding (x.5 up, distance-only and duration-only logs), strength volume with fractional weights and bodyweight sets, community and window filters, the 4/5 contributor boundary, a metric with fewer than 5 contributors, a member leaving, an event moved out of the window, a cancelled event, empty statistics.

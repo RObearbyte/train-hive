@@ -394,12 +394,15 @@ describe('notifications', () => {
          values ($1, $2, 'event_post', 't', 'b', $3, $4, $5)`,
         [w.memberIds[0], w.communityId, link, uuid, key],
       );
-    for (const [i, link] of ['/activity', `/trainings/${uuid}`, `/announcements/${uuid}`, `/events/${uuid}/feed`].entries()) {
+    // P5 (20261201000100_workout_logs.sql) added /events/<uuid>/log to the allowlist.
+    for (const [i, link] of [
+      '/activity', `/trainings/${uuid}`, `/announcements/${uuid}`, `/events/${uuid}/feed`, `/events/${uuid}/log`,
+    ].entries()) {
       await insert(link, `ok:${i}`);
     }
     const bad = [
       `/events/${uuid}`, `/events/${uuid}/feed/`, `/events/${uuid}/feed?x=1`, `/events/${uuid.toUpperCase()}/feed`,
-      `/events/${uuid}/log`, `/events//feed`, `/events/${uuid.slice(0, -1)}/feed`, `//events/${uuid}/feed`,
+      `/events/${uuid}/logs`, `/events//feed`, `/events/${uuid.slice(0, -1)}/feed`, `//events/${uuid}/feed`,
       `https://evil.example/events/${uuid}/feed`, `/events/${uuid}/feed\n`,
     ];
     for (const [i, link] of bad.entries()) {

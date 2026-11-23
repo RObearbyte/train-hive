@@ -1449,6 +1449,50 @@ export type Database = {
         Args: { p_community_id: string };
         Returns: Json;
       };
+      /**
+       * P5: create or replace the caller's log of an event (`WorkoutLogInput` by the event's log
+       * type). Returns a `WorkoutLog`. Raises `not_authenticated`, `validation_failed:input`,
+       * `not_found`, `not_a_member`, `not_loggable`, `event_not_ended`, `not_eligible`,
+       * `validation_failed:<field>`, `consent_required:workout_logs`.
+       */
+      save_workout_log: {
+        Args: { p_session_id: string; p_input: Json };
+        Returns: Json;
+      };
+      /** P5: the log screen context. Returns a `WorkoutLogScreen`. Raises `not_authenticated`, `not_found`, `not_a_member`. */
+      get_my_workout_log: {
+        Args: { p_session_id: string };
+        Returns: Json;
+      };
+      /** P5: deletes the caller's log of an event. Returns `DeleteWorkoutLogResult`. Raises `not_authenticated`. */
+      delete_my_workout_log: {
+        Args: { p_session_id: string };
+        Returns: Json;
+      };
+      /** P5: the caller's logs, newest event first. Returns `WorkoutLogPage`. Raises `not_authenticated`, `validation_failed:limit`. */
+      list_my_workout_logs: {
+        Args: { p_limit?: number; p_before?: string | null };
+        Returns: Json;
+      };
+      /** P5: the caller's totals. Returns `MyWorkoutStats`. Raises `not_authenticated`, `validation_failed:range`. */
+      get_my_workout_stats: {
+        Args: { p_community_id?: string | null; p_from?: string | null; p_to?: string | null };
+        Returns: Json;
+      };
+      /**
+       * P5: active organizer. Returns `CommunityWorkoutStats` (approximate: nothing below 5
+       * contributing members, rounded totals). Raises `not_authenticated`, `forbidden`,
+       * `validation_failed:window`.
+       */
+      get_community_workout_stats: {
+        Args: { p_community_id: string; p_window?: StatisticsWindow };
+        Returns: Json;
+      };
+      /** P5: service_role / pg_cron every minute. Returns the number of prompts inserted. */
+      enqueue_workout_log_prompts: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
     };
     Enums: {
       membership_role: 'organizer' | 'member';
@@ -1470,7 +1514,9 @@ export type Database = {
         /** P4: a new organizer post (to members going to the event). */
         | 'event_post'
         /** P4: a reply to the recipient's post. */
-        | 'event_reply';
+        | 'event_reply'
+        /** P5: "How did it go? Log your workout." after an event (deep link /events/<id>/log). */
+        | 'workout_log_prompt';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -1676,6 +1722,126 @@ export type CommunityDemographics = {
   insufficient_data: { age_bands: boolean; genders: boolean };
   age_bands: DemographicsCell<AgeBand>[];
   genders: DemographicsCell<AboutYouGender | 'not_provided'>[];
+};
+
+/**
+ * P5: the shape of a workout log, derived from the event (never chosen by the client): `race` for
+ * race events; `running` for running / trail_running / ocr activities; `strength` for strength /
+ * functional_fitness activities (CrossFit events included). Other events are not loggable.
+ */
+export type WorkoutLogType = 'strength' | 'running' | 'race';
+
+/** P5: one set of a strength exercise. `weight_kg` 0..1000 in steps of 0.25 (0 = bodyweight). */
+export type WorkoutSet = { reps: number; weight_kg: number };
+
+/** P5: one exercise of a strength log (name 1..80 after text hygiene, 1..20 sets). */
+export type WorkoutExercise = { name: string; sets: WorkoutSet[] };
+
+/**
+ * P5: input of `save_workout_log` (replaces the whole log; unknown keys refused with
+ * `validation_failed:input`). Notes: at most 1000 characters after text hygiene; blank = none.
+ */
+export type WorkoutLogInput =
+  /** strength: at most 30 exercises; at least one exercise or a note. `weight_kg` absent/null = 0. */
+  | { exercises?: { name: string; sets: { reps: number; weight_kg?: number | null }[] }[] | null; notes?: string | null }
+  /** running: at least distance_m or duration_s. race: duration_s (finish time) required. */
+  | { distance_m?: number | null; duration_s?: number | null; notes?: string | null };
+
+/** P5: a stored log (result of `save_workout_log`, items of `list_my_workout_logs`). Owner only. */
+export type WorkoutLog = {
+  id: string;
+  session_id: string;
+  community_id: string;
+  log_type: WorkoutLogType;
+  /** Snapshot of the event when the log was last saved (the log outlives a deleted event). */
+  event_title: string;
+  event_starts_at: string;
+  event_kind: EventKind;
+  event_subtype: string;
+  /** running / race: metres (1..1 000 000). */
+  distance_m: number | null;
+  /** running / race: seconds (1..604 800); for a race the finish time. */
+  duration_s: number | null;
+  /** Computed by the database: round(duration_s / km), null unless both are known. */
+  pace_s_per_km: number | null;
+  /** strength only (possibly empty when only a note was saved). */
+  exercises: WorkoutExercise[] | null;
+  /** strength only: sum of reps x weight_kg. */
+  strength_volume_kg: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** P5: why the caller cannot log an event now (`get_my_workout_log`). */
+export type WorkoutLogBlockReason = 'not_a_member' | 'not_loggable' | 'event_not_ended' | 'not_eligible' | 'not_found';
+
+/** P5: result of `get_my_workout_log`: everything the log screen needs. */
+export type WorkoutLogScreen = {
+  session_id: string;
+  community_id: string;
+  /** null when the event no longer exists (its community was deleted). */
+  event: {
+    title: string;
+    starts_at: string;
+    ends_at: string | null;
+    event_kind: EventKind;
+    event_subtype: string;
+    /** The event's course distance, to prefill the form. */
+    distance_km: number | null;
+    status: SessionStatus;
+  } | null;
+  /** null when the event is not loggable. */
+  log_type: WorkoutLogType | null;
+  can_log: boolean;
+  cannot_log_reason: WorkoutLogBlockReason | null;
+  /** Whether the caller holds a current `workout_logs` consent (needed to save). */
+  has_consent: boolean;
+  log: WorkoutLog | null;
+};
+
+/** P5: result of `delete_my_workout_log` (`deleted` false when there was no log). */
+export type DeleteWorkoutLogResult = { session_id: string; deleted: boolean };
+
+/** P5: result of `list_my_workout_logs`; pass `next_before` as `p_before` for the next page. */
+export type WorkoutLogPage = { logs: WorkoutLog[]; next_before: string | null };
+
+/** P5: result of `get_my_workout_stats` (docs/STATS_DEFINITIONS.md, "Workout statistics (P5)"). */
+export type MyWorkoutStats = {
+  community_id: string | null;
+  from: string | null;
+  to: string | null;
+  sessions_logged: number;
+  running_sessions: number;
+  race_sessions: number;
+  strength_sessions: number;
+  total_distance_m: number;
+  total_duration_s: number;
+  /** Total time / total distance over logs that have both; null when none. */
+  average_pace_s_per_km: number | null;
+  pace_sessions: number;
+  strength_volume_kg: number;
+  strength_sets: number;
+};
+
+/**
+ * P5: result of `get_community_workout_stats` (organizers only). APPROXIMATE: every metric is null
+ * while fewer than `min_contributors` (5) members logged in the window (`insufficient_data`), and
+ * each metric also needs 5 contributors of its own; shown values are rounded (members and
+ * sessions to 5, distance to 1 km, time to 5 minutes, pace to 5 s/km).
+ */
+export type CommunityWorkoutStats = {
+  community_id: string;
+  window: StatisticsWindow;
+  from: string | null;
+  to: string;
+  min_contributors: number;
+  insufficient_data: boolean;
+  members_contributing: number | null;
+  sessions_logged: number | null;
+  total_distance_km: number | null;
+  total_duration_minutes: number | null;
+  average_pace_s_per_km: number | null;
 };
 
 /** Why a claimed job has no tokens (`claim_notification_jobs`; first match wins, in this order). */
@@ -2102,6 +2268,8 @@ export type MyDataExport = {
       created_at: string;
       updated_at: string;
     } | null;
+    /** P5: the caller's workout logs, oldest event first (absent in files exported before P5). */
+    workout_logs?: (Omit<WorkoutLog, 'id'> & { log_id: string })[];
   };
   /** true for a section that had more than 5000 items. */
   truncated: Record<
@@ -2121,7 +2289,8 @@ export type MyDataExport = {
     | 'events_organized'
     | 'invitation_codes'
     | 'invitation_attempts'
-    | 'data_export_requests',
+    | 'data_export_requests'
+    | 'workout_logs',
     boolean
   >;
 };

@@ -4,7 +4,7 @@
  * Push payloads are data, not instructions: only an allowlist of internal
  * routes is ever navigated to, so a crafted or corrupted payload cannot open
  * an arbitrary URL or screen. Allowed:
- *   /trainings/<uuid>   /announcements/<uuid>   /events/<uuid>/feed   /activity
+ *   /trainings/<uuid>   /announcements/<uuid>   /events/<uuid>/feed   /events/<uuid>/log   /activity
  * Nothing else: no scheme, host, query, fragment, extra segment or relative path.
  */
 
@@ -14,6 +14,7 @@ export type AppLink =
   | { kind: 'training'; id: string }
   | { kind: 'announcement'; id: string }
   | { kind: 'eventFeed'; id: string }
+  | { kind: 'workoutLog'; id: string }
   | { kind: 'activity' };
 
 /** The link for a route string, or null when it is not on the allowlist. */
@@ -22,8 +23,9 @@ export function parseAppLink(raw: unknown): AppLink | null {
   if (raw === '/activity') return { kind: 'activity' };
   const parts = raw.split('/');
   // '/events/<id>/feed' splits into ['', 'events', '<id>', 'feed'].
-  if (parts.length === 4 && parts[0] === '' && parts[1] === 'events' && parts[3] === 'feed') {
-    return UUID.test(parts[2]) ? { kind: 'eventFeed', id: parts[2].toLowerCase() } : null;
+  if (parts.length === 4 && parts[0] === '' && parts[1] === 'events' && (parts[3] === 'feed' || parts[3] === 'log')) {
+    if (!UUID.test(parts[2])) return null;
+    return { kind: parts[3] === 'feed' ? 'eventFeed' : 'workoutLog', id: parts[2].toLowerCase() };
   }
   // '/trainings/<id>' splits into ['', 'trainings', '<id>'].
   if (parts.length !== 3 || parts[0] !== '') return null;
@@ -43,6 +45,8 @@ export function hrefForLink(link: AppLink): string {
       return `/announcements/${link.id}`;
     case 'eventFeed':
       return `/events/${link.id}/feed`;
+    case 'workoutLog':
+      return `/events/${link.id}/log`;
     case 'activity':
       return '/activity';
   }

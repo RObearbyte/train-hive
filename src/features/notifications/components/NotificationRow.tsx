@@ -16,6 +16,7 @@ const KIND_ICON: Record<NotificationKind, IconName> = {
   announcement_published: 'megaphone',
   event_post: 'megaphone',
   event_reply: 'people',
+  workout_log_prompt: 'edit',
 };
 
 type Props = {

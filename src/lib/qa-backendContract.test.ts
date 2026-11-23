@@ -328,6 +328,12 @@ describe('QA contract: RPCs called by the app', () => {
         'get_member_emergency_info',
         'list_community_emergency_info',
         'get_community_demographics',
+        'save_workout_log',
+        'get_my_workout_log',
+        'delete_my_workout_log',
+        'list_my_workout_logs',
+        'get_my_workout_stats',
+        'get_community_workout_stats',
       ]),
     );
   });

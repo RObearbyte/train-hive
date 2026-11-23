@@ -12,6 +12,28 @@ describe('parseAppLink', () => {
     expect(parseAppLink(`/events/${ID}/feed`)).toEqual({ kind: 'eventFeed', id: ID });
     expect(parseAppLink(`/events/${ID.toUpperCase()}/feed`)).toEqual({ kind: 'eventFeed', id: ID });
     expect(hrefForLink({ kind: 'eventFeed', id: ID })).toBe(`/events/${ID}/feed`);
+    expect(parseAppLink(`/events/${ID}/log`)).toEqual({ kind: 'workoutLog', id: ID });
+    expect(parseAppLink(`/events/${ID.toUpperCase()}/log`)).toEqual({ kind: 'workoutLog', id: ID });
+    expect(hrefForLink({ kind: 'workoutLog', id: ID })).toBe(`/events/${ID}/log`);
+  });
+
+  it.each([
+    `/events/${ID}/log/`,
+    `/events/${ID}/log?x=1`,
+    `/events/${ID}/log#x`,
+    `/events/${ID}/log/extra`,
+    '/events/not-a-uuid/log',
+    '/events//log',
+    `events/${ID}/log`,
+    `//events/${ID}/log`,
+    `/event/${ID}/log`,
+    `/events/${ID}/logs`,
+  ])('rejects the workout log look-alike %s', (raw) => {
+    expect(parseAppLink(raw)).toBeNull();
+  });
+
+  it('push data with the log link yields the route', () => {
+    expect(targetFromPushData({ url: `/events/${ID}/log` }).href).toBe(`/events/${ID}/log`);
   });
 
   it.each([

@@ -91,6 +91,6 @@ export type LegalFeatures = {
 export const FEATURES: LegalFeatures = {
   demographics: true,
   emergencyContact: true,
-  workoutLogs: false,
+  workoutLogs: true,
   eventPosts: false,
 };

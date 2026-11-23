@@ -55,6 +55,14 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   get_my_about_you: 'authenticated',
   list_community_emergency_info: 'authenticated',
   save_my_about_you: 'authenticated',
+  // P5: workout logs and statistics.
+  delete_my_workout_log: 'authenticated',
+  enqueue_workout_log_prompts: 'service_role',
+  get_community_workout_stats: 'authenticated',
+  get_my_workout_log: 'authenticated',
+  get_my_workout_stats: 'authenticated',
+  list_my_workout_logs: 'authenticated',
+  save_workout_log: 'authenticated',
   cancel_announcement: 'authenticated',
   cancel_training: 'authenticated',
   claim_notification_jobs: 'service_role',
@@ -306,6 +314,12 @@ describe('QA function privileges', () => {
       ['select public.get_member_emergency_info($1, $2)', [communityId, organizerId]],
       ['select public.list_community_emergency_info($1)', [communityId]],
       ['select public.get_community_demographics($1)', [communityId]],
+      ['select public.save_workout_log($1, $2)', [session.id, '{}']],
+      ['select public.get_my_workout_log($1)', [session.id]],
+      ['select public.delete_my_workout_log($1)', [session.id]],
+      ['select public.list_my_workout_logs($1, $2)', [20, null]],
+      ['select public.get_my_workout_stats($1, $2, $3)', [communityId, null, null]],
+      ['select public.get_community_workout_stats($1, $2)', [communityId, '30d']],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
@@ -328,6 +342,9 @@ describe('QA function privileges', () => {
     ).rejects.toMatchObject(denied);
     await expect(
       asUser(organizerId, (db) => db.query("select public.admin_set_legal_version('terms', '9')")),
+    ).rejects.toMatchObject(denied);
+    await expect(
+      asUser(organizerId, (db) => db.query('select public.enqueue_workout_log_prompts()')),
     ).rejects.toMatchObject(denied);
   });
 });
@@ -449,6 +466,19 @@ describe('QA table privileges', () => {
        where has_table_privilege(r.role, 'private.member_about_you', p.privilege)
           or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
               and has_any_column_privilege(r.role, 'private.member_about_you', p.privilege))`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('the workout log tables in private grant nothing to any API role (P5)', async () => {
+    const { rows } = await admin.query<{ role: string; table: string; privilege: string }>(
+      `select r.role, t.name as table, p.privilege
+       from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
+       cross join unnest(array['private.workout_logs', 'private.workout_prompt_runs']) as t(name)
+       cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
+       where has_table_privilege(r.role, t.name, p.privilege)
+          or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+              and has_any_column_privilege(r.role, t.name, p.privilege))`,
     );
     expect(rows).toEqual([]);
   });

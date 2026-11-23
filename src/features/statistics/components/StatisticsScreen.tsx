@@ -6,6 +6,7 @@ import { View } from 'react-native';
 import { CommunityProfileCard } from '@/features/aboutYou/components/CommunityProfileCard';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { FEATURES } from '@/features/legal/constants';
+import { CommunityWorkoutCard, MyWorkoutStatsCard } from '@/features/workoutLogs/components/WorkoutStatsCards';
 import { ScreenHeader } from '@/features/shell/components/ScreenHeader';
 import type { StatisticsWindow } from '@/lib/database.types';
 import { toAppError, userMessage } from '@/lib/errors';
@@ -63,6 +64,7 @@ function MyParticipation({
       ) : null}
       <MemberStatsView stats={stats.data} />
       <HistorySection history={history} />
+      {FEATURES.workoutLogs ? <MyWorkoutStatsCard communityId={communityId} /> : null}
     </View>
   );
 }
@@ -129,6 +131,7 @@ export function StatisticsScreen() {
         <>
           <CommunityOverview communityId={communityId} window={window} />
           {/* Organizers only (this view is); the numbers are today's, whatever the period filter says. */}
+          {FEATURES.workoutLogs ? <CommunityWorkoutCard communityId={communityId} window={window} /> : null}
           {FEATURES.demographics ? <CommunityProfileCard communityId={communityId} /> : null}
         </>
       )}

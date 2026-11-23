@@ -42,6 +42,9 @@ export const BACKEND_ERROR_CODES = [
   'not_a_top_level_post',
   'post_deleted',
   'event_closed',
+  'not_loggable',
+  'event_not_ended',
+  'not_eligible',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -233,6 +236,9 @@ const MESSAGES: Record<AppErrorCode, string> = {
   not_a_top_level_post: 'You can reply to a post, but not to a reply.',
   post_deleted: 'That post was deleted.',
   event_closed: 'The discussion for this event is closed. It stays readable.',
+  not_loggable: 'Workouts cannot be logged for this kind of event.',
+  event_not_ended: 'This event has not ended yet. You can log your workout once it is over.',
+  not_eligible: 'Only members who said they were going, or were marked present, can log this event.',
   app_update_required:
     'Our terms or privacy notice changed and this version of TrainHive cannot show the new text. Please update the app and try again.',
   network_error: 'No connection. Check your internet and try again.',
@@ -279,6 +285,15 @@ const FIELD_LABELS: Record<string, string> = {
   emergency_contact_phone: "emergency contact's phone number",
   emergency_contact_relationship: 'relationship to your emergency contact',
   tshirt_size: 'T-shirt size',
+  exercises: 'exercises (add at least one exercise or a note, at most 30)',
+  exercise_name: 'exercise name (1 to 80 characters)',
+  sets: 'sets (1 to 20 per exercise)',
+  reps: 'repetitions (whole number from 1 to 1000)',
+  weight_kg: 'weight (0 to 1000 kg, in steps of 0.25)',
+  distance_m: 'distance',
+  duration_s: 'time',
+  notes: 'notes (at most 1000 characters)',
+  range: 'date range',
 };
 
 /** `consent_required:<purpose>` on the About-you page: which agreement is missing. */
@@ -287,6 +302,8 @@ const CONSENT_FIELD_MESSAGES: Record<string, string> = {
     'To save your birth year or gender, please agree to the statistics notice first, then try again.',
   emergency_contact:
     'To save your emergency contact or T-shirt size, please agree to sharing them with organizers first, then try again.',
+  workout_logs:
+    'To save a workout log, please agree to workout logs first (the box above the Save button), then try again.',
 };
 
 /**

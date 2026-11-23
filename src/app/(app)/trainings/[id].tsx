@@ -9,6 +9,8 @@ import {
   MyAttendanceOutcome,
 } from '@/features/attendance/components/AttendanceEntryPoint';
 import { DiscussionEntry } from '@/features/eventFeed/components/DiscussionEntry';
+import { FEATURES } from '@/features/legal/constants';
+import { WorkoutLogEntry } from '@/features/workoutLogs/components/WorkoutLogEntry';
 import { RsvpControl } from '@/features/rsvp/components/RsvpControl';
 import { KindChip } from '@/features/trainings/components/KindChip';
 import { OrganizerActions } from '@/features/trainings/components/OrganizerActions';
@@ -313,6 +315,9 @@ function TrainingDetails({ session, now }: { session: TrainingSession; now: Date
       </Card>
 
       <DiscussionEntry sessionId={session.id} communityId={session.community_id} />
+
+      {/* Only when the server says the person can log (or has a log); see WorkoutLogEntry. */}
+      {FEATURES.workoutLogs ? <WorkoutLogEntry sessionId={session.id} /> : null}
 
       <Participants sessionId={session.id} />
 
