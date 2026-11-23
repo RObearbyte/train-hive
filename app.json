@@ -53,7 +53,8 @@
       "expo-secure-store",
       "expo-localization",
       "@react-native-community/datetimepicker",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
