@@ -28,7 +28,7 @@ describe('texts versus what exists', () => {
   // Q7-7 (fixed, updated for P3): the texts name a data item exactly when its flag is on AND the migrations
   // build it; later phases flip a flag in constants.ts in the same change that ships the feature.
   it('Q7-7: the notice describes About you, workout logs and event discussions (flags on, migrations present) and nothing unbuilt (flags off)', () => {
-    expect(FEATURES).toEqual({ demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true });
+    expect(FEATURES).toEqual({ demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true, accountLinking: true });
     const items = [
       { flag: FEATURES.demographics, phrase: 'Birth year and gender', column: 'birth_year' },
       { flag: FEATURES.emergencyContact, phrase: 'Emergency contact and T-shirt size', column: 'tshirt_size' },
@@ -62,8 +62,44 @@ describe('texts versus what exists', () => {
     expect(termsText).toMatch(/Posts and replies in an event discussion are visible to the active members/);
   });
 
+  // Q7-7 (account linking): the optional email lives only in Supabase Auth; the texts say so and the code agrees.
+  it('Q7-7: the notice and terms describe the optional email exactly when accountLinking is on, and the migrations never copy it into TrainHive tables', () => {
+    expect(FEATURES.accountLinking).toBe(true);
+    expect(privacyText).toContain('Email address (optional)');
+    expect(privacyText).toContain('used only to let you sign in again on another device and to send you sign-in codes');
+    expect(privacyText).toContain('Basis: your consent, which you give by adding it');
+    expect(privacyText).toContain('Email address (if you added one): kept until you delete your account');
+    expect(privacyText).toContain(', the email address you added');
+    expect(termsText).toContain('Add only an email address that is yours');
+    // Nothing in the database reads or stores auth.users.email: it is not in the export, in any table or in a function.
+    expect(migrations).not.toMatch(/\b\w+\.email\b/);
+    expect(migrations).not.toMatch(/auth\.users[^;]*\bemail\b/i);
+    // Retention only ever touches anonymous accounts: a linked account is never erased by the clean-up.
+    expect(migrations).toMatch(/where u\.is_anonymous/);
+    // Erasing an account deletes the auth user, and with it the email.
+    expect(migrations).toContain('delete from auth.users');
+    // The app links with the documented Auth calls only (no OAuth, no password).
+    const api = read('src', 'features', 'account', 'api', 'emailAuth.ts');
+    expect(api).toContain('updateUser({ email');
+    expect(api).toContain("type: 'email_change'");
+    expect(api).toContain('shouldCreateUser: false');
+    const app = [api, read('src', 'features', 'account', 'components', 'EmailCodeFlow.tsx')].join('\n');
+    expect(app).not.toMatch(/signInWithOAuth|signInWithPassword|password:/);
+  });
+
+  it('Q7-7: with accountLinking off the texts do not mention the email at all', () => {
+    const off = { ...FEATURES, accountLinking: false };
+    const privacyOff = JSON.stringify(buildPrivacyNotice(config as never, off));
+    const termsOff = JSON.stringify(buildTerms(config as never, off));
+    for (const phrase of ['Email address (optional)', 'sign-in codes', 'Secure your account', 'unless you added an email']) {
+      expect(privacyOff.includes(phrase), phrase).toBe(false);
+    }
+    expect(termsOff).not.toMatch(/email address that is yours|add an email/i);
+    expect(privacyOff).toContain('TrainHive has no email address or password');
+  });
+
   it('Q7-7: with the About-you flags off the texts say nothing about the data (the guard for a flag that is false)', () => {
-    const off = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
+    const off = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false, accountLinking: false };
     const privacyOff = JSON.stringify(buildPrivacyNotice(config as never, off));
     const termsOff = JSON.stringify(buildTerms(config as never, off));
     for (const phrase of ['Birth year and gender', 'Emergency contact', 'Workout logs', 'rounded to the nearest 5', 'event discussions', 'first 200 characters']) {
@@ -73,7 +109,7 @@ describe('texts versus what exists', () => {
   });
 
   it('Q7-7: with every flag on, the notice names each item and the 5-person rule', () => {
-    const all = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
+    const all = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true, accountLinking: true };
     const text = JSON.stringify(buildPrivacyNotice(config as never, all));
     for (const phrase of ['Birth year and gender', 'Emergency contact and T-shirt size', 'Workout logs', 'rounded to the nearest 5']) {
       expect(text).toContain(phrase);

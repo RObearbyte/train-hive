@@ -4,7 +4,7 @@ import type { LegalFeatures } from '@/features/legal/constants';
 
 import { aboutYouAvailable, aboutYouPromptStorageKey, parseSeen, promptState } from './prompt';
 
-const OFF: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
+const OFF: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false, accountLinking: false };
 
 describe('prompt storage', () => {
   it('is per user and made only of characters the secure store accepts', () => {

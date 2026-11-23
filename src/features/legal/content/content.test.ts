@@ -235,15 +235,16 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
   });
 });
 
-const OFF: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
+const OFF: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false, accountLinking: false };
 /** What ships now: About you, workout logs and event discussions are built (backend, app and these texts). */
-const SHIPPED: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
-const ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
+const SHIPPED: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true, accountLinking: true };
+const ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true, accountLinking: true };
 const SINGLE: [keyof LegalFeatures, RegExp][] = [
   ['demographics', /birth year|gender|rounded to the nearest 5/i],
   ['emergencyContact', /emergency contact|T-shirt/i],
   ['workoutLogs', /workout/i],
   ['eventPosts', /event discussions|replies/i],
+  ['accountLinking', /sign-in codes?|Secure your account|email address you add|Email address \(optional\)|add an email/i],
 ];
 
 describe('later-phase features appear in the texts only when their flag is on', () => {

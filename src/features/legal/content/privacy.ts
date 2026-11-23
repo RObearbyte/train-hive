@@ -96,6 +96,15 @@ export function buildPrivacyNotice(
                 value:
                   'To deliver reminders and updates. Push messages need your consent (and the permission of your phone). In-app notifications are part of the service. Basis: consent for push, contract for in-app notifications.',
               },
+              ...(features.accountLinking
+                ? [
+                    {
+                      label: 'Email address (optional)',
+                      value:
+                        'Only if you choose to add it (Profile, then Secure your account): your email address. It is used only to let you sign in again on another device and to send you sign-in codes. It is held by our authentication provider together with your account; it is never shown to other members or organizers and is not copied into the TrainHive community data. Basis: your consent, which you give by adding it. It is kept until you delete your account. Without an email nothing changes: your account stays anonymous.',
+                    },
+                  ]
+                : []),
               ...(features.demographics
                 ? [
                     {
@@ -166,6 +175,11 @@ export function buildPrivacyNotice(
                     'Your workout logs are private to you: no member and no organizer can see an individual log. Organizers see only approximate community totals (for example the total distance and the number of sessions logged), and only once at least 20 members have contributed to the period shown. The values are rounded and approximate. The totals count only members who are still in the community and have agreed to workout logs. You can delete a log at any time.',
                   ]
                 : []),
+              ...(features.accountLinking
+                ? [
+                    'The email address you add is not visible to members or organizers. It is processed by our authentication provider only, which sends you the sign-in codes.',
+                  ]
+                : []),
               'We do not sell your data and we do not share it for advertising.',
             ],
           },
@@ -182,7 +196,9 @@ export function buildPrivacyNotice(
           {
             type: 'list',
             items: [
-              'Supabase: database, authentication and server functions. All TrainHive data is stored there.',
+              features.accountLinking
+                ? 'Supabase: database, authentication (including your email address if you add one, and the sending of sign-in codes) and server functions. All TrainHive data is stored there.'
+                : 'Supabase: database, authentication and server functions. All TrainHive data is stored there.',
               'Expo (push notification service) and Google Firebase Cloud Messaging: delivery of push messages. They receive your push token and the text of the notification.',
               'The hosting provider of the web version of TrainHive: serves the website files.',
             ],
@@ -232,6 +248,11 @@ export function buildPrivacyNotice(
               `Records of failed code attempts (used to stop guessing): deleted once they are more than ${RETENTION.failedAttemptsHours} hours old. The clean-up runs once a day, so a record can stay for up to about two days.`,
               'Push device identifiers (tokens): deleted when you withdraw your push consent (Profile, then Privacy), when you delete your account, when a device stops working, within 30 days, and when a device has not been used for 9 months. The "Push notifications" switch in the notification settings only stops pushes from being sent: it does not delete the identifier. Withdrawing the consent does.',
               `Account data (name, membership, RSVPs, attendance${features.eventPosts ? ', posts' : ''}${optionalConsents ? ', optional data you gave' : ''}, your consent records): kept until you delete your account. When you delete it, attendance counts and the attendance change history stay without your name or identifier.`,
+              ...(features.accountLinking
+                ? [
+                    'Email address (if you added one): kept until you delete your account, which deletes it with the rest. TrainHive has no separate way to remove only the email: to remove it, delete your account.',
+                  ]
+                : []),
               ...(features.demographics
                 ? ['Birth year and gender: kept until you withdraw your consent (which deletes them), clear them yourself or delete your account.']
                 : []),
@@ -274,6 +295,9 @@ export function buildPrivacyNotice(
                 ? 'Withdraw or give consent: Profile, then Privacy. Each optional consent has its own switch, and turning one off takes effect at once.'
                 : 'Withdraw or give consent: Profile, then Privacy. Push notifications have their own switch, and turning it off takes effect at once.',
               'Correct your name: Profile, then Change name.',
+              ...(features.accountLinking
+                ? ['Add an email address so you can sign in again later: Profile, then Secure your account. To stop us holding it, delete your account.']
+                : []),
               ...(features.demographics || features.emergencyContact
                 ? [
                     `Correct or clear what you gave (${[
@@ -294,11 +318,11 @@ export function buildPrivacyNotice(
                 features.demographics || features.emergencyContact ? ', your About you details' : ''
               }${features.workoutLogs ? ', all your workout logs' : ''}${
                 features.eventPosts ? ', your replies in event discussions' : ''
-              }, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you published${
+              }${features.accountLinking ? ', the email address you added' : ''}, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you published${
                 features.eventPosts ? ', posts you wrote in event discussions' : ''
               } and events you organized stay visible to your community; after you delete your account they are no longer linked to you. In a very small community these anonymous counts can still point to a person. If you are the only organizer of a community that still has other members, hand over to another organizer first (Profile, then Members). A community in which you are the only member is deleted together with your account.`,
               'Leave a community: Profile, then Leave this community. You lose access to it, and your attendance history stays in its records until you delete your account.',
-              `Restrict or object to processing: contact us at ${config.privacyEmail}. Because accounts are anonymous, we can only act on a request if you can show that the account is yours, for example by creating a code inside the app when we ask.`,
+              `Restrict or object to processing: contact us at ${config.privacyEmail}. Because accounts are anonymous, we can only act on a request if you can show that the account is yours, for example by creating a code inside the app when we ask${features.accountLinking ? ' or, if you linked an email, by receiving a sign-in code at that address' : ''}.`,
               'We answer within one month.',
             ],
           },
@@ -344,7 +368,9 @@ export function buildPrivacyNotice(
         blocks: [
           {
             type: 'paragraph',
-            text: 'TrainHive has no email address or password. Your account is created on your device when you first enter an invitation code to join a community, and it is tied to that device. If you sign out, uninstall the app, clear its data or lose the phone, nobody (including us) can give the account back, and you would join again as a new member with a new invitation.',
+            text: features.accountLinking
+              ? 'TrainHive has no passwords. Your account is created on your device when you first enter an invitation code to join a community, and it is anonymous and tied to that device until you add an email address (optional). If you did not add one and you sign out, uninstall the app, clear its data or lose the phone, nobody (including us) can give the account back, and you would join again as a new member with a new invitation. If you added an email, you can sign in again on any device with a 6-digit code we send to it.'
+              : 'TrainHive has no email address or password. Your account is created on your device when you first enter an invitation code to join a community, and it is tied to that device. If you sign out, uninstall the app, clear its data or lose the phone, nobody (including us) can give the account back, and you would join again as a new member with a new invitation.',
           },
         ],
       },
@@ -364,7 +390,7 @@ export function buildPrivacyNotice(
         blocks: [
           {
             type: 'paragraph',
-            text: "The web version stores only what it needs to keep you signed in: your session and a few settings, in your browser's local storage. It does not use cookies for tracking or advertising. Clearing your browser data signs you out, and an anonymous account cannot be recovered afterwards.",
+            text: `The web version stores only what it needs to keep you signed in: your session and a few settings, in your browser's local storage. It does not use cookies for tracking or advertising. Clearing your browser data signs you out, and an anonymous account cannot be recovered afterwards${features.accountLinking ? ' (unless you added an email)' : ''}.`,
           },
         ],
       },

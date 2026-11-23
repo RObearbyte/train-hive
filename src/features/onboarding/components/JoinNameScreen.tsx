@@ -195,7 +195,7 @@ export function JoinNameScreen({ flow }: { flow: AddCommunityFlow }) {
         <Banner
           tone="info"
           title="Your account lives on this device"
-          message="There is no password or email yet. If you delete the app, clear its data or lose this phone, you will need a new invitation and your history will not follow you."
+          message="There is no password. If you delete the app, clear its data or lose this phone, you will need a new invitation and your history will not follow you, unless you add an email in Profile, Secure your account, after you join."
         />
       )}
     </KeyboardScreen>

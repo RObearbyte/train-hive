@@ -87,6 +87,8 @@ export type LegalFeatures = {
   workoutLogs: boolean;
   /** Replies and posts in event discussions. */
   eventPosts: boolean;
+  /** Optional email address on an account (Profile, Secure your account) and sign-in with a 6-digit code. */
+  accountLinking: boolean;
 };
 
 export const FEATURES: LegalFeatures = {
@@ -94,4 +96,5 @@ export const FEATURES: LegalFeatures = {
   emergencyContact: true,
   workoutLogs: true,
   eventPosts: true,
+  accountLinking: true,
 };

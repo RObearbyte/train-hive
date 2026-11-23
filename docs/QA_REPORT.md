@@ -1331,3 +1331,25 @@ Not run on a device or browser yet. Use one organizer account and one plain memb
 156. Profile tab: no Members, Invitations, Community settings, Your communities or Leave entries and no duplicate of the community name; still has About you, Member since, My attendance, My workouts, notification settings, Privacy (download and delete my data), account text and Sign out.
 157. Empty and error states: a community with only you shows one row (no empty state); airplane mode then pull to refresh shows the warning banner with cached data, or "Could not load members" with Try again when nothing was cached; the loading state reads "Loading members".
 158. Invitation message text: step 2 says "already using TrainHive? Community tab -> Join another community" and that menu entry exists.
+
+## Account recovery by email - manual test script (mobile, 2026-11-24)
+
+Not run yet. Needs the Supabase setup in `docs/ACCOUNT_RECOVERY_SETUP.md` (email templates with `{{ .Token }}`, custom SMTP) and a mailbox you control. Use throwaway accounts.
+
+159. Anonymous member, Profile: a "Secure your account" card with an Email field, "Send code" and the note that the email is optional, is used only to sign in again, and is deleted by deleting the account. Typing "abc" and tapping Send code shows "Enter a valid email address" and sends nothing.
+160. Enter a valid address and Send code: the card switches to the code step with "We sent a 6-digit code to a***@g***.com", a Confirm email button, "Send again in 60 s" counting down and disabled, and "Use a different email". The email arrives with a 6-digit code (not only a link).
+161. Wrong code (for example 000000): the field shows "That code is not correct or has expired". Fewer than 6 digits: the field asks for the 6-digit code and nothing is sent. Pasting "123 456" keeps 123456.
+162. Right code: the card becomes "Account secured with a***@g***.com"; the "Your account" card now says the account is linked to your email; no new login, same name, same communities, RSVPs and About-you data.
+163. Sign out of the linked account: the dialog says you can sign in again with your email (no "lose access" text) and the caption under the button says so. For an account without an email the old warning is still shown.
+164. After the countdown reaches 0, "Send the code again" works once and shows "We sent a new code"; the old code no longer works. Tapping repeatedly never sends more than one request at a time.
+165. Linking with an address that already belongs to another account shows the "already belongs to a TrainHive account ... I already have an account" message and the account stays anonymous. Hitting the email limit shows "Too many emails or attempts". Airplane mode shows "No connection".
+166. Force-quit the app after "Send code" and before the code: reopen, Profile: the card resumes at the code step for the same masked address (or restarts at the email step if the server no longer reports it); Confirm email still works.
+167. Welcome screen (signed out, fresh install or after sign-out): a quiet "I already have an account" button below "Create a community". It opens "Sign in with your email" with Back, the email field and the legal links.
+168. Sign in with the linked address on a second device: "If this email has an account we sent you a code" and the code field appear; the right code signs in and shows the existing community (not Join / Create); active community, roles and the Community tab match the first device.
+169. Sign in with an address that has NO account: the same neutral message and the code step appear, no email arrives, any code gives "That code is not correct or has expired". The text never says whether an account exists, and no account is created (Authentication -> Users unchanged).
+170. After sign-in on a second device with an older legal version on the server: the "We updated our terms" screen appears first (accept, or delete / download from there); with current consent the app opens directly. No first-launch "Before you start" screen is forced on a returning member.
+171. Sign in with an account whose memberships were all removed: after the code the screen returns to Welcome where Join and Create work normally; nothing loops.
+172. Sign out on device B clears the On-device notes (About-you welcome note shows again for the next account, push intent, first-launch acknowledgement) and shows Welcome with no data of the previous account.
+173. Delete my account on a linked account: the explanation says the email address is deleted too and lists it; afterwards Authentication -> Users no longer lists the user and the same address can be linked again to a new account.
+174. Privacy Notice (Profile -> Privacy Notice and the web page): "Email address (optional)" under what we collect, "Anonymous accounts" mentions signing in again with a code, retention and deletion mention the email; Terms: "Add only an email address that is yours".
+175. TalkBack / VoiceOver: both fields have labels, errors are announced, the code field offers one-time-code autofill, the countdown button announces its state.

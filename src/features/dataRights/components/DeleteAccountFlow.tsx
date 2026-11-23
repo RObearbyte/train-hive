@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
+import { useAccountKind } from '@/features/account/hooks/useAccountKind';
 import { ResponsiveModal } from '@/features/shell/components/ResponsiveModal';
 import { userMessage } from '@/lib/errors';
 import { Banner, Button, Card, ErrorState, Icon, LoadingState, Text, TextField, useTheme } from '@/ui';
@@ -35,6 +36,8 @@ const DELETED = [
   'Your agreements and privacy choices',
 ];
 
+const DELETED_EMAIL = 'The email address you added to your account, if any';
+
 const KEPT = [
   'Attendance counts stay, without your name or any link to you, so past statistics stay correct. In a very small community these counts can still point to a person.',
   'Announcements you published stay visible to your community; they are no longer linked to you.',
@@ -67,6 +70,7 @@ export function DeleteAccountFlow({ visible, onClose, onOpenMembers }: DeleteAcc
   const deletion = useDeleteAccount();
   const [state, dispatch] = useReducer(deletionReducer, INITIAL_DELETION_STATE);
   const [typed, setTyped] = useState('');
+  const linked = useAccountKind()?.kind === 'linked';
 
   const data = blockersQuery.data;
   useEffect(() => {
@@ -149,7 +153,11 @@ export function DeleteAccountFlow({ visible, onClose, onOpenMembers }: DeleteAcc
         <Banner
           tone="warning"
           title="This cannot be undone"
-          message="Your account is anonymous and lives on this device. Once it is deleted, there is no way to get it back."
+          message={
+            linked
+              ? 'Your account is linked to your email. Once it is deleted, there is no way to get it back, and the email address is deleted too.'
+              : 'Your account is anonymous and lives on this device. Once it is deleted, there is no way to get it back.'
+          }
         />
         {deleteWith.length > 0 ? (
           <Banner
@@ -160,7 +168,7 @@ export function DeleteAccountFlow({ visible, onClose, onOpenMembers }: DeleteAcc
         ) : null}
         <View style={{ gap: spacing.sm }}>
           <Text variant="heading">What is deleted</Text>
-          <Bullets items={DELETED} />
+          <Bullets items={linked ? [...DELETED, DELETED_EMAIL] : DELETED} />
         </View>
         <View style={{ gap: spacing.sm }}>
           <Text variant="heading">What stays, without your name</Text>

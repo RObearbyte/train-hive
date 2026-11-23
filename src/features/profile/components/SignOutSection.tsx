@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { useAccountKind } from '@/features/account/hooks/useAccountKind';
 import { ConfirmDialog } from '@/features/community/components/ConfirmDialog';
 import { userMessage } from '@/lib/errors';
 import { Button, Text, useTheme } from '@/ui';
 
-import { SIGN_OUT_MESSAGE, SIGN_OUT_TITLE } from '../domain/signOut';
+import { signOutCopy, SIGN_OUT_TITLE } from '../domain/signOut';
 import { useSignOut } from '../hooks/useSignOut';
 
-/** Profile -> "Sign out", with a confirmation that says the account cannot be recovered. */
+/** Profile -> "Sign out". The confirmation says the account cannot be recovered, or, once an email is linked, that it can be signed into again. */
 export function SignOutSection() {
   const { spacing } = useTheme();
   const signOut = useSignOut();
   const [open, setOpen] = useState(false);
+  const copy = signOutCopy(useAccountKind()?.kind === 'linked');
 
   return (
     <View style={{ gap: spacing.sm }}>
@@ -28,12 +30,12 @@ export function SignOutSection() {
         }}
       />
       <Text variant="caption" color="textMuted">
-        Signing out removes this account from this device for good.
+        {copy.caption}
       </Text>
       <ConfirmDialog
         visible={open}
         title={SIGN_OUT_TITLE}
-        message={SIGN_OUT_MESSAGE}
+        message={copy.message}
         confirmLabel="Sign out"
         cancelLabel="Stay signed in"
         destructive

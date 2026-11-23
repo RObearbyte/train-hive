@@ -40,7 +40,7 @@ function createTypedClient(): TypedSupabaseClient {
       storageKey: AUTH_STORAGE_KEY,
       persistSession: true,
       autoRefreshToken: true,
-      // No OAuth / magic-link redirects: sessions are anonymous.
+      // No OAuth / magic-link redirects: sessions start anonymous and can be linked to an email with a 6-digit code (features/account).
       detectSessionInUrl: false,
     },
   });

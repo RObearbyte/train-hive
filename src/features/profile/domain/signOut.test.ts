@@ -5,7 +5,7 @@ import { activeCommunityStorageKey } from '@/features/community/domain/activeCom
 import { ACCEPTANCE_STORAGE_KEY } from '@/features/legal/domain/acceptance';
 import { PUSH_PROMPT_DISMISSED_KEY } from '@/features/notifications/domain/pushState';
 
-import { SIGN_OUT_MESSAGE, runSignOut, storedKeysToClear, type SignOutEffects } from './signOut';
+import { SIGN_OUT_MESSAGE, SIGN_OUT_MESSAGE_LINKED, runSignOut, signOutCopy, storedKeysToClear, type SignOutEffects } from './signOut';
 
 const USER = '0b8e7c1e-1111-4222-8333-444455556666';
 const INPUT = { userId: USER, authStorageKey: 'trainhive-auth' };
@@ -45,6 +45,22 @@ describe('sign-out confirmation text', () => {
     expect(SIGN_OUT_MESSAGE).toBe(
       'You will lose access to this account on this device. TrainHive accounts are anonymous: without a login there is no way to get it back. Your About-you details and your place in the community stay on the server, and nobody can reach them after you sign out. To remove the details first, cancel and use Profile, About you, Clear my About-you data.',
     );
+  });
+});
+
+describe('sign-out text for a linked account', () => {
+  it('an anonymous account keeps the loss warning', () => {
+    expect(signOutCopy(false).message).toBe(SIGN_OUT_MESSAGE);
+    expect(signOutCopy(false).caption).toMatch(/for good/);
+  });
+
+  it('a linked account says it can be signed into again with the email, and does not warn about losing it', () => {
+    const { message, caption } = signOutCopy(true);
+    expect(message).toBe(SIGN_OUT_MESSAGE_LINKED);
+    expect(message).toMatch(/sign in again/);
+    expect(message).toMatch(/I already have an account/);
+    expect(message).not.toMatch(/lose access|no way to get it back|anonymous/i);
+    expect(caption).not.toMatch(/for good/);
   });
 });
 

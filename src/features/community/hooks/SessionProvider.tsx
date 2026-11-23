@@ -19,7 +19,10 @@ type Internal = { state: SessionState; session: Session | null };
 /**
  * Restores the stored session on start and follows auth changes. It never
  * signs in by itself: an anonymous account is created only when the user
- * submits an invitation code (`ensureSession`).
+ * submits an invitation code (`ensureSession`). Every auth event that carries a
+ * session (SIGNED_IN after an email sign-in, USER_UPDATED / SIGNED_IN when an
+ * anonymous user links an email, TOKEN_REFRESHED) only replaces the session in
+ * state: nothing here creates a user, and linking keeps the same user id.
  */
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [value, setValue] = useState<Internal>({ state: 'loading', session: null });

@@ -12,7 +12,7 @@ import { AUTH_STORAGE_KEY, getSupabase } from '@/lib/supabase';
 import { runSignOut } from '../domain/signOut';
 
 /**
- * Signs out for good (the account is anonymous and cannot be recovered). The
+ * Signs out (an anonymous account cannot be recovered; one linked to an email can be signed into again with a code). The
  * mutation fails, with nothing cleared, when the server cannot be reached. On
  * success the auth listener moves the root gate to onboarding, which shows the
  * welcome screen.

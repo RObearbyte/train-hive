@@ -5,6 +5,8 @@ import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { peekAccountDeletedNotice, setAccountDeletedNotice } from '@/features/dataRights/domain/deletedNotice';
+import { SIGN_IN_ROUTE } from '@/features/account/domain/routes';
+import { FEATURES } from '@/features/legal/constants';
 import { WelcomeLegalLinks } from '@/features/legal/components/WelcomeLegalLinks';
 import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { BrandHero } from '@/features/onboarding/components/BrandHero';
@@ -54,6 +56,17 @@ export default function WelcomeScreen() {
         <Text variant="caption" color="textMuted" align="center">
           I have a creator code. Creator codes are issued by the TrainHive team.
         </Text>
+        {FEATURES.accountLinking ? (
+          <Button
+            label="I already have an account"
+            variant="ghost"
+            size="sm"
+            fullWidth
+            accessibilityHint="Sign in with the email you added to your account"
+            onPress={() => router.push(SIGN_IN_ROUTE as Href)}
+            testID="welcome-sign-in"
+          />
+        ) : null}
         <WelcomeLegalLinks />
       </SafeAreaView>
     </View>

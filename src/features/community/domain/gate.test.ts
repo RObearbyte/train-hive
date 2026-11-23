@@ -94,6 +94,23 @@ describe('decideRoute: during onboarding', () => {
     ).toEqual(['onboarding', 'onboarding', 'onboarding', 'app']);
   });
 
+  it('a returning member who signs in with an email goes straight to the app, never through joining again', () => {
+    expect(
+      run(
+        [
+          { session: 'none', membership: 'pending' }, // welcome screen, signed out
+          { session: 'present', membership: 'pending' }, // code accepted: the session arrives, communities load
+          { session: 'present', membership: 'active' },
+        ],
+        'onboarding',
+      ),
+    ).toEqual(['onboarding', 'onboarding', 'app']);
+  });
+
+  it('a signed-in account without any community stays in onboarding (the sign-in screen sends it to the welcome screen)', () => {
+    expect(decideRoute({ session: 'present', membership: 'none' }, 'onboarding')).toBe('onboarding');
+  });
+
   it('stays in onboarding when a lookup fails', () => {
     expect(decideRoute({ session: 'present', membership: 'error' }, 'onboarding')).toBe(
       'onboarding',

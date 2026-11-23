@@ -15,7 +15,7 @@ import {
 } from './privacySettings';
 import { accepted, consentState, grantedState, neverRecorded } from './testFixtures';
 
-const ALL_ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
+const ALL_ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true, accountLinking: true };
 
 describe('optional rows', () => {
   it('with every feature shipped lists the four optional purposes, in order, all off for someone who never decided', () => {
@@ -72,14 +72,14 @@ describe('optional rows', () => {
   });
 
   it('a flag adds exactly its own switch (all off is push only)', () => {
-    expect(visibleOptionalPurposes({ demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false })).toEqual([
+    expect(visibleOptionalPurposes({ demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false, accountLinking: false })).toEqual([
       'push_notifications',
     ]);
-    const base: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
+    const base: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false, accountLinking: false };
     expect(visibleOptionalPurposes({ ...base, demographics: true })).toEqual(['push_notifications', 'profile_demographics']);
     expect(visibleOptionalPurposes({ ...base, emergencyContact: true })).toEqual(['push_notifications', 'emergency_contact']);
     expect(visibleOptionalPurposes({ ...base, workoutLogs: true })).toEqual(['push_notifications', 'workout_logs']);
-    expect(visibleOptionalPurposes({ ...base, eventPosts: true })).toEqual(['push_notifications']);
+    expect(visibleOptionalPurposes({ ...base, eventPosts: true, accountLinking: true })).toEqual(['push_notifications']);
   });
 });
 

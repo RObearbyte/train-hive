@@ -3,6 +3,8 @@ import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { SecureAccountSection } from '@/features/account/components/SecureAccountSection';
+import { useAccountKind } from '@/features/account/hooks/useAccountKind';
 import { aboutYouAvailable } from '@/features/aboutYou/domain/prompt';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { FEATURES } from '@/features/legal/constants';
@@ -36,6 +38,7 @@ export default function ProfileScreen() {
   const current = useCurrentMembership();
   const { community, membership, profile } = current;
   const [editing, setEditing] = useState(false);
+  const linked = useAccountKind()?.kind === 'linked';
   const appVersion = Constants.expoConfig?.version;
 
   const refresh = () => {
@@ -158,18 +161,34 @@ export default function ProfileScreen() {
         <LegalLinks />
       </View>
 
+      <SecureAccountSection />
+
       <View style={{ gap: spacing.sm }}>
         <Text variant="heading">Your account</Text>
         <Card style={{ gap: spacing.sm }}>
-          <Text>
-            Your account lives on this device only. There is no password or email to sign in
-            with somewhere else.
-          </Text>
-          <Text color="textMuted">
-            If you uninstall TrainHive or clear its data, the account is lost. To come back you
-            would need a new invitation code from your organizer, and you would join as a new
-            member.
-          </Text>
+          {linked ? (
+            <>
+              <Text>
+                Your account is linked to your email, so you can sign in again on another device with a code we
+                email you.
+              </Text>
+              <Text color="textMuted">
+                If you lose this phone, install TrainHive, choose I already have an account and your communities
+                are back.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text>
+                Your account lives on this device only. Without an email there is no way to sign in somewhere else.
+              </Text>
+              <Text color="textMuted">
+                If you uninstall TrainHive, clear its data or lose this phone, the account is lost. To come back you
+                would need a new invitation code from your organizer, and you would join as a new member.
+                {FEATURES.accountLinking ? ' Add an email above to avoid that.' : ''}
+              </Text>
+            </>
+          )}
         </Card>
         <SignOutSection />
       </View>

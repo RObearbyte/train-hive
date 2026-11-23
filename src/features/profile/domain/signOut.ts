@@ -22,6 +22,19 @@ export const SIGN_OUT_TITLE = 'Sign out of TrainHive?';
 export const SIGN_OUT_MESSAGE =
   'You will lose access to this account on this device. TrainHive accounts are anonymous: without a login there is no way to get it back. Your About-you details and your place in the community stay on the server, and nobody can reach them after you sign out. To remove the details first, cancel and use Profile, About you, Clear my About-you data.';
 
+export const SIGN_OUT_MESSAGE_LINKED =
+  'You will be signed out of this account on this device. You can sign in again on this or another device with your email: on the welcome screen choose I already have an account and enter the code we email you. Your community and your details stay on the server.';
+
+export const SIGN_OUT_CAPTION = 'Signing out removes this account from this device for good.';
+export const SIGN_OUT_CAPTION_LINKED = 'You can sign in again with your email.';
+
+/** The confirmation text: a linked account can come back, an anonymous one cannot. */
+export function signOutCopy(linked: boolean): { message: string; caption: string } {
+  return linked
+    ? { message: SIGN_OUT_MESSAGE_LINKED, caption: SIGN_OUT_CAPTION_LINKED }
+    : { message: SIGN_OUT_MESSAGE, caption: SIGN_OUT_CAPTION };
+}
+
 /** Every record kept on this device that belongs to the account or its choices (including the "About you page seen" note). */
 export function storedKeysToClear(input: { userId: string | null; authStorageKey: string }): string[] {
   const keys = [input.authStorageKey, ACCEPTANCE_STORAGE_KEY, PUSH_PROMPT_DISMISSED_KEY];

@@ -28,6 +28,7 @@ Placeholders: `[CONTROLLER NAME]`, `[POSTAL ADDRESS]`, `[PRIVACY EMAIL]`, `[DATE
 | A8 | Consent ledger and legal versions | Proof of consent and acknowledgement (Art. 7(1)) | All users | Purpose, granted/withdrawn, document version, time | 6(1)(c) legal obligation (accountability), 6(1)(f) | App |
 | A9 | Data subject rights | Export, deletion, inactivity clean-up | All users | Export request times, inactivity notice, last app open | 6(1)(c) | Server |
 | A10 | Security and abuse prevention | Rate limits, audit | All users | Code attempts (24 h), export requests (1 h), attendance audit | 6(1)(f) | Server |
+| A12 | Optional email address (account recovery, 2026-11-24) | Let a person sign in again on another device or after losing the phone; send sign-in codes | Members who choose to add it | Email address (held in Supabase Auth only, never copied into TrainHive tables); the one-time codes e-mailed to it (not stored by TrainHive) | 6(1)(a) consent, given by adding it | Member |
 | A11 | Hosting, delivery, logs (processors) | Run and secure the infrastructure | All users | IP address, user agent, request logs, auth logs | 6(1)(f) | Device |
 
 Not processed: precise location, contacts, advertising identifiers, analytics, payments, data of children under 16 (age gate at first launch; accounts of under-16s are deleted when known, see section 9).
@@ -38,7 +39,7 @@ Not processed: precise location, contacts, advertising identifiers, analytics, p
 |---|---|---|
 | Organizers of the member's community | Membership, RSVPs, attendance, emergency contact and T-shirt size (only with consent, only while the member is active), approximate group totals (birth year / gender: 20+ answers, rounded to 5; workouts: 20+ contributors, rounded) | Users bound by the terms |
 | Members of the same community | Display name, "going" answers on event pages, posts and replies with author name | Users |
-| Supabase (database, authentication, server functions, storage of all app data) | Everything in section 7 | Processor |
+| Supabase (database, authentication, server functions, storage of all app data; sends the sign-in code e-mails, through its built-in sender or the owner's SMTP provider) | Everything in section 7, including the optional email address | Processor |
 | Expo (push notification service) | Push token, notification title and body (event titles, up to 200 characters of a post) | Processor |
 | Google Firebase Cloud Messaging | Push token, notification title and body (Android delivery) | Processor (sub-processor of the delivery chain) |
 | Web hosting provider (Netlify or Cloudflare Pages, per `docs/WEB_DEPLOY.md`) | IP address and request logs of visitors of the web version; no app data | Processor |
@@ -89,7 +90,7 @@ Every table in the `public` and `private` schemas. "Erasure" means `private.eras
 
 | Table | Personal data | Retention | Job / path |
 |---|---|---|---|
-| `auth.users` (Supabase Auth) | Account id, anonymous flag, created / last sign-in | Until erasure; inactive anonymous accounts: 24 months + 30-day notice **when the owner enables it** | `delete_my_account`; `run_account_retention` (daily 03:41 UTC, disabled by default) |
+| `auth.users` (Supabase Auth) | Account id, anonymous flag, created / last sign-in, **optional email address** (only after the member adds it; Profile, Secure your account) | Until erasure (the email is deleted with the auth user; Supabase Auth cannot remove it alone). Inactive **anonymous** accounts: 24 months + 30-day notice **when the owner enables it**; accounts with a linked email are never touched by the clean-up (`where u.is_anonymous`) | `delete_my_account`; `run_account_retention` (daily 03:41 UTC, disabled by default) |
 | `public.profiles` | Display name | Until erasure | erasure (deleted) |
 | `public.memberships` | Membership, role, status | Until erasure (a removed or departed member's row stays as history) | erasure (deleted) |
 | `public.communities` | Community name (not personal) | While it has members; deleted with its last active member's erasure | erasure (cascade) |

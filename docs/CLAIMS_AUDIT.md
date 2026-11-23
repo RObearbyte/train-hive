@@ -75,6 +75,21 @@ Status: **OK** = the code does what the text says (evidence named); **GAP** = th
 - **Gap B, app side done:** `record_app_open()` is called when the signed-in area starts and on every return to the foreground (at most once an hour on the client; `src/features/retention/`), and a pending notice shows once as a dismissible banner on Home. The notice text below is still **not** published and the server clean-up stays **disabled**.
 - **Gap C fixed (copy):** P24 (24 hours, up to about two days), P25 (what the notification switch does vs withdrawing consent, 270 days unused), P32 (full list of what deletion removes and what stays), P36 (RLS wording), P11 / P20 (hosting providers keep technical logs for a limited time, no vendor named). The export summary names the new `account_activity` part as "your app activity record".
 
+## 2c. Account recovery by email (2026-11-24)
+
+`FEATURES.accountLinking = true`; the notice (data inventory "Email address (optional)", who sees, processors, retention, rights, anonymous accounts, web) and the terms (using TrainHive) describe the optional email. The legal version stays 2 (never published). Each claim and its evidence:
+
+| # | Claim | Evidence | Status |
+|---|---|---|---|
+| E1 | The email is optional; nothing changes without it | `SecureAccountSection` (only for anonymous sessions), welcome sign-in is a secondary action; anonymous sign-in unchanged (`community/api/session.ts`) | OK |
+| E2 | Used only to sign in again and to send sign-in codes | `src/features/account/api/emailAuth.ts` calls only `updateUser({ email })`, `resend`, `verifyOtp`, `signInWithOtp`; no other use of the address in the app | OK |
+| E3 | Held by the authentication provider, not copied into TrainHive data, never shown to members or organizers | Migrations never read `auth.users.email` (tripwire in `qa-gdprCopy.test.ts`, "Q7-7 ... accountLinking"); the export contains `account: { user_id, created_at, is_anonymous }` only | OK; **GAP (low): the data export does not include the email** (it is not in `export_my_data`; a backend change would add `auth.users.email` to `account`) |
+| E4 | Kept until the account is deleted, and deleted with it | `private.erase_user` ends with `delete from auth.users`; the Edge Function fallback also calls `auth.admin.deleteUser` | OK; verify on the hosted project once with a linked throwaway account (`docs/ACCOUNT_RECOVERY_SETUP.md`, test 6) |
+| E5 | No separate "remove email" | auth-js `unlinkIdentity` fails for a user's only identity (`single_identity_not_deletable`); no clean API | OK (stated in the notice) |
+| E6 | Consent basis: adding the address | The form states it above the button (`SecureAccountSection`) | OK, lawyer to confirm the basis (consent vs contract) |
+| E7 | Codes are sent by the processor | Supabase built-in sender or the owner's SMTP provider | **OWNER**: a custom SMTP provider is a further processor: name it in the notice and sign its DPA (`docs/PROCESSORS_CHECKLIST.md`) before production |
+| E8 | The inactivity clean-up never erases a linked account | `retention.sql`: `where u.is_anonymous` (also asserted in the tripwire) | OK |
+
 ## 3. Gaps and exactly what to change
 
 ### Gap A (high): event discussions are live but not described

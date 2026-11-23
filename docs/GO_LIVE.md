@@ -120,6 +120,8 @@ Read these first; each one names the owner actions it needs. All are drafts and 
 | 40f | Decide whether attendance history should be capped at N years (today it is kept for the life of the community, anonymized on deletion) and check the Supabase Auth audit-log retention (`docs/RECORD_OF_PROCESSING.md` section 7). | Owner |
 | 40g | **Check account deletion on the hosted project once** (after the migrations are pushed): delete a throwaway account in the app, then confirm it is gone from `auth.users` and `auth.identities`. If the database is not allowed to delete Auth users, deploy the fallback Edge Function (`npx supabase@latest functions deploy delete-account`, no secrets needed) and ask for the app change; otherwise leave it undeployed. Guide: `docs/ACCOUNT_DELETION_FALLBACK.md`. | Owner (+ Claude if the fallback is needed) |
 | 40h | **Invitation expiry is now set by the server** (migration `20261203000100_invitation_duration.sql`): push the migration **before** installing the app version that sends a duration. Old APKs keep working; an expiry they send that is in the past or more than 90 days ahead by the server clock is now refused. | Owner |
+| 40i | **Account recovery by email** (code in the app, no passwords): follow `docs/ACCOUNT_RECOVERY_SETUP.md` (Email provider on, both email templates show `{{ .Token }}`, custom SMTP, rate limits) and run its two-device test. Without the templates the app cannot work (members get a link, not a code); without SMTP only the project team can receive codes. | Owner |
+| 40j | If you use a **custom SMTP provider** it is a processor: sign its DPA, add it to `docs/PROCESSORS_CHECKLIST.md` and name its kind in the privacy notice (`docs/CLAIMS_AUDIT.md` E7). Mention the optional email in the Play **Data safety** form (item 43: "Email address", optional, account management, not shared, deletable on request). | Owner |
 
 ---
 
@@ -158,13 +160,15 @@ Read these first; each one names the owner actions it needs. All are drafts and 
 - **Attendance rate:** "Not recorded" sessions count in the denominator (the spec's formula); the screen says so. Keep, or compute over recorded sessions only?
 - **RSVP reliability:** counts only RSVPs "going" with a recorded outcome (kinder than the literal spec wording). Keep?
 - **One display name across communities** (the app says so when you join a second one). Keep?
-- **Account recovery:** accounts are anonymous and tied to one device or browser. Adding email or Google sign-in lets people recover their account and use phone and web together. Worth doing before a public launch; I recommend it.
+- **Account recovery:** DONE in the app (2026-11-24): an optional email with a 6-digit code (Profile, Secure your account; Welcome, I already have an account). It works once you do the Supabase setup in `docs/ACCOUNT_RECOVERY_SETUP.md` (item 40i). Still open: whether to ask or nudge members to add an email (today it is only offered in Profile), and Google sign-in (not built; email codes only).
 - **CAPTCHA support** for the anonymous sign-in, once you have public traffic.
 
 ## Known limitations to tell your members
 
-- Losing the phone or clearing app data loses the account (until linking exists).
-- Web and phone are separate identities until linking exists.
+- Losing the phone or clearing app data loses the account **unless the member added an email** (Profile, Secure your account). With an email they sign in again with a code on any device. Tell members to add one.
+- Web and phone are separate identities until the member adds an email and signs in with it on the other device (the web and the phone then share one account).
+- The email cannot be removed on its own (Supabase limitation); deleting the account removes it. The data download does not list the email yet.
+- Codes expire after one hour by default and the built-in Supabase mail sender only delivers a few emails per hour: set up your own SMTP first.
 - Web has no push notifications.
 - Two organizers editing the same **training** at once can overwrite each other (communities are protected).
 - Delivery receipts for push are not tracked.

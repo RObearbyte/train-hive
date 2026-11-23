@@ -43,7 +43,12 @@ export function buildTerms(config: LegalConfig, features: LegalFeatures = FEATUR
               `You must be at least ${MINIMUM_AGE} years old.`,
               'You join a community with an invitation code from its organizer. You may belong to several communities.',
               'By ticking the box on the start screen you confirm that you have read these Terms and the Privacy Notice and that you accept the Terms.',
-              'Your account is anonymous and tied to your device. Keep your device safe: we cannot recover an account that has been signed out or lost.',
+              features.accountLinking
+                ? 'Your account is anonymous and tied to your device unless you add an email address (optional, in your profile). Keep your device safe: we cannot recover an account without a linked email that has been signed out or lost. With a linked email you can sign in again on another device with a 6-digit code we send to it.'
+                : 'Your account is anonymous and tied to your device. Keep your device safe: we cannot recover an account that has been signed out or lost.',
+              ...(features.accountLinking
+                ? ['Add only an email address that is yours, and keep access to it: whoever can read its sign-in codes can sign in to your account.']
+                : []),
             ],
           },
         ],
