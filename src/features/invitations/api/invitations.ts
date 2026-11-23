@@ -21,15 +21,19 @@ export async function fetchInvitations(communityId: string): Promise<InvitationC
 }
 
 export type NewInvitation = {
-  /** UTC ISO time, or null for a code that never expires. */
-  expiresAt: string | null;
+  /**
+   * Hours until the code expires, counted by the SERVER clock (1..2160), or 0 for a code that
+   * never expires. The server stores the resulting `expires_at`.
+   */
+  expiresInHours: number;
   /** Null for unlimited uses. */
   maxRedemptions: number | null;
 };
 
 /**
  * Creates a member invitation (organizer only). Throws AppError: `forbidden`,
- * `validation_failed` with field `expires_at` or `max_redemptions`, `network_error`, ...
+ * `validation_failed` with field `expires_in_hours` or `max_redemptions`, `network_error`, ...
+ * `p_expires_at` (the absolute time old app versions sent) is always null here.
  */
 export async function createInvitation(
   communityId: string,
@@ -37,8 +41,9 @@ export async function createInvitation(
 ): Promise<InvitationCode> {
   const { data, error } = await getSupabase().rpc('create_invitation', {
     p_community_id: communityId,
-    p_expires_at: invitation.expiresAt,
+    p_expires_at: null,
     p_max_redemptions: invitation.maxRedemptions,
+    p_expires_in_hours: invitation.expiresInHours,
   });
   if (error) throw toAppError(error);
   return data;

@@ -403,6 +403,13 @@ deno_version = 2
 enabled = true
 verify_jwt = false
 
+# Account-deletion fallback (G2). Deploy ONLY if delete_my_account is refused on the hosted project
+# (docs/ACCOUNT_DELETION_FALLBACK.md). Called by a signed-in user: the platform JWT check stays on,
+# and the function verifies the token again and takes the user id from it.
+[functions.delete-account]
+enabled = true
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

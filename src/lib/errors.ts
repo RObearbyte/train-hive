@@ -264,6 +264,7 @@ const FIELD_LABELS: Record<string, string> = {
   max_participants: 'maximum participants',
   display_name: 'name',
   expires_at: 'expiry date',
+  expires_in_hours: 'expiry',
   max_redemptions: 'maximum uses',
   name: 'name',
   request_id: 'request',

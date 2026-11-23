@@ -1028,11 +1028,19 @@ export type Database = {
         Args: { p_code: string; p_display_name: string };
         Returns: Json;
       };
+      /**
+       * Organizer only. Expiry (O1, 20261203000100): send `p_expires_in_hours` (0 = never,
+       * 1..2160 = hours from the SERVER clock) and `p_expires_at: null`. `p_expires_at` alone is
+       * the legacy path of old apps (validated: future, at most 90 days ahead). Both null = never.
+       * Raises `validation_failed:expires_in_hours` (out of range, or sent with `p_expires_at`),
+       * `validation_failed:expires_at`, `validation_failed:max_redemptions`, `forbidden`.
+       */
       create_invitation: {
         Args: {
           p_community_id: string;
           p_expires_at?: string | null;
           p_max_redemptions?: number | null;
+          p_expires_in_hours?: number | null;
         };
         Returns: Database['public']['Tables']['invitation_codes']['Row'];
       };
@@ -1043,6 +1051,16 @@ export type Database = {
       /** service_role only. */
       admin_create_community: {
         Args: { p_name: string; p_timezone: string };
+        Returns: Json;
+      };
+      /**
+       * service_role only: the account-deletion fallback (Edge Function `delete-account`). Erases
+       * the user's data like `delete_my_account` but keeps the `auth.users` row for
+       * `auth.admin.deleteUser`. Returns a `DeleteMyAccountResult`. Raises `validation_failed:user_id`,
+       * `not_found` (no such auth user), `last_organizer` (details: `DeletionBlockedDetail`).
+       */
+      admin_erase_user_data: {
+        Args: { p_user_id: string };
         Returns: Json;
       };
       update_display_name: {

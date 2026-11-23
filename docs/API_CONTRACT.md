@@ -1118,3 +1118,47 @@ Dry run, counts only, writes nothing. `RetentionPreview` `{ enabled, inactive_af
 New error code: `validation_failed:enabled`. TypeScript (`src/lib/database.types.ts`): functions `record_app_open`, `retention_preview`, `run_account_retention`, `admin_set_retention_enabled`; types `AppOpenResult`, `RetentionPreview`, `RetentionRunLog`, `RetentionRunResult`, `RetentionSwitchResult`; `MyDataExport.extensions.account_activity` (optional).
 
 **App (not done, mobile task):** call `record_app_open()` on start and foreground (signed in only), show the one-time banner, mention the new export key in the download summary if wanted. **Legal:** the notice must describe the clean-up before it is enabled (`docs/CLAIMS_AUDIT.md`, gap B).
+
+---
+
+# Invitation expiry on the server (O1) and the account-deletion fallback (append-only)
+
+Migration `20261203000100_invitation_duration.sql`. Tests: `supabase/tests/invitation-duration.test.ts`, `supabase/tests/delete-account-fallback.test.ts`; privilege matrix in `qa-privileges.test.ts`.
+
+## `create_invitation(p_community_id uuid, p_expires_at timestamptz default null, p_max_redemptions integer default null, p_expires_in_hours integer default null) → invitation_codes`
+
+Replaces the three-argument signature (dropped; one function, no overload; `authenticated` only, as before). The new parameter is last and defaulted, so old APKs calling by name `{p_community_id, p_expires_at, p_max_redemptions}` and SQL callers with 1-3 positional arguments keep working.
+
+- **`p_expires_in_hours` (current apps):** `0` = never expires; `1..2160` (90 days) = `expires_at = clock_timestamp() + hours` on the **server** clock. Negative, above 2160, or sent together with a non-null `p_expires_at` → `validation_failed:expires_in_hours`.
+- **`p_expires_at` (legacy, old APKs):** still accepted, now validated against the server clock: must be after `clock_timestamp()` and at most 90 days after it, else `validation_failed:expires_at` (it used to accept any future time).
+- **Both null / omitted:** never expires (unchanged; the only way an old APK says "Never"). Decision: the SQL default stays "no expiry" rather than 30 days, because PostgREST cannot tell an old APK's explicit `p_expires_at: null` ("Never") from an omitted argument. The app's defaults (Quick invite 30 days, the form 7 days) are chosen by the app and sent as a duration.
+- Order of checks unchanged: `not_authenticated`, `forbidden` (before any bound, so a non-organizer learns nothing), expiry, `validation_failed:max_redemptions`. Redemption still refuses `expired` with `clock_timestamp()` (`preview_invitation` / `redeem_invitation` unchanged).
+- The app sends `{ p_community_id, p_expires_at: null, p_max_redemptions, p_expires_in_hours }`; presets map to 0 / 24 / 168 / 720 hours.
+- Unchanged and already server-side: the organizer bootstrap code of `admin_create_community` (`now() + 7 days`), creator codes (`admin_create_creator_code`, `p_expires_in_days`), and `create_community_with_code` (creates no invitation code).
+- **Deployment order:** migration first, then the app update (a new app against the old function fails with an unknown-argument error; old apps keep working against the new one).
+
+New error code: `validation_failed:expires_in_hours`.
+
+## Account deletion fallback (supersedes "Fallback if it is refused ... Not built." under `delete_my_account`)
+
+Only for the case that the hosted project refuses the `delete from auth.users` inside `delete_my_account`. The app is NOT wired to it; `delete_my_account` stays the documented path. Owner guide: `docs/ACCOUNT_DELETION_FALLBACK.md`.
+
+### `private.erase_user(p_user_id uuid, p_delete_auth_user boolean default true) → jsonb`
+
+Same body and summary as before; with `false` it skips its last statement (the `auth.users` delete), so the auth row and, through its cascade, the consent ledger and `private.account_activity` stay. `delete_my_account` and `run_account_retention` call it with one argument (→ `true`): unchanged. No API role can execute it. Later migrations replace `private.erase_user(uuid, boolean)`; creating `private.erase_user(uuid)` again would be an ambiguous overload.
+
+### `admin_erase_user_data(p_user_id uuid) → jsonb` (service_role only)
+
+`private.erase_user(p_user_id, false)`: the full `delete_my_account` erasure (same locks, same `last_organizer` refusal with the same DETAIL) except the auth user. Returns `DeleteMyAccountResult`. Errors (P0001): `validation_failed:user_id` (null), `not_found` (no such auth user), `last_organizer`. Repeatable: a second call for a user whose data is already gone returns a summary of zeros. It takes a user id because its only caller is the Edge Function, which has verified the user's token; `authenticated` and `anon` cannot execute it (pinned in `qa-privileges.test.ts`, `SERVICE_TARGET_USER_ARGS`).
+
+### Edge Function `delete-account` (`supabase/functions/delete-account/`, not deployed)
+
+`POST` with `Authorization: Bearer <the user's access token>`; no body is read.
+1. Verifies the token with Supabase Auth (`auth.getUser(token)` on an anon-key client); the user id comes only from it.
+2. `my_deletion_blockers()` called **as the caller** (anon key + the caller's token): `can_delete: false` → `409 { error: 'last_organizer', details: { communities: [...] } }`.
+3. `admin_erase_user_data(user id)` with the service role (re-checks `last_organizer` under its locks → 409 with the parsed DETAIL).
+4. `auth.admin.deleteUser(user id)` (hard delete): Auth's cascade removes sessions, identities, the consent ledger and the activity row.
+
+Responses: `200 { ok: true, ...DeleteMyAccountResult }`; `401 { error: 'not_authenticated' }` (no / malformed / rejected token, or the user is already gone); `405 method_not_allowed`; `409 last_organizer`; `503 auth_unavailable` (Auth unreachable); `500 deletion_failed` (unexpected database error, nothing deleted by the function); `500 { error: 'auth_delete_failed', data_erased: true, retry: true }` (data erased, auth user left: calling again with the same token finishes). Logs carry error codes only (no token, no user id). No CORS handling (not called from a browser today).
+
+TypeScript (`src/lib/database.types.ts`): `create_invitation` Args gain `p_expires_in_hours`; function `admin_erase_user_data`.

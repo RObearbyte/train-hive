@@ -12,9 +12,9 @@ describe('Q8 quick invite', () => {
     expect(inviteFabVisible({ isOrganizerOfActive: true, activeCommunityId: 'a', keyboardVisible: true })).toBe(false);
   });
 
-  it('sends an absolute expiry 30 days after the DEVICE clock; a phone 40 days behind sends an expiry already in the past', () => {
-    expect(quickInviteRequest(new Date('2026-11-19T10:00:00.000Z'))).toEqual({ expiresAt: '2026-12-19T10:00:00.000Z', maxRedemptions: 1 });
-    expect(Date.parse(quickInviteRequest(new Date('2026-10-10T10:00:00.000Z')).expiresAt as string)).toBeLessThan(Date.parse('2026-11-19T10:00:00.000Z'));
+  it('O1 fixed: sends a 30-day DURATION, so a phone whose clock is 40 days behind gets the same request', () => {
+    expect(quickInviteRequest()).toEqual({ expiresInHours: 720, maxRedemptions: 1 });
+    expect(quickInviteRequest).toHaveLength(0); // no clock argument at all
   });
 
   it('double tap, close during creation and a late answer: only the current attempt is shown', () => {

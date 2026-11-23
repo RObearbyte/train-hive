@@ -118,6 +118,8 @@ Read these first; each one names the owner actions it needs. All are drafts and 
 | 40d | Fill in and sign the **DPIA** conclusion; fill in the **breach runbook** contacts in your private copy. | Owner |
 | 40e | **Lawyer review** of the notice, the terms, the record of processing and the DPIA; only then set `LEGAL_REVIEWED = true`. | Owner + lawyer |
 | 40f | Decide whether attendance history should be capped at N years (today it is kept for the life of the community, anonymized on deletion) and check the Supabase Auth audit-log retention (`docs/RECORD_OF_PROCESSING.md` section 7). | Owner |
+| 40g | **Check account deletion on the hosted project once** (after the migrations are pushed): delete a throwaway account in the app, then confirm it is gone from `auth.users` and `auth.identities`. If the database is not allowed to delete Auth users, deploy the fallback Edge Function (`npx supabase@latest functions deploy delete-account`, no secrets needed) and ask for the app change; otherwise leave it undeployed. Guide: `docs/ACCOUNT_DELETION_FALLBACK.md`. | Owner (+ Claude if the fallback is needed) |
+| 40h | **Invitation expiry is now set by the server** (migration `20261203000100_invitation_duration.sql`): push the migration **before** installing the app version that sends a duration. Old APKs keep working; an expiry they send that is in the past or more than 90 days ahead by the server clock is now refused. | Owner |
 
 ---
 

@@ -36,6 +36,8 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   withdraw_consent: 'authenticated',
   // GDPR G2: role management, export and deletion.
   delete_my_account: 'authenticated',
+  // G2 fallback (20261203000100): the erasure step of the delete-account Edge Function.
+  admin_erase_user_data: 'service_role',
   export_my_data: 'authenticated',
   leave_community: 'authenticated',
   my_deletion_blockers: 'authenticated',
@@ -124,6 +126,14 @@ const TARGET_USER_ARGS: Record<string, string[]> = {
   set_member_role: ['p_user_id', 'p_role'],
   // P3: an organizer reads one active member's emergency contact / T-shirt size (read-only).
   get_member_emergency_info: ['p_user_id'],
+};
+
+/**
+ * Service-role functions that take the user to act on. There is no caller identity: the Edge
+ * Function verified the user's token and passes its id. Never executable by authenticated.
+ */
+const SERVICE_TARGET_USER_ARGS: Record<string, string[]> = {
+  admin_erase_user_data: ['p_user_id'],
 };
 
 /** Where each target-member function checks that the caller is an active organizer. */
@@ -247,7 +257,8 @@ describe('QA function privileges', () => {
         (f.arg_names ?? []).some(
           (arg) =>
             /user|uid|profile|member|organizer_id|role/i.test(arg) &&
-            !TARGET_USER_ARGS[f.name]?.includes(arg),
+            !TARGET_USER_ARGS[f.name]?.includes(arg) &&
+            !(PUBLIC_FUNCTIONS[f.name] === 'service_role' && SERVICE_TARGET_USER_ARGS[f.name]?.includes(arg)),
         ),
       )
       .map((f) => `${f.name}(${f.args})`);
@@ -357,6 +368,8 @@ describe('QA function privileges', () => {
       'select public.retention_preview()',
       'select public.run_account_retention()',
       'select public.admin_set_retention_enabled(true)',
+      // G2 fallback: not even for the caller's own id.
+      `select public.admin_erase_user_data('${organizerId}')`,
     ]) {
       await expect(asUser(organizerId, (db) => db.query(sql)), sql).rejects.toMatchObject(denied);
     }

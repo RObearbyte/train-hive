@@ -5,40 +5,29 @@ import {
   EXPIRY_PRESET_OPTIONS,
   createInvitationFailure,
   createInvitationFormSchema,
-  expiryFromPreset,
+  expiryHoursFromPreset,
   expiryText,
   invitationStateLabel,
   parseMaxUses,
 } from './createInvitation';
 
-describe('expiryFromPreset', () => {
-  const now = new Date('2026-11-15T10:30:00.000Z');
-
-  it('is null for never', () => {
-    expect(expiryFromPreset('never', now)).toBeNull();
+describe('expiryHoursFromPreset', () => {
+  it('is 0 (the server convention for "never") for never', () => {
+    expect(expiryHoursFromPreset('never')).toBe(0);
   });
 
-  it('adds the exact duration to the injected now', () => {
-    expect(expiryFromPreset('24h', now)).toBe('2026-11-16T10:30:00.000Z');
-    expect(expiryFromPreset('7d', now)).toBe('2026-11-22T10:30:00.000Z');
-    expect(expiryFromPreset('30d', now)).toBe('2026-12-15T10:30:00.000Z');
+  it('is the exact duration in hours; no device time is involved', () => {
+    expect(expiryHoursFromPreset('24h')).toBe(24);
+    expect(expiryHoursFromPreset('7d')).toBe(168);
+    expect(expiryHoursFromPreset('30d')).toBe(720);
   });
 
-  it('counts real hours across a daylight-saving change and a year end', () => {
-    // 24 hours later in UTC, whatever the local clocks did in between.
-    expect(expiryFromPreset('24h', new Date('2026-03-28T23:30:00.000Z'))).toBe(
-      '2026-03-29T23:30:00.000Z',
-    );
-    expect(expiryFromPreset('7d', new Date('2026-12-28T00:00:00.000Z'))).toBe(
-      '2027-01-04T00:00:00.000Z',
-    );
-  });
-
-  it('does not mutate now and rejects an invalid date', () => {
-    const fixed = new Date('2026-11-15T10:30:00.000Z');
-    expiryFromPreset('30d', fixed);
-    expect(fixed.toISOString()).toBe('2026-11-15T10:30:00.000Z');
-    expect(() => expiryFromPreset('24h', new Date('nope'))).toThrow(RangeError);
+  it('every preset is within the server bounds (0, or 1..2160 hours)', () => {
+    for (const preset of EXPIRY_PRESETS) {
+      const hours = expiryHoursFromPreset(preset);
+      expect(Number.isInteger(hours), preset).toBe(true);
+      expect(hours === 0 || (hours >= 1 && hours <= 2160), preset).toBe(true);
+    }
   });
 
   it('has an option for every preset, in order', () => {
@@ -91,10 +80,13 @@ describe('createInvitationFailure', () => {
     });
   });
 
-  it('explains a rejected expiry as a banner', () => {
-    const failure = createInvitationFailure({ code: 'validation_failed', field: 'expires_at' });
-    expect(failure.field).toBeNull();
-    expect(failure.message).toContain("device's date and time");
+  it('explains a rejected expiry (duration or legacy time) as a banner, without blaming the device clock', () => {
+    for (const field of ['expires_in_hours', 'expires_at']) {
+      const failure = createInvitationFailure({ code: 'validation_failed', field });
+      expect(failure.field).toBeNull();
+      expect(failure.message).toContain('This expiry was not accepted');
+      expect(failure.message).not.toContain('date and time');
+    }
   });
 
   it('uses the standard message for everything else', () => {

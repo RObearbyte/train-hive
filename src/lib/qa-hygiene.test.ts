@@ -166,10 +166,9 @@ describe('QA hygiene: the client clock', () => {
       .filter(([, source]) => /new Date\(\)|Date\.now\(\)/.test(code(source)))
       .map(([file]) => file)
       .sort();
-    // useNow = display clock; the form and invitation form take a "now" for ADVISORY checks and for
-    // the expiry preset; coalesce / chunked storage are timers only.
+    // useNow = display clock; the training form takes a "now" for ADVISORY checks; coalesce /
+    // chunked storage are timers only. (O1: the invitation form sends a duration now, no clock.)
     expect(readers).toEqual([
-      'src/features/invitations/components/CreateInvitationForm.tsx',
       // First-launch acknowledgement: a note kept on the device (informational); the server stamps the real consent record.
       'src/features/legal/hooks/useConsents.ts',
       'src/features/trainings/components/TrainingForm.tsx',

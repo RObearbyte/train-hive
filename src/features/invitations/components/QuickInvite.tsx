@@ -11,7 +11,7 @@ import { useLayout } from '@/features/shell/hooks/useLayout';
 import type { Community } from '@/lib/database.types';
 import { isValidTimeZone } from '@/lib/datetime';
 import { toAppError } from '@/lib/errors';
-import { readClock, useNow } from '@/lib/useNow';
+import { useNow } from '@/lib/useNow';
 import { Banner, Button, Card, Icon, IconButton, LoadingState, Text, useTheme } from '@/ui';
 
 import { createInvitationFailure, expiryText } from '../domain/createInvitation';
@@ -74,7 +74,7 @@ function QuickInviteFor({ community, visible }: { community: Community; visible:
     send({ type: 'create' });
     if (stateRef.current === before) return; // one is already being created
     const { attempt } = stateRef.current;
-    create.mutateAsync(quickInviteRequest(readClock())).then(
+    create.mutateAsync(quickInviteRequest()).then(
       (invitation) => send({ type: 'succeeded', attempt, invitation }),
       (error: unknown) => send({ type: 'failed', attempt, error: toAppError(error) }),
     );

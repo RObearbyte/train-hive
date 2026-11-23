@@ -330,7 +330,8 @@ const MUTANTS: [string, Probe, (probe: Probe) => Promise<boolean>][] = [
     memberCodeNeverGrantsOrganizer,
     (probe) =>
       withMutatedFunction(
-        'public.create_invitation(uuid, timestamp with time zone, integer)',
+        // O1 (20261203000100): the duration parameter was added last.
+        'public.create_invitation(uuid, timestamp with time zone, integer, integer)',
         "private.insert_invitation(p_community_id, 'member',",
         "private.insert_invitation(p_community_id, 'organizer',",
         probe,

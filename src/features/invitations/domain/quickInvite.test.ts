@@ -25,11 +25,8 @@ const run = (events: QuickInviteEvent[], from: QuickInviteState = INITIAL_QUICK_
 describe('quickInviteRequest', () => {
   it('defaults to 30 days and one use', () => {
     expect(QUICK_INVITE_DEFAULTS).toEqual({ expiry: '30d', maxUses: 1 });
-    const now = new Date('2026-11-19T10:00:00.000Z');
-    expect(quickInviteRequest(now)).toEqual({
-      expiresAt: '2026-12-19T10:00:00.000Z',
-      maxRedemptions: 1,
-    });
+    // A duration: the server adds it to its own clock.
+    expect(quickInviteRequest()).toEqual({ expiresInHours: 720, maxRedemptions: 1 });
   });
 });
 
@@ -120,12 +117,12 @@ describe('quick invite messages', () => {
     );
     expect(QUICK_INVITE_DEFAULTS.expiry).toBe('30d');
   });
-  it('a refused expires_at reads as a device clock problem', () => {
+  it('a refused expiry reads as "not accepted", not as a device clock problem', () => {
     const state = run([
       { type: 'create' },
-      { type: 'failed', attempt: 1, error: { code: 'validation_failed', field: 'expires_at' } },
+      { type: 'failed', attempt: 1, error: { code: 'validation_failed', field: 'expires_in_hours' } },
     ]);
     if (state.phase !== 'error') throw new Error('expected error');
-    expect(createInvitationFailure(state.error).message).toContain("Check this device's date and time");
+    expect(createInvitationFailure(state.error).message).toContain('This expiry was not accepted');
   });
 });

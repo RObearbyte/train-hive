@@ -33,7 +33,7 @@ The new APK must be installed before the database is changed (the new rules refu
    ```bash
    npx supabase@latest db push --remote
    ```
-   Pending migrations, in order: `20261129000100` event feed, `20261130000100` about you, `20261201000100` workout logs, `20261202000100` retention (earlier ones may also be listed if not applied yet). Confirm. If it fails, paste the error to me and do not retry blindly. Check afterwards with `npx supabase@latest migration list --remote` (every row has a Remote value).
+   Pending migrations, in order: `20261129000100` event feed, `20261130000100` about you, `20261201000100` workout logs, `20261202000100` retention, `20261203000100` invitation duration and deletion fallback support (earlier ones may also be listed if not applied yet). Confirm. If it fails, paste the error to me and do not retry blindly. Check afterwards with `npx supabase@latest migration list --remote` (every row has a Remote value).
 4. **Then publish the legal version** (the build bundles privacy and terms version 2; the server still holds 1). Run once in the Supabase SQL editor:
    ```sql
    select public.admin_set_legal_version('terms','2'), public.admin_set_legal_version('privacy','2');

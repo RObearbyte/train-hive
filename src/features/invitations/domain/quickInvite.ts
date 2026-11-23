@@ -6,14 +6,14 @@ import type { InvitationCode } from '@/lib/database.types';
 import type { AppErrorCode } from '@/lib/errors';
 
 import type { NewInvitation } from '../api/invitations';
-import { expiryFromPreset } from './createInvitation';
+import { expiryHoursFromPreset } from './createInvitation';
 
 export const QUICK_INVITE_DEFAULTS = { expiry: '30d', maxUses: 1 } as const;
 
-/** The request for one tap: expires in 30 days, one use. `now` is the device clock; the server validates it. */
-export function quickInviteRequest(now: Date): NewInvitation {
+/** The request for one tap: expires 30 days after the SERVER's clock, one use. */
+export function quickInviteRequest(): NewInvitation {
   return {
-    expiresAt: expiryFromPreset(QUICK_INVITE_DEFAULTS.expiry, now),
+    expiresInHours: expiryHoursFromPreset(QUICK_INVITE_DEFAULTS.expiry),
     maxRedemptions: QUICK_INVITE_DEFAULTS.maxUses,
   };
 }

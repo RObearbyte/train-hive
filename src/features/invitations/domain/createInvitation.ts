@@ -2,9 +2,10 @@
  * Creating and presenting invitation codes: expiry presets, the create form
  * schema, where a failed create is shown, and the texts for a code.
  *
- * `now` is always injected. An expiry is sent to the server as an absolute
- * time (the contract's `p_expires_at`); the server alone decides whether a
- * code is still redeemable.
+ * `now` is always injected. An expiry is sent to the server as a duration in
+ * hours (the contract's `p_expires_in_hours`); the server computes the
+ * expiry time with its own clock and alone decides whether a code is still
+ * redeemable, so the device clock never shifts it (O1).
  */
 import { z } from 'zod';
 
@@ -17,10 +18,9 @@ import type { InvitationState } from './invitation';
 export const EXPIRY_PRESETS = ['never', '24h', '7d', '30d'] as const;
 export type ExpiryPreset = (typeof EXPIRY_PRESETS)[number];
 
-const HOUR_MS = 60 * 60_000;
-
-const PRESET_HOURS: Record<ExpiryPreset, number | null> = {
-  never: null,
+/** 0 = never expires (the server's convention for `p_expires_in_hours`). */
+const PRESET_HOURS: Record<ExpiryPreset, number> = {
+  never: 0,
   '24h': 24,
   '7d': 7 * 24,
   '30d': 30 * 24,
@@ -37,12 +37,9 @@ export const EXPIRY_PRESET_OPTIONS: readonly {
   { value: '30d', label: '30 days', accessibilityLabel: 'Expires in 30 days' },
 ];
 
-/** `p_expires_at` for a preset: null for "never", otherwise `now` plus the exact duration, as UTC ISO. */
-export function expiryFromPreset(preset: ExpiryPreset, now: Date): string | null {
-  const hours = PRESET_HOURS[preset];
-  if (hours === null) return null;
-  if (Number.isNaN(now.getTime())) throw new RangeError('Invalid date for now');
-  return new Date(now.getTime() + hours * HOUR_MS).toISOString();
+/** `p_expires_in_hours` for a preset: 0 for "never", otherwise the exact duration in hours. */
+export function expiryHoursFromPreset(preset: ExpiryPreset): number {
+  return PRESET_HOURS[preset];
 }
 
 const WHOLE_NUMBER = /^\d{1,9}$/;
@@ -78,12 +75,15 @@ export function createInvitationFailure(error: {
   if (error.code === 'validation_failed' && error.field === 'max_redemptions') {
     return { field: 'maxUses', message: 'Allow at least 1 use, or leave it empty.' };
   }
-  if (error.code === 'validation_failed' && error.field === 'expires_at') {
-    // A preset is always in the future by this device's clock, so the clock is off.
+  if (
+    error.code === 'validation_failed' &&
+    (error.field === 'expires_in_hours' || error.field === 'expires_at')
+  ) {
+    // The presets are all within the server's 0..90 day range, so this means the app and the
+    // server disagree (an older server); the device clock plays no part any more.
     return {
       field: null,
-      message:
-        "The expiry time was not accepted. Check this device's date and time, then try again.",
+      message: 'This expiry was not accepted. Choose another expiry, or update the app, and try again.',
     };
   }
   return { field: null, message: userMessage(error.code, error.field) };
