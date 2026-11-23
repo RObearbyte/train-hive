@@ -173,7 +173,7 @@ describe('own data: get / save / clear', () => {
     const { memberIds } = await createPack(1);
     const [m] = memberIds;
     await grantConsents(m, BOTH);
-    await save(m, { gender: 'other', tshirt_size: 'S', ...CONTACT });
+    await save(m, { gender: 'prefer_not_to_say', tshirt_size: 'S', ...CONTACT });
     const cleared = await clearMine(m);
     expect(cleared).toMatchObject({ cleared: true, has_data: false, gender: null, tshirt_size: null });
     expect(cleared.consents).toEqual({ profile_demographics: true, emergency_contact: true });
@@ -284,7 +284,7 @@ describe('validation and text hygiene', () => {
     const { memberIds } = await createPack(1);
     const [m] = memberIds;
     await grantConsents(m, BOTH);
-    for (const bad of ['female', 'Woman', '', 1]) {
+    for (const bad of ['female', 'Woman', 'other', '', 1]) {
       await expect(save(m, { gender: bad })).rejects.toMatchObject(raised('validation_failed:gender'));
     }
     for (const bad of ['XXXL', 'medium', '', 2]) {
@@ -293,7 +293,7 @@ describe('validation and text hygiene', () => {
     for (const size of ['XS', 'S', 'M', 'L', 'XL', 'XXL']) {
       expect((await save(m, { tshirt_size: size.toLowerCase() })).tshirt_size).toBe(size);
     }
-    for (const gender of ['woman', 'man', 'other', 'prefer_not_to_say']) {
+    for (const gender of ['woman', 'man', 'prefer_not_to_say']) {
       expect((await save(m, { gender })).gender).toBe(gender);
     }
   });
@@ -450,10 +450,10 @@ describe('withdrawing a consent deletes the data it covered', () => {
     const { memberIds } = await createPack(1);
     const [m] = memberIds;
     await grantConsents(m, [...BOTH, 'workout_logs']);
-    await save(m, { gender: 'other', ...CONTACT });
+    await save(m, { gender: 'prefer_not_to_say', ...CONTACT });
     await withdraw(m, 'workout_logs');
     await withdraw(m, 'push_notifications');
-    expect(await storedRow(m)).toMatchObject({ gender: 'other', ...CONTACT });
+    expect(await storedRow(m)).toMatchObject({ gender: 'prefer_not_to_say', ...CONTACT });
   });
 });
 
@@ -690,7 +690,7 @@ describe('demographics: rounded aggregates only, small cells suppressed', () => 
     expect(d.age_bands.every((c) => c.suppressed && c.count === null)).toBe(true);
     expect(d.genders.every((c) => c.suppressed && c.count === null)).toBe(true);
     expect(d.age_bands.map((c) => c.key)).toEqual(['under_18', '18_29', '30_39', '40_49', '50_59', '60_plus', 'not_provided']);
-    expect(d.genders.map((c) => c.key)).toEqual(['woman', 'man', 'other', 'prefer_not_to_say', 'not_provided']);
+    expect(d.genders.map((c) => c.key)).toEqual(['woman', 'man', 'prefer_not_to_say', 'not_provided']);
   });
 
   it('a dimension needs 20 members with a value; the other dimension is judged on its own', async () => {
@@ -705,7 +705,7 @@ describe('demographics: rounded aggregates only, small cells suppressed', () => 
     expect(d.age_bands.every((c) => c.suppressed && c.count === null)).toBe(true);
     // man 19 -> 20, woman 6 -> 5; other 0, prefer_not_to_say 0, not_provided 1 (sum 1) -> the
     // smallest shown cell (woman) is hidden with them.
-    expect(cells(d.genders)).toEqual({ woman: 'x', man: 20, other: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
+    expect(cells(d.genders)).toEqual({ woman: 'x', man: 20, prefer_not_to_say: 'x', not_provided: 'x' });
 
     // The 20th age makes the age dimension appear.
     await addPeople(pack.communityId, [{ age: 36 }]);
@@ -725,7 +725,7 @@ describe('demographics: rounded aggregates only, small cells suppressed', () => 
     await addPeople(pack.communityId, [
       ...Array.from({ length: 11 }, () => ({ age: 25, gender: 'woman' })),
       ...Array.from({ length: 12 }, () => ({ age: 35, gender: 'man' })),
-      { age: 17, gender: 'other' },
+      { age: 17, gender: 'prefer_not_to_say' },
     ]);
     const d = await demographics(pack.organizerId, pack.communityId);
     expect(d.member_count).toBe(25);
@@ -735,7 +735,7 @@ describe('demographics: rounded aggregates only, small cells suppressed', () => 
     expect(cells(d.age_bands)).toEqual({
       under_18: 'x', '18_29': 'x', '30_39': 10, '40_49': 'x', '50_59': 'x', '60_plus': 'x', not_provided: 'x',
     });
-    expect(cells(d.genders)).toEqual({ woman: 'x', man: 10, other: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
+    expect(cells(d.genders)).toEqual({ woman: 'x', man: 10, prefer_not_to_say: 'x', not_provided: 'x' });
     expectSafe(d.age_bands);
     expectSafe(d.genders);
   });
@@ -750,9 +750,9 @@ describe('demographics: rounded aggregates only, small cells suppressed', () => 
     expect(d.genders.every((c) => c.suppressed)).toBe(true);
     // Five more, five other: woman 21, other 5, not_provided 1 -> the cells below 5 add up to 1,
     // so the smallest shown cell (other) is suppressed too; woman 21 is shown as 20.
-    await addPeople(pack.communityId, Array.from({ length: 5 }, () => ({ gender: 'other' })));
+    await addPeople(pack.communityId, Array.from({ length: 5 }, () => ({ gender: 'prefer_not_to_say' })));
     d = await demographics(pack.organizerId, pack.communityId);
-    expect(cells(d.genders)).toEqual({ woman: 20, man: 'x', other: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
+    expect(cells(d.genders)).toEqual({ woman: 20, man: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
     expectSafe(d.genders);
   });
 
@@ -865,7 +865,7 @@ describe('GDPR: export and erasure', () => {
     const pack = await createPack(1);
     const [m] = pack.memberIds;
     await grantConsents(m, BOTH);
-    await save(m, { gender: 'other', tshirt_size: 'M', ...CONTACT });
+    await save(m, { gender: 'prefer_not_to_say', tshirt_size: 'M', ...CONTACT });
     await deleteMyAccount(m);
     expect(await storedRow(m)).toBeUndefined();
     const { rows } = await admin.query('select count(*)::int as n from private.member_about_you');

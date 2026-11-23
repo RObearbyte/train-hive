@@ -57,7 +57,7 @@ create table private.member_about_you (
   -- The allowed range (server year - 100 .. server year - 16) moves with the clock, so it is
   -- checked by save_my_about_you; the table only rules out nonsense.
   birth_year integer check (birth_year between 1800 and 2200),
-  gender text check (gender in ('woman', 'man', 'other', 'prefer_not_to_say')),
+  gender text check (gender in ('woman', 'man', 'prefer_not_to_say')),
   emergency_contact_name text check (char_length(emergency_contact_name) between 1 and 80),
   emergency_contact_phone text check (char_length(emergency_contact_phone) between 1 and 30),
   emergency_contact_relationship text check (char_length(emergency_contact_relationship) between 1 and 40),
@@ -357,7 +357,7 @@ $$;
 
 -- save_my_about_you: partial update. p_input is a JSON object with any of the keys
 --   birth_year (integer, server year - 100 .. server year - 16), gender ('woman' | 'man' |
---   'other' | 'prefer_not_to_say'), emergency_contact_name (1-80), emergency_contact_phone
+--   'prefer_not_to_say'), emergency_contact_name (1-80), emergency_contact_phone
 --   (digits, spaces, + ( ) . / -, 6-20 digits, at most 30 characters),
 --   emergency_contact_relationship (1-40), tshirt_size ('XS' .. 'XXL').
 -- A key that is absent leaves the field unchanged; a key with JSON null clears it. Texts go
@@ -421,7 +421,7 @@ begin
   v_value := p_input -> 'gender';
   if v_value is not null and jsonb_typeof(v_value) <> 'null' then
     if jsonb_typeof(v_value) <> 'string'
-       or (v_value #>> '{}') not in ('woman', 'man', 'other', 'prefer_not_to_say') then
+       or (v_value #>> '{}') not in ('woman', 'man', 'prefer_not_to_say') then
       raise exception using errcode = 'P0001', message = 'validation_failed:gender';
     end if;
     v_gender := v_value #>> '{}';
@@ -665,7 +665,7 @@ $$;
 -- over the community's ACTIVE members (organizers included):
 --   age_bands: under_18, 18_29, 30_39, 40_49, 50_59, 60_plus, not_provided
 --     (age = server year - birth year, i.e. the age reached this calendar year)
---   genders:   woman, man, other, prefer_not_to_say, not_provided
+--   genders:   woman, man, prefer_not_to_say, not_provided
 -- Each dimension separately through private.publish_demographic_cells: nothing is shown unless at
 -- least 20 active members gave a value for it (insufficient_data); cells below 5 are suppressed
 -- with complementary suppression (on the exact counts); every shown cell is rounded to a multiple
@@ -692,7 +692,7 @@ declare
   c_round constant integer := 5;
   c_age_keys constant text[] := array['under_18', '18_29', '30_39', '40_49', '50_59', '60_plus',
                                       'not_provided'];
-  c_gender_keys constant text[] := array['woman', 'man', 'other', 'prefer_not_to_say',
+  c_gender_keys constant text[] := array['woman', 'man', 'prefer_not_to_say',
                                          'not_provided'];
   v_uid uuid := auth.uid();
   v_year integer := private.about_you_year();

@@ -199,13 +199,13 @@ describe('consent and data lifecycle (extra)', () => {
       await admin.query('delete from private.member_about_you where user_id = $1', [m]);
       await Promise.all([
         save(m, { birth_year: year - 20 - round }),
-        save(m, { gender: 'other' }),
+        save(m, { gender: 'prefer_not_to_say' }),
         save(m, { tshirt_size: 'XS' }),
         save(m, { emergency_contact_name: 'Con', emergency_contact_phone: '0700 000 000' }),
       ]);
       expect(await storedRow(m)).toMatchObject({
         birth_year: year - 20 - round,
-        gender: 'other',
+        gender: 'prefer_not_to_say',
         tshirt_size: 'XS',
         emergency_contact_name: 'Con',
         emergency_contact_phone: '0700 000 000',

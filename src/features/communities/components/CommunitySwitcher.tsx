@@ -13,7 +13,7 @@ import { buildSwitcherItems, canSwitchCommunity, communityTitle } from '../domai
 /**
  * The community name at the top of Home. With several communities it is a
  * button that opens the switcher; with one it is plain text (no chevron, no
- * clutter: joining or creating another one lives in Profile).
+ * clutter: joining or creating another one lives in the Community tab).
  */
 export function CommunityTitle() {
   const { spacing } = useTheme();

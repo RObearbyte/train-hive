@@ -898,7 +898,7 @@ Migration `20261130000100_about_you.sql`. Plan: `docs/EVENTS_PLAN.md` section 3,
 
 ## Storage
 
-`private.member_about_you` (one row per member, `user_id` → `profiles`, cascade): `birth_year?`, `gender?` (`woman` | `man` | `other` | `prefer_not_to_say`), `emergency_contact_name?` (1-80), `emergency_contact_phone?` (1-30), `emergency_contact_relationship?` (1-40), `tshirt_size?` (`XS` | `S` | `M` | `L` | `XL` | `XXL`), `created_at`, `updated_at`. Every field optional. An emergency contact is name + phone (relationship optional) or nothing; a row with no field is deleted. The table is in the `private` schema: **no API role (anon, authenticated, service_role) holds any privilege on it**, not even SELECT; everything goes through the functions below. Not in the Realtime publication.
+`private.member_about_you` (one row per member, `user_id` → `profiles`, cascade): `birth_year?`, `gender?` (`woman` | `man` | `prefer_not_to_say`), `emergency_contact_name?` (1-80), `emergency_contact_phone?` (1-30), `emergency_contact_relationship?` (1-40), `tshirt_size?` (`XS` | `S` | `M` | `L` | `XL` | `XXL`), `created_at`, `updated_at`. Every field optional. An emergency contact is name + phone (relationship optional) or nothing; a row with no field is deleted. The table is in the `private` schema: **no API role (anon, authenticated, service_role) holds any privilege on it**, not even SELECT; everything goes through the functions below. Not in the Realtime publication.
 
 ## Consent (G1 ledger)
 
@@ -949,7 +949,7 @@ Migration `20261130000100_about_you.sql`. Plan: `docs/EVENTS_PLAN.md` section 3,
 { community_id, min_group_size: 5, min_members_with_data: 20, rounded_to: 5, member_count, reference_year,
   insufficient_data: { age_bands: boolean, genders: boolean },
   age_bands: [ { key, count, suppressed } ],   -- under_18, 18_29, 30_39, 40_49, 50_59, 60_plus, not_provided
-  genders:   [ { key, count, suppressed } ] }  -- woman, man, other, prefer_not_to_say, not_provided
+  genders:   [ { key, count, suppressed } ] }  -- woman, man, prefer_not_to_say, not_provided
 ```
 - Caller: active organizer. Population: the community's **active** members (organizers included); a missing field or one without current consent is `not_provided`. Age = `reference_year` (server, UTC) - birth year (the age reached this calendar year). `member_count` is exact (organizers see the member list anyway). Errors: `not_authenticated`, `forbidden`.
 - **Publication rule (each dimension separately, `private.publish_demographic_cells`; `count` null when suppressed). The numbers are approximate group totals (P3-QA-1):**

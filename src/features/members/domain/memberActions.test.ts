@@ -11,6 +11,7 @@ import {
   leaveNeedsHandover,
   memberActionErrorMessage,
   rosterName,
+  rowActions,
   splitRoster,
   withoutCommunity,
   type RosterEntry,
@@ -57,6 +58,15 @@ describe('splitRoster', () => {
     splitRoster(input);
     expect(input.map((e) => e.userId)).toEqual(['b', 'a']);
     expect(splitRoster([])).toEqual({ active: [], former: [] });
+  });
+});
+
+describe('rowActions', () => {
+  it('members get no actions at all, organizers get the available ones', () => {
+    expect(rowActions(entry('b'), 'me', false)).toEqual([]);
+    expect(rowActions(entry('b', { role: 'organizer' }), 'me', false)).toEqual([]);
+    expect(rowActions(entry('b'), 'me', true)).toEqual(['make_organizer', 'remove']);
+    expect(rowActions(entry('me'), 'me', true)).toEqual([]);
   });
 });
 

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useRouter, type Href } from 'expo-router';
 import { View } from 'react-native';
 
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
@@ -16,11 +16,11 @@ export default function InvitationsScreen() {
   const { community, isOrganizer } = current;
 
   // Organizers only. The server enforces it too: RLS shows a member no codes.
-  if (community && !isOrganizer) return <Redirect href="/profile" />;
+  if (community && !isOrganizer) return <Redirect href={'/community' as Href} />;
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
-    else router.replace('/profile');
+    else router.replace('/community' as Href);
   };
   const refresh = () => {
     Promise.all([

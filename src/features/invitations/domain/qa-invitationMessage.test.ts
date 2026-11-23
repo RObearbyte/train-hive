@@ -53,7 +53,7 @@ describe('the message never takes a shape the name did not choose', () => {
       expect(lines[0].endsWith(' on TrainHive.')).toBe(true);
       expect(lines[1]).toBe('1. Ask me where to get the app');
       expect(lines[2]).toBe(
-        '2. Open TrainHive and enter your code under "Join a community": ABCD-2345 (already using TrainHive? Profile → Join another community)',
+        '2. Open TrainHive and enter your code under "Join a community": ABCD-2345 (already using TrainHive? Community tab → Join another community)',
       );
       // No other line break of any kind, no control or bidi character survives.
       expect(message.replace(/\n/g, '')).not.toMatch(/[\r\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u2028\u2029]/);
@@ -190,15 +190,15 @@ describe('who the message is for', () => {
 
   it('the labels the message points at exist where the message says (welcome screen) and differ inside the app', () => {
     expect(read('app/(onboarding)/welcome.tsx')).toContain('label="Join a community"');
-    expect(read('app/(app)/(tabs)/profile.tsx')).toContain('title="Join another community"');
+    expect(read('features/communities/components/CommunityTabScreen.tsx')).toContain('title="Join another community"');
   });
 
   // DEFECT Q6-6 (low, wording): the owner's scenario includes inviting someone who ALREADY uses
   // TrainHive (a second community). Step 2 says: tap "Join a community". Signed in, that button
-  // does not exist: the entry is Profile -> "Join another community" (or the Home switcher).
+  // does not exist: the entry is Community tab -> "Join another community" (or the Home switcher).
   it('FIXED Q6-6: the message also tells people who already have the app where to enter the code', () => {
     const message = buildInvitationMessage({ ...base });
-    expect(message).toContain('Profile → Join another community');
+    expect(message).toContain('Community tab → Join another community');
   });
 });
 

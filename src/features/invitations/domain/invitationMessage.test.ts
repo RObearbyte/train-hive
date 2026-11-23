@@ -18,7 +18,7 @@ describe('buildInvitationMessage', () => {
       [
         "Hi! 🐻 You're invited to join Făget Trail Pack on TrainHive.",
         '1. Get the app: https://example.com/app',
-        '2. Open TrainHive and enter your code under "Join a community": ABCD-EFGH (already using TrainHive? Profile → Join another community)',
+        '2. Open TrainHive and enter your code under "Join a community": ABCD-EFGH (already using TrainHive? Community tab → Join another community)',
         'One Pack. Stronger together.',
       ].join('\n'),
     );
@@ -146,7 +146,7 @@ describe('expiry shows the time of day in the community zone', () => {
 
 describe('who the message is for', () => {
   it('tells people who already use the app where to enter the code', () => {
-    expect(buildInvitationMessage(base)).toContain('Profile \u{2192} Join another community');
+    expect(buildInvitationMessage(base)).toContain('Community tab \u{2192} Join another community');
   });
 });
 
@@ -159,7 +159,7 @@ describe('buildInvitationMessage with the web app', () => {
         "Hi! 🐻 You're invited to join Făget Trail Pack on TrainHive.",
         'Open it here: https://app.example.com/join#code=ABCD-EFGH',
         'Or get the app: https://example.com/app',
-        'Or enter the code manually in the app: ABCD-EFGH (already using TrainHive? Profile → Join another community)',
+        'Or enter the code manually in the app: ABCD-EFGH (already using TrainHive? Community tab → Join another community)',
         'One Pack. Stronger together.',
       ].join('\n'),
     );

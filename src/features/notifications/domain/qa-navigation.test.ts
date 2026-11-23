@@ -38,8 +38,8 @@ describe('Q8 deep links and routes after P2', () => {
     const routes: [string, string][] = [
       ['/', 'home'], ['/notifications', 'communications'], ['/activity', 'communications'], ['/announcements', 'communications'], [`/announcements/${ID}`, 'communications'],
       ['/trainings', 'trainings'], [`/trainings/${ID}/edit`, 'trainings'], ['/statistics', 'statistics'], ['/profile', 'profile'],
-      ['/members', 'profile'], ['/privacy', 'profile'], ['/invitations', 'profile'], ['/community-settings', 'profile'],
-      ['/attendance-history', 'profile'], ['/add-community/join-code', 'profile'],
+      ['/community', 'community'], ['/members', 'community'], ['/privacy', 'profile'], ['/invitations', 'community'], ['/community-settings', 'community'],
+      ['/attendance-history', 'profile'], ['/add-community/join-code', 'community'],
     ];
     for (const [path, key] of routes) {
       expect(activeNavKey(path), path).toBe(key);

@@ -1646,7 +1646,7 @@ export type EventFeedUnread = {
 };
 
 /** P3: gender choices on the About-you page. */
-export type AboutYouGender = 'woman' | 'man' | 'other' | 'prefer_not_to_say';
+export type AboutYouGender = 'woman' | 'man' | 'prefer_not_to_say';
 
 /** P3: T-shirt sizes (stored upper case; the server accepts any case). */
 export type TshirtSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL';

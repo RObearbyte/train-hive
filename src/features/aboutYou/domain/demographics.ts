@@ -52,7 +52,6 @@ export const AGE_BAND_LABELS: Record<AgeBand, string> = {
 export const GENDER_LABELS: Record<AboutYouGender | 'not_provided', string> = {
   woman: 'Woman',
   man: 'Man',
-  other: 'Other',
   prefer_not_to_say: 'Prefer not to say',
   not_provided: 'Not provided',
 };

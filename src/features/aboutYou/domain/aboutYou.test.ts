@@ -225,8 +225,8 @@ describe('buildSaveRequest', () => {
 
 describe('form values from the server and the signature', () => {
   it('starts with the agreement boxes unticked', () => {
-    const form = formValuesFrom(emptyAboutYou({ birth_year: 1990, gender: 'other', tshirt_size: 'XL' }));
-    expect(form).toMatchObject({ birthYear: '1990', gender: 'other', tshirtSize: 'XL', agreeDemographics: false, agreeEmergency: false });
+    const form = formValuesFrom(emptyAboutYou({ birth_year: 1990, gender: 'prefer_not_to_say', tshirt_size: 'XL' }));
+    expect(form).toMatchObject({ birthYear: '1990', gender: 'prefer_not_to_say', tshirtSize: 'XL', agreeDemographics: false, agreeEmergency: false });
   });
 
   it('the signature changes with the stored data, not with the agreements (a failed save must not wipe the form)', () => {

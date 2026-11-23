@@ -25,7 +25,7 @@ import { TimeZoneField } from './TimeZoneField';
 
 function goBack(router: ReturnType<typeof useRouter>) {
   if (router.canGoBack()) router.back();
-  else router.replace('/profile' as Href);
+  else router.replace('/community' as Href);
 }
 
 /** Organizers edit the community's name and time zone here. The server checks the role again. */
@@ -35,7 +35,7 @@ export function CommunitySettingsScreen() {
   const { community, isOrganizer } = current;
 
   // Organizers only; members never see the entry and the server refuses them anyway.
-  if (community && !isOrganizer) return <Redirect href={'/profile' as Href} />;
+  if (community && !isOrganizer) return <Redirect href={'/community' as Href} />;
 
   if (!community) {
     return (

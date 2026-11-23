@@ -52,6 +52,11 @@ export function availableActions(entry: RosterEntry, selfUserId: string | null):
   return [entry.role === 'organizer' ? 'make_member' : 'make_organizer', 'remove'];
 }
 
+/** What the member sheet offers: organizers get the actions, members get none (they only read name and role). */
+export function rowActions(entry: RosterEntry, selfUserId: string | null, isOrganizer: boolean): MemberAction[] {
+  return isOrganizer ? availableActions(entry, selfUserId) : [];
+}
+
 export const ACTION_LABELS: Record<MemberAction, string> = {
   make_organizer: 'Make organizer',
   make_member: 'Make member',

@@ -5,17 +5,14 @@ import { View } from 'react-native';
 
 import { aboutYouAvailable } from '@/features/aboutYou/domain/prompt';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
-import { YourCommunities } from '@/features/communities/components/YourCommunities';
 import { FEATURES } from '@/features/legal/constants';
 import { myWorkoutsHref } from '@/features/notifications/components/routes';
-import { FLOW_ROUTES } from '@/features/onboarding/domain/flowRoutes';
 import { NotificationSettings } from '@/features/notifications/components/NotificationSettings';
-import { LeaveCommunitySection } from '@/features/members/components/LeaveCommunitySection';
 import { LegalLinks } from '@/features/legal/components/LegalLinks';
 import { DisplayNameForm } from '@/features/profile/components/DisplayNameForm';
 import { SignOutSection } from '@/features/profile/components/SignOutSection';
 import { ScreenHeader } from '@/features/shell/components/ScreenHeader';
-import { formatLongDate, isValidTimeZone, zoneCityName } from '@/lib/datetime';
+import { formatLongDate, isValidTimeZone } from '@/lib/datetime';
 import { userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 import {
@@ -37,7 +34,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { spacing } = useTheme();
   const current = useCurrentMembership();
-  const { community, membership, profile, isOrganizer } = current;
+  const { community, membership, profile } = current;
   const [editing, setEditing] = useState(false);
   const appVersion = Constants.expoConfig?.version;
 
@@ -120,25 +117,8 @@ export default function ProfileScreen() {
       ) : null}
 
       <View style={{ gap: spacing.sm }}>
-        <Text variant="heading">Community</Text>
-        <Card>
-          <ListItem title="Name" subtitle={community.name} />
-          <Divider />
-          <ListItem
-            title="Time zone"
-            subtitle={`${zoneCityName(community.timezone)} (${community.timezone}). Event times are shown in this zone.`}
-          />
-        </Card>
-      </View>
-
-      <View style={{ gap: spacing.sm }}>
         <Text variant="heading">Membership</Text>
         <Card>
-          <ListItem
-            title="Role"
-            subtitle={membership.role === 'organizer' ? 'Organizer' : 'Member'}
-          />
-          <Divider />
           <ListItem title="Member since" subtitle={formatLongDate(membership.joined_at, zone)} />
           <Divider />
           <ListItem
@@ -159,53 +139,7 @@ export default function ProfileScreen() {
               />
             </>
           ) : null}
-          {isOrganizer ? (
-            <>
-              <Divider />
-              <ListItem
-                title="Invitations"
-                subtitle="Create and manage invitation codes"
-                leading={<Icon name="people" size={22} color="primary" />}
-                onPress={() => router.push('/invitations')}
-              />
-              <Divider />
-              <ListItem
-                title="Members"
-                subtitle="See everyone, change roles or remove people"
-                leading={<Icon name="person" size={22} color="primary" />}
-                onPress={() => router.push('/members' as Href)}
-              />
-              <Divider />
-              <ListItem
-                title="Community settings"
-                subtitle="Change the name and time zone"
-                leading={<Icon name="edit" size={22} color="primary" />}
-                onPress={() => router.push('/community-settings' as Href)}
-              />
-            </>
-          ) : null}
-          <Divider />
-          <LeaveCommunitySection communityId={community.id} communityName={community.name} />
-        </Card>
-      </View>
 
-      <View style={{ gap: spacing.sm }}>
-        <Text variant="heading">Your communities</Text>
-        <Card>
-          <YourCommunities />
-          <ListItem
-            title="Join another community"
-            subtitle="With an invitation code. Your name is shared across communities."
-            leading={<Icon name="plus" size={22} color="primary" />}
-            onPress={() => router.push(FLOW_ROUTES.signedIn.joinCode as Href)}
-          />
-          <Divider />
-          <ListItem
-            title="Create a community"
-            subtitle="Needs a creator code"
-            leading={<Icon name="people" size={22} color="primary" />}
-            onPress={() => router.push(FLOW_ROUTES.signedIn.createCode as Href)}
-          />
         </Card>
       </View>
 

@@ -33,7 +33,6 @@ const data: CommunityDemographics = {
   genders: [
     { key: 'woman', count: 10, suppressed: false },
     { key: 'man', count: 10, suppressed: false },
-    { key: 'other', count: null, suppressed: true },
     { key: 'prefer_not_to_say', count: null, suppressed: true },
     { key: 'not_provided', count: null, suppressed: true },
   ],
@@ -60,7 +59,6 @@ describe('rows', () => {
     expect(rows.map((row) => `${row.label}=${row.value}`)).toEqual([
       'Woman=about 10',
       'Man=about 10',
-      `Other=${HIDDEN_LABEL}`,
       `Prefer not to say=${HIDDEN_LABEL}`,
       `Not provided=${HIDDEN_LABEL}`,
     ]);

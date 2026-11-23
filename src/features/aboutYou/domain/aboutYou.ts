@@ -20,7 +20,6 @@ import { toAppError, userMessage } from '@/lib/errors';
 export const GENDER_OPTIONS: readonly { value: AboutYouGender; label: string }[] = [
   { value: 'woman', label: 'Woman' },
   { value: 'man', label: 'Man' },
-  { value: 'other', label: 'Other' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 

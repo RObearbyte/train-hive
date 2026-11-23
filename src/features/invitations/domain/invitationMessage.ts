@@ -87,7 +87,7 @@ export function buildInvitationMessage(input: InvitationMessageInput): string {
 
   const lines = [`Hi! \u{1F43B} You're invited to join ${name} on TrainHive.`];
   const webLink = buildWebJoinLink(input.webAppUrl ?? null, input.code);
-  const joinHelp = '(already using TrainHive? Profile → Join another community)';
+  const joinHelp = '(already using TrainHive? Community tab → Join another community)';
   if (webLink) {
     // The link opens the web app with the code already filled in; the code stays as the fallback.
     lines.push(`Open it here: ${webLink}`);

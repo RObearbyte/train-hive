@@ -50,7 +50,15 @@ export function SegmentedControl<T extends string>({
               },
             ]}
           >
-            <Text variant="label" color={selected ? 'text' : 'textMuted'} style={selected ? styles.selectedText : null}>
+            <Text
+              variant="label"
+              color={selected ? 'text' : 'textMuted'}
+              style={selected ? styles.selectedText : null}
+              // A label never breaks across lines ("Training / s"): it shrinks a little instead.
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+            >
               {option.label}
             </Text>
           </Pressable>
@@ -62,6 +70,6 @@ export function SegmentedControl<T extends string>({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', padding: 3, gap: 3 },
-  segment: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, paddingHorizontal: 8 },
+  segment: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, paddingHorizontal: 4 },
   selectedText: { fontWeight: '800' },
 });
