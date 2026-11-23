@@ -423,8 +423,27 @@ describe('validation and text hygiene', () => {
     }
     expect(await storedLogs(m)).toHaveLength(0);
 
-    await expect(save(m, event.id, { distance_m: 1, duration_s: 604800 })).resolves.toMatchObject({
-      pace_s_per_km: 604800000,
+    // Plausibility (P5-QA-7): with both values the pace must lie in [1:00, 30:00] min/km.
+    for (const input of [
+      { distance_m: 1, duration_s: 604800 }, // 7 days for 1 m
+      { distance_m: 1000000, duration_s: 1 }, // 1000 km in one second
+      { distance_m: 10000, duration_s: 599 }, // 0:59.9 /km
+      { distance_m: 10000, duration_s: 18001 }, // 30:00.1 /km
+      { distance_m: 3, duration_s: 6 }, // 33:20 /km
+    ]) {
+      await expect(save(m, event.id, input), JSON.stringify(input)).rejects.toMatchObject(
+        raised('validation_failed:duration_s'),
+      );
+    }
+    expect(await storedLogs(m)).toHaveLength(0);
+    await expect(save(m, event.id, { distance_m: 10000, duration_s: 600 })).resolves.toMatchObject({
+      pace_s_per_km: 60,
+    });
+    await expect(save(m, event.id, { distance_m: 10000, duration_s: 18000 })).resolves.toMatchObject({
+      pace_s_per_km: 1800,
+    });
+    await expect(save(m, event.id, { distance_m: 336000, duration_s: 604800 })).resolves.toMatchObject({
+      pace_s_per_km: 1800,
     });
     await expect(save(m, event.id, { distance_m: 1000000 })).resolves.toMatchObject({
       distance_m: 1000000,
@@ -673,12 +692,13 @@ describe('the post-event prompt job', () => {
     expect(await prompts(event.id)).toHaveLength(3);
   });
 
-  it('skips events that ended less than 15 minutes or more than 7 days ago, cancelled, undecided, unloggable and future ones', async () => {
+  it('skips events that ended less than 15 minutes or more than 48 hours ago, cancelled, undecided, unloggable and future ones', async () => {
     const { communityId, organizerId, memberIds } = await createPack(1);
     const [m] = memberIds;
     const skipped = [
       await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: 14 }),
-      await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: 7 * 24 * 60 + 1 }),
+      await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: 48 * 60 + 1 }),
+      await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: 7 * 24 * 60 - 5 }),
       await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: -60 }),
       await endedEvent(organizerId, communityId, { going: [m], status: 'cancelled' }),
       await endedEvent(organizerId, communityId, { going: [m], status: 'scheduled' }),
@@ -686,7 +706,7 @@ describe('the post-event prompt job', () => {
       await endedEvent(organizerId, communityId, { going: [m], kind: 'training', subtype: 'other' }),
     ];
     const sent = [
-      await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: 7 * 24 * 60 - 5 }),
+      await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: 48 * 60 - 5 }),
       await endedEvent(organizerId, communityId, { going: [m], status: 'completed' }),
       await endedEvent(organizerId, communityId, { going: [m], kind: 'race' }),
       await endedEvent(organizerId, communityId, { going: [m], kind: 'sports_event' }),
@@ -858,16 +878,35 @@ describe('personal statistics', () => {
   });
 });
 
-describe('community statistics (organizers, rounded, 5+ contributors)', () => {
-  async function packWithLogs(contributors: number, runs: { distance_m?: number; duration_s?: number }[]) {
+describe('community statistics (organizers, rounded, 20+ contributors, nested windows)', () => {
+  type Run = { distance_m?: number; duration_s?: number };
+
+  /** A community with `contributors` members who all hold the workout_logs consent. */
+  async function consentingPack(contributors: number) {
     const pack = await createPack(contributors);
     for (const id of pack.memberIds) await grantConsents(id, ['workout_logs']);
-    const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
-    for (let i = 0; i < contributors; i += 1) {
-      await save(pack.memberIds[i], event.id, runs[i % runs.length]);
-    }
+    return pack;
+  }
+
+  /** One ended event (ended `endedMinutesAgo`) logged by `ids`, the i-th with runs[i % runs.length]. */
+  async function logEvent(
+    pack: { organizerId: string; communityId: string },
+    ids: string[],
+    runs: Run[],
+    endedMinutesAgo = 60,
+  ) {
+    const event = await endedEvent(pack.organizerId, pack.communityId, { going: ids, endedMinutesAgo });
+    for (let i = 0; i < ids.length; i += 1) await save(ids[i], event.id, runs[i % runs.length]);
+    return event;
+  }
+
+  async function packWithLogs(contributors: number, runs: Run[]) {
+    const pack = await consentingPack(contributors);
+    const event = await logEvent(pack, pack.memberIds, runs);
     return { ...pack, event };
   }
+
+  const DAYS_14 = 14 * 24 * 60;
 
   it('members are refused; organizers of other communities too', async () => {
     const { communityId, memberIds } = await createPack(1);
@@ -880,85 +919,155 @@ describe('community statistics (organizers, rounded, 5+ contributors)', () => {
     );
   });
 
-  it('nothing below 5 contributing members; rounded totals from 5', async () => {
-    const four = await packWithLogs(4, [{ distance_m: 10000, duration_s: 3000 }]);
-    expect(await communityStats(four.organizerId, four.communityId)).toMatchObject({
-      min_contributors: 5,
-      insufficient_data: true,
-      members_contributing: null,
-      sessions_logged: null,
-      total_distance_km: null,
-      total_duration_minutes: null,
-      average_pace_s_per_km: null,
-    });
+  it('nothing below 20 contributing members; rounded totals from 20', async () => {
+    const nineteen = await packWithLogs(19, [{ distance_m: 10000, duration_s: 3000 }]);
+    for (const window of ['7d', '30d', '90d', 'all']) {
+      expect(await communityStats(nineteen.organizerId, nineteen.communityId, window), window).toMatchObject({
+        min_contributors: 20,
+        insufficient_data: true,
+        members_contributing: null,
+        sessions_logged: null,
+        total_distance_km: null,
+        total_duration_minutes: null,
+        average_pace_s_per_km: null,
+      });
+    }
 
     await resetData();
-    const seven = await packWithLogs(7, [
+    const many = await packWithLogs(23, [
       { distance_m: 10400, duration_s: 3170 },
       { distance_m: 5250, duration_s: 1640 },
     ]);
-    // Logs: 4 x (10400 m, 3170 s) + 3 x (5250 m, 1640 s) = 57350 m, 17600 s.
-    const stats = await communityStats(seven.organizerId, seven.communityId);
+    // Logs: 12 x (10400 m, 3170 s) + 11 x (5250 m, 1640 s) = 182550 m, 56080 s.
+    const stats = await communityStats(many.organizerId, many.communityId);
     expect(stats).toMatchObject({
-      community_id: seven.communityId,
+      community_id: many.communityId,
       window: '30d',
+      min_contributors: 20,
       insufficient_data: false,
-      members_contributing: 5, // 7 -> nearest 5
-      sessions_logged: 5,
-      total_distance_km: 57, // 57.35
-      total_duration_minutes: 295, // 293.3 min -> nearest 5
-      average_pace_s_per_km: 305, // 306.9 -> nearest 5
+      members_contributing: 25, // 23 -> nearest 5
+      sessions_logged: 25,
+      total_distance_km: 180, // 182.55 -> nearest 10
+      total_duration_minutes: 930, // 934.7 min -> nearest 30
+      average_pace_s_per_km: 310, // 307.2 -> nearest 10
     });
-    // The 'all' window includes the same event.
-    expect(await communityStats(seven.organizerId, seven.communityId, 'all')).toMatchObject({ sessions_logged: 5 });
+    // Every window holds the same single event: the same answer everywhere.
+    for (const window of ['7d', '90d', 'all']) {
+      expect(await communityStats(many.organizerId, many.communityId, window), window).toMatchObject({
+        insufficient_data: false,
+        sessions_logged: 25,
+        total_distance_km: 180,
+      });
+    }
   });
 
-  it('each metric needs 5 contributors of its own', async () => {
-    const pack = await packWithLogs(6, [
-      { distance_m: 8000, duration_s: 2400 },
-      { distance_m: 8000, duration_s: 2400 },
-      { distance_m: 8000, duration_s: 2400 },
-      { distance_m: 8000, duration_s: 2400 },
-      { duration_s: 2400 },
-      { duration_s: 2400 },
-    ]);
+  it('each metric needs 20 contributors of its own', async () => {
+    const both = { distance_m: 8000, duration_s: 2400 };
+    const timeOnly = { duration_s: 2400 };
+    const pack = await packWithLogs(22, [...Array.from({ length: 18 }, () => both), ...Array.from({ length: 4 }, () => timeOnly)]);
     expect(await communityStats(pack.organizerId, pack.communityId)).toMatchObject({
       insufficient_data: false,
-      sessions_logged: 5,
-      total_distance_km: null, // only 4 members logged a distance
-      total_duration_minutes: 240,
-      average_pace_s_per_km: null,
+      sessions_logged: 20, // 22 -> nearest 5
+      total_distance_km: null, // only 18 members logged a distance
+      total_duration_minutes: 870, // 22 x 40 min = 880 -> nearest 30
+      average_pace_s_per_km: null, // only 18 logged both
     });
   });
 
   it('counts only active members: leaving keeps the own logs but drops the contribution', async () => {
-    const pack = await packWithLogs(5, [{ distance_m: 10000, duration_s: 3000 }]);
+    const pack = await packWithLogs(20, [{ distance_m: 10000, duration_s: 3000 }]);
     expect((await communityStats(pack.organizerId, pack.communityId)).insufficient_data).toBe(false);
     const leaver = pack.memberIds[0];
     await leaveCommunity(leaver, pack.communityId);
     expect((await communityStats(pack.organizerId, pack.communityId)).insufficient_data).toBe(true);
-    // The leaver still owns the log.
+    // The leaver still owns the log, but sees only its snapshot, not the current event (P5-QA-6).
     expect((await listLogs(leaver)).logs).toHaveLength(1);
     const screen = await getLog(leaver, pack.event.id);
-    expect(screen).toMatchObject({ can_log: false, cannot_log_reason: 'not_a_member' });
+    expect(screen).toMatchObject({ event: null, log_type: 'running', can_log: false, cannot_log_reason: 'not_a_member' });
     expect(screen.log?.distance_m).toBe(10000);
     expect(await myStats(leaver, pack.communityId)).toMatchObject({ sessions_logged: 1 });
     expect(await deleteLog(leaver, pack.event.id)).toMatchObject({ deleted: true });
   });
 
   it('the window and cancelled events are respected', async () => {
-    const pack = await packWithLogs(5, [{ distance_m: 10000, duration_s: 3000 }]);
+    const pack = await packWithLogs(20, [{ distance_m: 10000, duration_s: 3000 }]);
     await admin.query(
       "update public.training_sessions set starts_at = now() - interval '10 days', ends_at = now() - interval '10 days' + interval '1 hour', rsvp_deadline = now() - interval '11 days' where id = $1",
       [pack.event.id],
     );
     expect((await communityStats(pack.organizerId, pack.communityId, '7d')).insufficient_data).toBe(true);
-    expect((await communityStats(pack.organizerId, pack.communityId, '30d')).insufficient_data).toBe(false);
+    expect(await communityStats(pack.organizerId, pack.communityId, '30d')).toMatchObject({
+      insufficient_data: false,
+      total_distance_km: 200,
+    });
     await admin.query(
       "update public.training_sessions set status = 'cancelled', cancel_reason = 'organizer', cancelled_at = now() where id = $1",
       [pack.event.id],
     );
     expect((await communityStats(pack.organizerId, pack.communityId, 'all')).insufficient_data).toBe(true);
+  });
+
+  describe('nested windows: a larger window is published only when its difference to the next smaller published one covers 0 or 20+ members', () => {
+    const RUN_10K = { distance_m: 10000, duration_s: 3000 };
+
+    it('nothing older than the smallest window: every window gives the same answer', async () => {
+      const pack = await packWithLogs(20, [RUN_10K]);
+      for (const window of ['7d', '30d', '90d', 'all']) {
+        expect(await communityStats(pack.organizerId, pack.communityId, window), window).toMatchObject({
+          insufficient_data: false,
+          members_contributing: 20,
+          total_distance_km: 200,
+          total_duration_minutes: 990, // 20 x 50 min = 1000 -> nearest 30
+          average_pace_s_per_km: 300,
+        });
+      }
+    });
+
+    it('one member more in a larger window suppresses that window and every larger one', async () => {
+      const pack = await consentingPack(21);
+      await logEvent(pack, pack.memberIds.slice(0, 20), [RUN_10K]);
+      await logEvent(pack, [pack.memberIds[20]], [{ distance_m: 14000, duration_s: 4200 }], DAYS_14);
+      expect((await communityStats(pack.organizerId, pack.communityId, '7d')).insufficient_data).toBe(false);
+      for (const window of ['30d', '90d', 'all']) {
+        // 21 members in the window, but the difference to 7d is one member: not published.
+        expect(await communityStats(pack.organizerId, pack.communityId, window), window).toMatchObject({
+          insufficient_data: true,
+          members_contributing: null,
+          total_distance_km: null,
+        });
+      }
+    });
+
+    it('an older log of a member who is also in the smaller window is not isolated either', async () => {
+      const pack = await consentingPack(20);
+      await logEvent(pack, pack.memberIds, [RUN_10K]);
+      await logEvent(pack, [pack.memberIds[0]], [{ distance_m: 14000, duration_s: 4200 }], DAYS_14);
+      expect((await communityStats(pack.organizerId, pack.communityId, '7d')).insufficient_data).toBe(false);
+      // Same 20 members in 30d, but the 30d-minus-7d band holds one member's log.
+      expect((await communityStats(pack.organizerId, pack.communityId, '30d')).insufficient_data).toBe(true);
+    });
+
+    it('a band of 20+ members is published, and each metric checks its own band', async () => {
+      const pack = await consentingPack(40);
+      const recent = pack.memberIds.slice(0, 20);
+      const older = pack.memberIds.slice(20);
+      await logEvent(pack, recent, [RUN_10K]);
+      // In the 30d-minus-7d band: 20 members, 19 of them with a distance.
+      await logEvent(pack, older, [...Array.from({ length: 19 }, () => RUN_10K), { duration_s: 3000 }], DAYS_14);
+      expect(await communityStats(pack.organizerId, pack.communityId, '7d')).toMatchObject({
+        insufficient_data: false,
+        members_contributing: 20,
+        total_distance_km: 200,
+      });
+      expect(await communityStats(pack.organizerId, pack.communityId, '30d')).toMatchObject({
+        insufficient_data: false,
+        members_contributing: 40,
+        sessions_logged: 40,
+        total_distance_km: null, // the band has only 19 members with a distance
+        total_duration_minutes: 2010, // 40 x 50 min = 2000 -> nearest 30
+        average_pace_s_per_km: null, // the band has only 19 members with both
+      });
+    });
   });
 });
 

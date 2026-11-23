@@ -84,9 +84,9 @@ export function formatDuration(seconds: number): string {
   return `${s} s`;
 }
 
-/** Metres -> kilometres with at most two decimals: 10000 -> "10", 5250 -> "5.25". */
+/** Metres -> kilometres, exact (at most three decimals for whole metres): 10000 -> "10", 5555 -> "5.555". */
 export function formatKm(metres: number): string {
-  return String(Number((metres / 1000).toFixed(2)));
+  return String(metres / 1000);
 }
 
 /** Pace in seconds per km -> "5:30 /km". */
@@ -199,7 +199,9 @@ export function validateWeight(text: string): string | null {
   const kg = parseDecimal(value);
   if (kg === null) return 'Use a number such as 60 or 62.5.';
   if (kg > MAX_WEIGHT_KG) return `At most ${MAX_WEIGHT_KG} kg.`;
-  if (Math.abs(kg / WEIGHT_STEP_KG - Math.round(kg / WEIGHT_STEP_KG)) > 1e-9) return 'Use steps of 0.25 kg.';
+  // Exact check on the digits typed (no floating point): the fraction must be .25, .5, .75 or zero.
+  const fraction = (value.replace(',', '.').split('.')[1] ?? '').replace(/0+$/, '');
+  if (!['', '25', '5', '75'].includes(fraction)) return 'Use steps of 0.25 kg.';
   return null;
 }
 
@@ -215,9 +217,34 @@ export function validateDistanceKm(text: string, required: boolean): string | nu
 export function validateTime(text: string, required: boolean): string | null {
   if (text.trim() === '') return required ? 'Enter the time.' : null;
   const seconds = parseDuration(text);
-  if (seconds === null) return 'Use hours, minutes and seconds, for example 1:05:30 or 25:10.';
+  if (seconds === null) return 'Use h:mm:ss (1:05:30) or m:ss (25:10).';
   if (seconds < 1 || seconds > MAX_DURATION_S) return 'The time must be between 1 second and 7 days.';
   return null;
+}
+
+export const MIN_PACE_S_PER_KM = 60;
+export const MAX_PACE_S_PER_KM = 1800;
+export const PACE_RANGE_MESSAGE =
+  'That time does not fit the distance: the pace must be between 1:00 and 30:00 per km. Check both.';
+
+/** When distance and time are both given and valid, the pace must be plausible (the server checks it too). */
+export function validatePace(distanceText: string, timeText: string): string | null {
+  if (distanceText.trim() === '' || timeText.trim() === '') return null;
+  const pace = computePace(parseDistanceKm(distanceText), parseDuration(timeText));
+  if (pace === null) return null;
+  return pace < MIN_PACE_S_PER_KM || pace > MAX_PACE_S_PER_KM ? PACE_RANGE_MESSAGE : null;
+}
+
+/** Friendly text for a server `validation_failed:<field>` shown under its form field. */
+export function serverFieldMessage(serverField: string | undefined, fallback: string): string {
+  return serverField === 'duration_s' ? PACE_RANGE_MESSAGE : fallback;
+}
+
+/** The time as it is understood, shown while typing ("1 min 30 s" for 1:30), or null. */
+export function timePreview(text: string): string | null {
+  if (text.trim() === '' || validateTime(text, true)) return null;
+  const seconds = parseDuration(text);
+  return seconds === null ? null : formatDuration(seconds);
 }
 
 export function validateNotes(text: string): string | null {
@@ -266,7 +293,8 @@ export function createWorkoutSchema(logType: WorkoutLogType) {
       const hasTime = values.time.trim() !== '';
       const distance = validateDistanceKm(values.distanceKm, false);
       if (distance) issue(['distanceKm'], distance);
-      const time = validateTime(values.time, logType === 'race');
+      const time =
+        validateTime(values.time, logType === 'race') ?? (distance ? null : validatePace(values.distanceKm, values.time));
       if (time) issue(['time'], time);
       if (logType === 'running' && !hasDistance && !hasTime) {
         issue(['distanceKm'], 'Enter a distance, a time, or both.');
@@ -376,7 +404,7 @@ export function logTypeLabel(logType: WorkoutLogType | null): string {
 
 /** The consent block text, kept in one place so the privacy screen and tests can check it. */
 export const WORKOUT_CONSENT_TEXT =
-  'Your workout logs are private. Organizers never see individual logs. They only see rounded community totals, and only once at least 5 members have contributed. You can delete a log at any time, and withdrawing this agreement (Profile, then Privacy) deletes all your logs for good.';
+  'Your workout logs are private. Organizers never see individual logs. They only see rounded community totals, and only once at least 20 members have contributed. The numbers are rounded and approximate. You can delete a log at any time, and withdrawing this agreement (Profile, then Privacy) deletes all your logs for good.';
 
 export const WORKOUT_CONSENT_LABEL = 'I agree that TrainHive stores my workout logs';
 

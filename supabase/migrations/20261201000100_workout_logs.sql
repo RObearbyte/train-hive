@@ -14,7 +14,8 @@
 --   list_my_workout_logs(p_limit, p_before)      the caller's logs, newest event first, paged
 --   get_my_workout_stats(p_community_id, p_from, p_to)   personal totals
 --   get_community_workout_stats(p_community_id, p_window) organizer: rounded community totals,
---                                                       only with >= 5 contributing members
+--                                                       only with >= 20 contributing members and
+--                                                       never differenceable with a smaller window
 --   enqueue_workout_log_prompts()                service_role / pg_cron every minute
 --
 -- Log type (derived from the event, never chosen by the client):
@@ -35,8 +36,8 @@
 -- once per member (dedupe key workout_log_prompt:<event id>), an in-app notification + push
 -- "How did it go?" / "Log your workout: <title>" to the active members whose RSVP is `going` and
 -- who have no log of that event yet, for loggable `confirmed` / `completed` events whose end + 15
--- minutes has passed and whose end lies within the last 7 days (no backfill flood on the first
--- run). Sent regardless of the workout_logs consent (a neutral reminder; owner decision
+-- minutes has passed and whose end lies within the last 48 hours (P5-QA-8: no backfill flood on
+-- the first run or after an outage; older events are never prompted). Sent regardless of the workout_logs consent (a neutral reminder; owner decision
 -- 2026-11-23). Push preference category: training_updates (the else branch of
 -- claim_notification_jobs, unchanged); push consent is checked at send time as for every kind.
 --
@@ -320,8 +321,11 @@ $$;
 --   running:         { distance_m?, duration_s?, notes? }   at least distance_m or duration_s
 --   race:            { distance_m?, duration_s, notes? }    duration_s (finish time) required
 -- distance_m: JSON integer 1..1 000 000; duration_s: JSON integer 1..604 800 (7 days); notes:
--- private.clean_required_text multiline, at most 1000 characters (blank = no note). Pace is
--- computed by the database. Returns the log (private.workout_log_json).
+-- private.clean_required_text multiline, at most 1000 characters (blank = no note). Plausibility
+-- (P5-QA-7): when both distance_m and duration_s are given, the pace must lie between 1:00 and
+-- 30:00 min/km inclusive (60 <= 1000 x duration_s / distance_m <= 1800), else
+-- validation_failed:duration_s. Pace is computed by the database. Returns the log
+-- (private.workout_log_json).
 -- Errors in order: not_authenticated, validation_failed:input (not an object), not_found
 -- (unknown / null event), not_a_member, not_loggable, event_not_ended, not_eligible,
 -- validation_failed:input (key not allowed for the log type), validation_failed:<field>, then
@@ -392,6 +396,13 @@ begin
     if v_type = 'running' and v_distance is null and v_duration is null then
       perform private.fail_validation('distance_m');
     end if;
+    -- P5-QA-7 plausibility: with both values, the pace must lie in [1:00, 30:00] min/km
+    -- (60..1800 s/km, exact, before rounding).
+    if v_distance is not null and v_duration is not null
+       and (v_duration::bigint * 1000 < 60 * v_distance::bigint
+            or v_duration::bigint * 1000 > 1800 * v_distance::bigint) then
+      perform private.fail_validation('duration_s');
+    end if;
   end if;
 
   -- A concurrent withdrawal of the consent cannot interleave between the check and the write.
@@ -436,9 +447,12 @@ $$;
 
 -- get_my_workout_log: what the log screen needs for one event.
 -- { session_id, community_id, event: { title, starts_at, ends_at, event_kind, event_subtype,
---   distance_km, status } | null (event deleted), log_type, can_log, cannot_log_reason
+--   distance_km, status } | null, log_type, can_log, cannot_log_reason
 --   (null | not_a_member | not_loggable | event_not_ended | not_eligible | not_found),
 --   has_consent, log: <log> | null }
+-- event is null when the event no longer exists AND when the caller is not an active member of
+-- its community (P5-QA-6: a member who left or was removed sees only the snapshot stored in their
+-- own log, never later edits of the event); log_type then comes from the log.
 -- Errors: not_authenticated, not_found (unknown / null event and no own log), not_a_member (the
 -- event exists, the caller is not an active member of its community and has no log of it).
 create function public.get_my_workout_log(p_session_id uuid) returns jsonb
@@ -452,6 +466,7 @@ declare
   v_session public.training_sessions;
   v_log private.workout_logs;
   v_reason text;
+  v_show_event boolean;
 begin
   if v_uid is null then
     raise exception using errcode = 'P0001', message = 'not_authenticated';
@@ -473,11 +488,13 @@ begin
       raise exception using errcode = 'P0001', message = 'not_a_member';
     end if;
   end if;
+  -- Only an active member sees the current event; everyone else only their log's snapshot.
+  v_show_event := v_session.id is not null and v_reason is distinct from 'not_a_member';
 
   return jsonb_build_object(
     'session_id', p_session_id,
     'community_id', coalesce(v_session.community_id, v_log.community_id),
-    'event', case when v_session.id is not null then jsonb_build_object(
+    'event', case when v_show_event then jsonb_build_object(
       'title', v_session.title,
       'starts_at', v_session.starts_at,
       'ends_at', v_session.ends_at,
@@ -486,8 +503,10 @@ begin
       'distance_km', v_session.distance_km,
       'status', v_session.status
     ) end,
-    'log_type', coalesce(private.workout_log_type(v_session.event_kind, v_session.activity_type),
-                         v_log.log_type),
+    'log_type', case when v_show_event
+                     then coalesce(private.workout_log_type(v_session.event_kind, v_session.activity_type),
+                                   v_log.log_type)
+                     else v_log.log_type end,
     'can_log', v_reason is null,
     'cannot_log_reason', v_reason,
     'has_consent', private.has_consent(v_uid, 'workout_logs'),
@@ -651,15 +670,31 @@ $$;
 -- the workout logs of the community's events whose start lies in the window (p_window '7d', '30d',
 -- '90d', 'all', as the attendance statistics: [now - N x 24 h, now]), counting only logs of
 -- members who are ACTIVE members now and hold a current workout_logs consent, of events that are
--- not cancelled. Publication rule (docs/API_CONTRACT.md "Workout logs (P5)"):
---   * nothing is shown (insufficient_data, every metric null) unless at least 5 distinct members
---     contributed a log in the window;
---   * each metric additionally needs at least 5 distinct members contributing to IT (a distance, a
---     duration, both for the pace), else it is null;
---   * shown values are rounded: sessions_logged and members_contributing to the nearest 5, distance
---     to the nearest km, time to the nearest 5 minutes, average pace to the nearest 5 seconds per km.
+-- not cancelled. Publication rule (docs/API_CONTRACT.md "Workout logs (P5)", fixed after
+-- P5-QA-1/2/3; the floor matches the About-you demographics, 20261130000100_about_you.sql):
+--   * floor: nothing is shown (insufficient_data, every metric null) unless at least 20 distinct
+--     members contributed a log in the window;
+--   * per metric: each metric additionally needs at least 20 distinct members contributing to IT
+--     (a distance, a duration, both for the pace), else it is null;
+--   * nesting (the windows 7d c 30d c 90d c all share their end, so two answers can be subtracted):
+--     the windows are evaluated from the smallest up to the requested one; a window (resp. a
+--     metric of it) is published only if the members contributing (to that metric) with a log in
+--     the BAND between it and the next smaller window in which it was published, i.e. logs of
+--     events starting in [from(W), from(P)), number 0 or at least 20. Subtracting any two
+--     published answers therefore always covers 0 or >= 20 members (a union of such bands), and
+--     a member who also logged in the smaller window is counted in the band too (their older
+--     logs cannot be isolated either). The windows are recomputed for every call with the same
+--     now(), so the requested window's answer is the one the chain decides;
+--   * shown values are rounded: sessions_logged and members_contributing to the nearest 5,
+--     distance to the nearest 10 km, time to the nearest 30 minutes, average pace to the nearest
+--     10 seconds per km (half away from zero).
+-- Known limit (documented in docs/STATS_DEFINITIONS.md): patient differencing over time (two reads
+-- of the same window before and after one member's log appears, leaves, or is removed) reveals
+-- that member's contribution to within the rounding (10 km, 30 min); an organizer who controls 19
+-- accounts that log known values can do the same. The floor and the rounding make single answers
+-- non-identifying, not repeated ones.
 -- Members never get community totals (forbidden). No per-member breakdown exists.
--- { community_id, window, from, to, min_contributors: 5, insufficient_data, members_contributing,
+-- { community_id, window, from, to, min_contributors: 20, insufficient_data, members_contributing,
 --   sessions_logged, total_distance_km, total_duration_minutes, average_pace_s_per_km }
 -- Errors: not_authenticated, forbidden (not an active organizer; also null / unknown community),
 -- validation_failed:window.
@@ -671,20 +706,25 @@ security definer
 set search_path = ''
 as $$
 declare
-  c_min constant integer := 5;
+  c_min constant integer := 20;
+  c_windows constant text[] := array['7d', '30d', '90d', 'all'];
   v_uid uuid := auth.uid();
   v_now timestamptz := now();
   v_from timestamptz;
-  v_members integer;
-  v_sessions integer;
-  v_distance_members integer;
-  v_distance bigint;
-  v_duration_members integer;
-  v_duration bigint;
-  v_pace_members integer;
-  v_pace_duration bigint;
-  v_pace_distance bigint;
-  v_enough boolean;
+  v_target integer;
+  v_starts timestamptz[];
+  v_bands jsonb;
+  v_full jsonb;
+  v_w integer;
+  -- Index of the last window in which each quantity was published (-1 = none yet).
+  v_last_any integer := -1;
+  v_last_distance integer := -1;
+  v_last_duration integer := -1;
+  v_last_pace integer := -1;
+  v_any boolean := false;
+  v_distance boolean := false;
+  v_duration boolean := false;
+  v_pace boolean := false;
 begin
   if v_uid is null then
     raise exception using errcode = 'P0001', message = 'not_authenticated';
@@ -693,9 +733,22 @@ begin
     raise exception using errcode = 'P0001', message = 'forbidden';
   end if;
   v_from := private.stats_window_start(p_window, v_now);
+  v_target := array_position(c_windows, p_window) - 1;
+  v_starts := array[
+    private.stats_window_start('7d', v_now),
+    private.stats_window_start('30d', v_now),
+    private.stats_window_start('90d', v_now)
+  ];
 
+  -- Each log falls in exactly one band: 0 = 7d, 1 = 30d minus 7d, 2 = 90d minus 30d, 3 = older.
+  -- For every pair k < w (k = -1 .. 2, w = 0 .. 3) the totals over the bands k+1 .. w: (-1, w) is
+  -- window w itself, (k, w) the difference between windows w and k. Keyed 'k:w'.
   with logs as (
-    select l.user_id, l.distance_m, l.duration_s
+    select l.user_id, l.distance_m, l.duration_s,
+           case when s.starts_at >= v_starts[1] then 0
+                when s.starts_at >= v_starts[2] then 1
+                when s.starts_at >= v_starts[3] then 2
+                else 3 end as band
     from private.workout_logs l
     join public.training_sessions s on s.id = l.session_id and s.community_id = l.community_id
     join public.memberships m
@@ -705,23 +758,56 @@ begin
     where l.community_id = p_community_id
       and s.status <> 'cancelled'
       and s.starts_at <= v_now
-      and (v_from is null or s.starts_at >= v_from)
       and private.has_consent(l.user_id, 'workout_logs')
+  ),
+  pairs as (
+    select k, w from generate_series(-1, 2) k cross join generate_series(0, 3) w where k < w
+  ),
+  totals as (
+    select p.k, p.w,
+           count(distinct x.user_id)::integer as members,
+           count(x.user_id)::integer as sessions,
+           count(distinct x.user_id) filter (where x.distance_m is not null)::integer as distance_members,
+           coalesce(sum(x.distance_m), 0)::bigint as distance,
+           count(distinct x.user_id) filter (where x.duration_s is not null)::integer as duration_members,
+           coalesce(sum(x.duration_s), 0)::bigint as duration,
+           count(distinct x.user_id) filter (where x.distance_m is not null and x.duration_s is not null)::integer
+             as pace_members,
+           coalesce(sum(x.duration_s) filter (where x.distance_m is not null and x.duration_s is not null), 0)::bigint
+             as pace_duration,
+           coalesce(sum(x.distance_m) filter (where x.distance_m is not null and x.duration_s is not null), 0)::bigint
+             as pace_distance
+    from pairs p
+    left join logs x on x.band > p.k and x.band <= p.w
+    group by p.k, p.w
   )
-  select count(distinct x.user_id)::integer,
-         count(*)::integer,
-         count(distinct x.user_id) filter (where x.distance_m is not null)::integer,
-         coalesce(sum(x.distance_m), 0)::bigint,
-         count(distinct x.user_id) filter (where x.duration_s is not null)::integer,
-         coalesce(sum(x.duration_s), 0)::bigint,
-         count(distinct x.user_id) filter (where x.distance_m is not null and x.duration_s is not null)::integer,
-         coalesce(sum(x.duration_s) filter (where x.distance_m is not null and x.duration_s is not null), 0)::bigint,
-         coalesce(sum(x.distance_m) filter (where x.distance_m is not null and x.duration_s is not null), 0)::bigint
-    into v_members, v_sessions, v_distance_members, v_distance, v_duration_members, v_duration,
-         v_pace_members, v_pace_duration, v_pace_distance
-  from logs x;
+  select jsonb_object_agg(t.k || ':' || t.w, to_jsonb(t) - 'k' - 'w') into v_bands
+  from totals t;
 
-  v_enough := v_members >= c_min;
+  -- The chain: smallest window first, up to the requested one. A band count is safe when it is
+  -- 0 or >= c_min (for k = -1 the band is the window itself, already >= c_min when it matters).
+  for v_w in 0 .. v_target loop
+    v_full := v_bands -> ('-1:' || v_w);
+    v_any := (v_full ->> 'members')::integer >= c_min
+             and (v_bands -> (v_last_any || ':' || v_w) ->> 'members')::integer not between 1 and c_min - 1;
+    v_distance := v_any
+             and (v_full ->> 'distance_members')::integer >= c_min
+             and (v_bands -> (v_last_distance || ':' || v_w) ->> 'distance_members')::integer
+                 not between 1 and c_min - 1;
+    v_duration := v_any
+             and (v_full ->> 'duration_members')::integer >= c_min
+             and (v_bands -> (v_last_duration || ':' || v_w) ->> 'duration_members')::integer
+                 not between 1 and c_min - 1;
+    v_pace := v_any
+             and (v_full ->> 'pace_members')::integer >= c_min
+             and (v_full ->> 'pace_distance')::bigint > 0
+             and (v_bands -> (v_last_pace || ':' || v_w) ->> 'pace_members')::integer
+                 not between 1 and c_min - 1;
+    if v_any then v_last_any := v_w; end if;
+    if v_distance then v_last_distance := v_w; end if;
+    if v_duration then v_last_duration := v_w; end if;
+    if v_pace then v_last_pace := v_w; end if;
+  end loop;
 
   return jsonb_build_object(
     'community_id', p_community_id,
@@ -729,18 +815,19 @@ begin
     'from', v_from,
     'to', v_now,
     'min_contributors', c_min,
-    'insufficient_data', not v_enough,
+    'insufficient_data', not v_any,
     'members_contributing',
-      case when v_enough then (round(v_members / 5.0) * 5)::integer end,
+      case when v_any then (round((v_full ->> 'members')::integer / 5.0) * 5)::integer end,
     'sessions_logged',
-      case when v_enough then (round(v_sessions / 5.0) * 5)::integer end,
+      case when v_any then (round((v_full ->> 'sessions')::integer / 5.0) * 5)::integer end,
     'total_distance_km',
-      case when v_enough and v_distance_members >= c_min then round(v_distance / 1000.0)::integer end,
+      case when v_distance then (round((v_full ->> 'distance')::bigint / 10000.0) * 10)::integer end,
     'total_duration_minutes',
-      case when v_enough and v_duration_members >= c_min then (round(v_duration / 300.0) * 5)::integer end,
+      case when v_duration then (round((v_full ->> 'duration')::bigint / 1800.0) * 30)::integer end,
     'average_pace_s_per_km',
-      case when v_enough and v_pace_members >= c_min and v_pace_distance > 0
-           then (round(v_pace_duration * 1000.0 / v_pace_distance / 5.0) * 5)::integer end
+      case when v_pace
+           then (round((v_full ->> 'pace_duration')::bigint * 1000.0
+                       / (v_full ->> 'pace_distance')::bigint / 10.0) * 10)::integer end
   );
 end;
 $$;
@@ -769,7 +856,7 @@ begin
       and s.starts_at <= v_now
       and private.workout_log_type(s.event_kind, s.activity_type) is not null
       and private.workout_event_end(s.starts_at, s.ends_at) + interval '15 minutes' <= v_now
-      and private.workout_event_end(s.starts_at, s.ends_at) > v_now - interval '7 days'
+      and private.workout_event_end(s.starts_at, s.ends_at) > v_now - interval '48 hours'
       and not exists (select 1 from private.workout_prompt_runs r where r.session_id = s.id)
     order by s.id
     for no key update of s skip locked

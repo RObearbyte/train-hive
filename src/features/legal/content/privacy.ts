@@ -157,7 +157,7 @@ export function buildPrivacyNotice(
                 : []),
               ...(features.workoutLogs
                 ? [
-                    'Your workout logs are private to you: no member and no organizer can see an individual log. Organizers see only approximate community totals (for example the total distance and the number of sessions logged), rounded, and only once at least 5 members have contributed to the period shown. The totals count only members who are still in the community and have agreed to workout logs. You can delete a log at any time.',
+                    'Your workout logs are private to you: no member and no organizer can see an individual log. Organizers see only approximate community totals (for example the total distance and the number of sessions logged), and only once at least 20 members have contributed to the period shown. The values are rounded and approximate. The totals count only members who are still in the community and have agreed to workout logs. You can delete a log at any time.',
                   ]
                 : []),
               'We do not sell your data and we do not share it for advertising.',

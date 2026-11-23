@@ -1303,3 +1303,16 @@ Defects (ranked):
 Legal wording vs code: accurate (private, owner-only, rounded totals from 5 members, deletion on withdrawal / account deletion, retention, leaving). "Organizers never see individual logs" holds for every API; P5-QA-1 to 3 are the way an organizer could still estimate one member's total, so the sentence is true of what is shown, not of what can be inferred.
 
 Not verified: hosted Supabase, pg_cron scheduling, push delivery of the new kind, device / browser / TalkBack.
+
+Status after the backend fix (2026-11-23, migration edited in place, not yet applied to the hosted DB):
+- P5-QA-1: FIXED (floor 20 contributors, also per metric; distance rounded to 10 km, time to 30 min, pace to 10 s/km). The 4 + 1 test passes without `.fails`. Remaining known limit, documented and tested (`KNOWN LIMIT P5-QA-1`): 19 controlled accounts + 1 member reveal that member to within 10 km.
+- P5-QA-2: FIXED (nested-window band rule: a window, and each metric of it, is published only when the band to the next smaller published window has 0 or 20+ contributing members). Tested: 5 + 1 and 20 + 1 members, an older log of a member also in 7d, a suppressed middle window, a 20-member band with one metric at 19.
+- P5-QA-3: FIXED at the rounding granularity (one removal reveals the member only to within 10 km / 30 min; below the rounding nothing changes). Patient differencing over time remains the documented known limit (`docs/STATS_DEFINITIONS.md`).
+- P5-QA-6: FIXED (`event: null`, `log_type` from the log, for a caller who is not an active member).
+- P5-QA-7: FIXED (pace 1:00..30:00 min/km when both distance and time are given, else `validation_failed:duration_s`).
+- P5-QA-8: FIXED (back-fill limited to events that ended within 48 hours).
+- P5-QA-4: FIXED (app): `formatKm` and the form prefill use the exact value `String(metres / 1000)`; re-saving a log keeps distance and pace.
+- P5-QA-5: FIXED (app): `validateWeight` checks the typed digits exactly (fraction .25, .5, .75 or zero); `62.50000000001` shows the field hint.
+- P5-QA-9: FIXED (app): set fields are labelled "Exercise 2, set 3 weight (kg)" / "... reps".
+- App copy: "at least 5 members" is now 20 everywhere (privacy notice, privacy settings, consent text, community card message, tests) and says the values are rounded and approximate.
+- P5-QA-6/7 app side: the log screen shows the log's own title and date when `event` is null and offers no form for a non-member; the form refuses a pace outside 1:00..30:00 per km on the time field and maps `validation_failed:duration_s` to the same message. Time input rule: `h:mm:ss` or `m:ss` ("1:30" is 1 min 30 s); the helper text shows the understood time while typing. The `.fails` markers of P5-QA-4, 5 and 9 are removed.

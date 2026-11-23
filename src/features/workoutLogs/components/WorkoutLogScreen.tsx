@@ -94,7 +94,7 @@ export function WorkoutLogScreen({ sessionId }: { sessionId: string }) {
       ) : null}
       {notice ? <Banner tone="success" message={notice} /> : null}
 
-      {screen.can_log && logType !== null ? (
+      {screen.can_log && screen.event !== null && logType !== null ? (
         <WorkoutLogForm
           screen={screen}
           logType={logType}

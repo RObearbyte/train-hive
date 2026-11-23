@@ -25,7 +25,7 @@ const community: CommunityWorkoutStats = {
   window: '30d',
   from: null,
   to: '2026-11-23T00:00:00Z',
-  min_contributors: 5,
+  min_contributors: 20,
   insufficient_data: false,
   members_contributing: 10,
   sessions_logged: 25,
@@ -68,6 +68,6 @@ describe('community numbers (approximate)', () => {
   it('shows no numbers when there is not enough data, with the agreed message', () => {
     const insufficient = { ...community, insufficient_data: true, members_contributing: null, sessions_logged: null };
     expect(communityStatLines(insufficient)).toEqual([]);
-    expect(INSUFFICIENT_COMMUNITY_MESSAGE).toBe('Not enough members have logged yet (needs at least 5)');
+    expect(INSUFFICIENT_COMMUNITY_MESSAGE).toBe('Not enough members have logged yet (needs at least 20)');
   });
 });

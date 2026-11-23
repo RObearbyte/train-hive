@@ -1480,9 +1480,9 @@ export type Database = {
         Returns: Json;
       };
       /**
-       * P5: active organizer. Returns `CommunityWorkoutStats` (approximate: nothing below 5
-       * contributing members, rounded totals). Raises `not_authenticated`, `forbidden`,
-       * `validation_failed:window`.
+       * P5: active organizer. Returns `CommunityWorkoutStats` (approximate: nothing below 20
+       * contributing members, never differenceable with a smaller window, rounded totals).
+       * Raises `not_authenticated`, `forbidden`, `validation_failed:window`.
        */
       get_community_workout_stats: {
         Args: { p_community_id: string; p_window?: StatisticsWindow };
@@ -1744,7 +1744,10 @@ export type WorkoutExercise = { name: string; sets: WorkoutSet[] };
 export type WorkoutLogInput =
   /** strength: at most 30 exercises; at least one exercise or a note. `weight_kg` absent/null = 0. */
   | { exercises?: { name: string; sets: { reps: number; weight_kg?: number | null }[] }[] | null; notes?: string | null }
-  /** running: at least distance_m or duration_s. race: duration_s (finish time) required. */
+  /**
+   * running: at least distance_m or duration_s. race: duration_s (finish time) required. With both,
+   * the pace must lie in 1:00..30:00 min/km (60..1800 s/km), else `validation_failed:duration_s`.
+   */
   | { distance_m?: number | null; duration_s?: number | null; notes?: string | null };
 
 /** P5: a stored log (result of `save_workout_log`, items of `list_my_workout_logs`). Owner only. */
@@ -1780,7 +1783,10 @@ export type WorkoutLogBlockReason = 'not_a_member' | 'not_loggable' | 'event_not
 export type WorkoutLogScreen = {
   session_id: string;
   community_id: string;
-  /** null when the event no longer exists (its community was deleted). */
+  /**
+   * null when the event no longer exists (its community was deleted) or when the caller is not an
+   * active member of its community (left / removed: only the log's own snapshot is shown).
+   */
   event: {
     title: string;
     starts_at: string;
@@ -1826,9 +1832,10 @@ export type MyWorkoutStats = {
 
 /**
  * P5: result of `get_community_workout_stats` (organizers only). APPROXIMATE: every metric is null
- * while fewer than `min_contributors` (5) members logged in the window (`insufficient_data`), and
- * each metric also needs 5 contributors of its own; shown values are rounded (members and
- * sessions to 5, distance to 1 km, time to 5 minutes, pace to 5 s/km).
+ * (`insufficient_data`) while fewer than `min_contributors` (20) members logged in the window, or
+ * when the window differs from the next smaller published window by 1..19 members (nested-window
+ * rule); each metric also needs 20 contributors of its own (and the same band rule). Shown values
+ * are rounded (members and sessions to 5, distance to 10 km, time to 30 minutes, pace to 10 s/km).
  */
 export type CommunityWorkoutStats = {
   community_id: string;

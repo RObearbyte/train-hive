@@ -58,7 +58,7 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
   workout_logs: {
     title: 'Workout logs',
     description:
-      'Optional. Lets you save workout logs after events (exercises, distance, time, notes). Your logs are private to you: organizers never see an individual log, only rounded community totals, and only once at least 5 members have contributed. Workout data can reveal health information. You can delete a log at any time.',
+      'Optional. Lets you save workout logs after events (exercises, distance, time, notes). Your logs are private to you: organizers never see an individual log, only rounded community totals, and only once at least 20 members have contributed. The values are rounded and approximate. Workout data can reveal health information. You can delete a log at any time.',
     withdrawTitle: 'Withdraw consent for workout logs?',
     withdrawMessage:
       'All your workout logs will be deleted for good and cannot be restored, and they will no longer count in any total. You can agree again and start new logs later.',

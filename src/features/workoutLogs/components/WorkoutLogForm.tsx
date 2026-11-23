@@ -21,6 +21,8 @@ import {
   formValuesFrom,
   livePace,
   logSignature,
+  serverFieldMessage,
+  timePreview,
   workoutLogErrorMessage,
   EMPTY_SET,
   type WorkoutFormValues,
@@ -111,7 +113,7 @@ function ExerciseCard({
             render={({ field, fieldState }) => (
               <TextField
                 ref={field.ref}
-                label={`Set ${setIndex + 1} reps`}
+                label={`Exercise ${index + 1}, set ${setIndex + 1} reps`}
                 value={field.value}
                 onChangeText={field.onChange}
                 onBlur={field.onBlur}
@@ -127,7 +129,7 @@ function ExerciseCard({
             render={({ field, fieldState }) => (
               <TextField
                 ref={field.ref}
-                label="Weight (kg)"
+                label={`Exercise ${index + 1}, set ${setIndex + 1} weight (kg)`}
                 helper="Empty = bodyweight"
                 value={field.value}
                 onChangeText={field.onChange}
@@ -171,6 +173,7 @@ function EnduranceFields({
   const distanceKm = useWatch({ control, name: 'distanceKm' });
   const time = useWatch({ control, name: 'time' });
   const pace = livePace({ distanceKm, time });
+  const timeText = timePreview(time);
   return (
     <View style={{ gap: spacing.md }}>
       <Controller
@@ -196,8 +199,8 @@ function EnduranceFields({
         render={({ field, fieldState }) => (
           <TextField
             ref={field.ref}
-            label={logType === 'race' ? 'Finish time (h:mm:ss)' : 'Time (h:mm:ss)'}
-            helper="For example 1:05:30 or 25:10"
+            label={logType === 'race' ? 'Finish time (h:mm:ss or m:ss)' : 'Time (h:mm:ss or m:ss)'}
+            helper={timeText ? `Read as ${timeText}. 1:05:30 is 1 h 5 min, 25:10 is 25 min.` : '1:05:30 is 1 h 5 min, 25:10 is 25 min 10 s.'}
             value={field.value}
             onChangeText={field.onChange}
             onBlur={field.onBlur}
@@ -273,7 +276,7 @@ export function WorkoutLogForm({
         onError: (error) => {
           const field = error.code === 'validation_failed' ? formFieldFor(error.field, logType) : null;
           if (field === 'notes' || field === 'distanceKm' || field === 'time') {
-            setError(field, { message: workoutLogErrorMessage(error) });
+            setError(field, { message: serverFieldMessage(error.field, workoutLogErrorMessage(error)) });
           } else {
             setProblem(workoutLogErrorMessage(error));
           }

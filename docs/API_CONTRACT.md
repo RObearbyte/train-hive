@@ -1007,6 +1007,7 @@ An **active member** of the event's community whose RSVP is **`going`** OR whose
   - `running`: `{ distance_m?, duration_s?, notes? }`; at least one of distance / duration (else `validation_failed:distance_m`).
   - `race`: `{ distance_m?, duration_s, notes? }`; `duration_s` = finish time, required (`validation_failed:duration_s`). The app can prefill the distance from the event's `distance_km` (`get_my_workout_log`).
   - `distance_m` JSON integer 1..1 000 000 (`validation_failed:distance_m`), `duration_s` JSON integer 1..604 800 = 7 days (`validation_failed:duration_s`), `notes` multiline text hygiene (`private.clean_required_text`: controls and bidi controls stripped, line breaks normalized, trimmed), at most 1000 characters, blank = no note, invisible-only or over 1000 → `validation_failed:notes`.
+  - **Plausibility (P5-QA-7):** when both `distance_m` and `duration_s` are given, the pace must lie between **1:00 and 30:00 min/km** inclusive (`60 <= 1000 × duration_s / distance_m <= 1800`, exact, before rounding), else `validation_failed:duration_s` (the app should show it on the time field, e.g. "Check the time: the pace would be faster than 1:00 or slower than 30:00 per km"). A distance or a time alone is not checked.
   - Pace is computed by the database (`pace_s_per_km`).
 - Errors in order: `not_authenticated`, `validation_failed:input` (not an object), `not_found` (unknown / null event), `not_a_member`, `not_loggable` (kind / activity, or status `scheduled` / `cancelled`), `event_not_ended`, `not_eligible` (neither going nor present), `validation_failed:input` (key not allowed for this type), `validation_failed:<field>`, then after the locks `not_a_member` (no profile: account being deleted), `consent_required:workout_logs`, `not_found` (event deleted meanwhile).
 
@@ -1018,7 +1019,7 @@ An **active member** of the event's community whose RSVP is **`going`** OR whose
   can_log, cannot_log_reason: null|'not_a_member'|'not_loggable'|'event_not_ended'|'not_eligible'|'not_found',
   has_consent, log: WorkoutLog | null }
 ```
-- A member who left keeps read access to their own log (`can_log: false`, `not_a_member`). Errors: `not_authenticated`, `not_found` (unknown event and no own log), `not_a_member` (event exists, caller not an active member and has no log of it).
+- A member who left or was removed keeps read access to their own log (`can_log: false`, `not_a_member`) but gets **`event: null`** and `log_type` from the log (P5-QA-6: never the current, possibly edited event; the log's own `event_title` / `event_starts_at` / `event_kind` / `event_subtype` snapshot is what the screen shows). Errors: `not_authenticated`, `not_found` (unknown event and no own log), `not_a_member` (event exists, caller not an active member and has no log of it).
 
 `WorkoutLog`:
 ```
@@ -1044,11 +1045,12 @@ An **active member** of the event's community whose RSVP is **`going`** OR whose
 
 `get_community_workout_stats(p_community_id uuid, p_window text default '30d') → jsonb` (`CommunityWorkoutStats`)
 ```
-{ community_id, window, from, to, min_contributors: 5, insufficient_data,
+{ community_id, window, from, to, min_contributors: 20, insufficient_data,
   members_contributing, sessions_logged, total_distance_km, total_duration_minutes, average_pace_s_per_km }
 ```
+(Shape unchanged by the P5-QA-1/2/3 fix; only `min_contributors` (now 20), the rule and the rounding changed.)
 - **Organizers only** (active organizer of the community); members get `forbidden` (decision: members see no community totals). Population: logs of the community's non-cancelled events starting in the window (`7d` / `30d` / `90d` / `all`, as the attendance statistics), by members who are **active now** and hold a current consent (leaving removes a member's contribution at once; their own logs stay).
-- **Publication rule:** nothing (all metrics null, `insufficient_data: true`) unless **at least 5 distinct members** logged in the window; each metric also needs 5 contributors of its own (distance: 5 with a distance; time: 5 with a duration; pace: 5 with both), else null; shown values are **rounded**: members and sessions to the nearest 5, distance to the nearest km, time to the nearest 5 minutes, pace to the nearest 5 s/km. The app must present them as approximate ("about 25 sessions"). Known limit: differencing over time (see `STATS_DEFINITIONS.md`).
+- **Publication rule (fixed after P5-QA-1/2/3):** nothing (all metrics null, `insufficient_data: true`) unless **at least 20 distinct members** logged in the window; each metric also needs 20 contributors of its own (distance: 20 with a distance; time: 20 with a duration; pace: 20 with both), else null; **nested windows:** a window (and each metric of it) is published only when the members with a log in the band between it and the next smaller window in which it was published number **0 or at least 20** (so no two published answers can be subtracted to isolate fewer than 20 members; `insufficient_data: true` also covers a window suppressed by this rule); shown values are **rounded**: members and sessions to the nearest 5, distance to the nearest **10 km**, time to the nearest **30 minutes**, pace to the nearest **10 s/km**. The app must present them as approximate ("about 25 sessions"). Known limit: differencing over time and accounts controlled by the organizer, to within the rounding (see `STATS_DEFINITIONS.md`).
 - Errors: `not_authenticated`, `forbidden` (also null / unknown community), `validation_failed:window`.
 
 ## The post-event prompt (notification kind `workout_log_prompt`)
@@ -1057,9 +1059,9 @@ An **active member** of the event's community whose RSVP is **`going`** OR whose
 
 | Kind | Fired when | Recipients | Title / body | Dedupe key | Deep link |
 |---|---|---|---|---|---|
-| `workout_log_prompt` | an event's end + 15 minutes has passed (end = `ends_at`, else `starts_at + 2 h`), the event is `confirmed` or `completed`, loggable, and its end lies within the **last 7 days** (no backfill flood on the first run) | active members whose RSVP is `going` (organizers included) who have no log of it yet; **regardless of the `workout_logs` consent** | `How did it go?` / `Log your workout: <event title>` | `workout_log_prompt:<event id>` | `/events/<event id>/log` |
+| `workout_log_prompt` | an event's end + 15 minutes has passed (end = `ends_at`, else `starts_at + 2 h`), the event is `confirmed` or `completed`, loggable, and its end lies within the **last 48 hours** (P5-QA-8: no backfill flood on the first run or after an outage) | active members whose RSVP is `going` (organizers included) who have no log of it yet; **regardless of the `workout_logs` consent** | `How did it go?` / `Log your workout: <event title>` | `workout_log_prompt:<event id>` | `/events/<event id>/log` |
 
-- Idempotent: each event is claimed once in `private.workout_prompt_runs`, and the dedupe key stops a second notification per member (tested: repeated and concurrent runs send one each). Cancelled, scheduled (undecided), unloggable, future and older-than-7-days events get nothing; neither do members who are not going or no longer active.
+- Idempotent: each event is claimed once in `private.workout_prompt_runs`, and the dedupe key stops a second notification per member (tested: repeated and concurrent runs send one each). Cancelled, scheduled (undecided), unloggable, future and older-than-48-hours events get nothing (never, also on later runs); neither do members who are not going or no longer active.
 - `related_session_id` = the event. `notifications_deep_link_check` now allows `/activity`, `/trainings/<uuid>`, `/announcements/<uuid>`, `/events/<uuid>/feed` and **`/events/<uuid>/log`** (lowercase uuid, nothing else).
 - Push: preference category **`training_updates`** (the `else` branch of `claim_notification_jobs`, unchanged), then push consent at send time, like every kind. Push expiry: one day. Texts carry no workout data.
 - **App:** add `/events/<uuid>/log` to `src/features/notifications/domain/deepLink.ts` and a route `events/[id]/log`; add `workout_log_prompt` to `KIND_ICON` in `src/features/notifications/components/NotificationRow.tsx` (its `Record<NotificationKind, IconName>` does not typecheck without it).
@@ -1075,4 +1077,4 @@ New error codes: `not_loggable`, `event_not_ended`, `not_eligible`, `consent_req
 
 TypeScript (`src/lib/database.types.ts`): functions `save_workout_log`, `get_my_workout_log`, `delete_my_workout_log`, `list_my_workout_logs`, `get_my_workout_stats`, `get_community_workout_stats`, `enqueue_workout_log_prompts`; types `WorkoutLogType`, `WorkoutSet`, `WorkoutExercise`, `WorkoutLogInput`, `WorkoutLog`, `WorkoutLogBlockReason`, `WorkoutLogScreen`, `DeleteWorkoutLogResult`, `WorkoutLogPage`, `MyWorkoutStats`, `CommunityWorkoutStats`; `NotificationKind` gains `workout_log_prompt`; `MyDataExport.extensions.workout_logs` (optional: absent in files exported before P5) and `truncated.workout_logs`. No table type (the tables are not reachable by the API).
 
-Legal / app notes: `FEATURES.workoutLogs` stays false until the app ships. The tripwire `src/features/legal/qa-gdprCopy.test.ts` looks for `public.workout_logs ` in the migrations, but the table is `private.workout_logs`, so the app task must update that check when it turns the flag on. The privacy notice must then describe the logs (what, why, owner only, organizers see only rounded totals from 5 members, deleted on withdrawal or account deletion).
+Legal / app notes: `FEATURES.workoutLogs` stays false until the app ships. The tripwire `src/features/legal/qa-gdprCopy.test.ts` looks for `public.workout_logs ` in the migrations, but the table is `private.workout_logs`, so the app task must update that check when it turns the flag on. The privacy notice must then describe the logs (what, why, owner only, organizers see only rounded totals from 20 members, deleted on withdrawal or account deletion).

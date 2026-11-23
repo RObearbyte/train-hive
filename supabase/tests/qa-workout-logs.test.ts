@@ -271,11 +271,10 @@ describe('QA: who can reach private.workout_logs', () => {
     expect(await deleteLog(m, event.id)).toMatchObject({ deleted: true });
   });
 
-  // DEFECT P5-QA-6 (low): get_my_workout_log returns the CURRENT event (title, time, status,
-  // distance) to a member who was removed or left, for as long as they hold a log. Event data of a
-  // community they no longer belong to should come from the log's snapshot at most.
-  // Fix: when the caller is not an active member, return `event: null` (or the snapshot fields).
-  it.fails('DEFECT P5-QA-6: a removed member does not see later edits of the event', async () => {
+  // DEFECT P5-QA-6 (low, FIXED): get_my_workout_log returned the CURRENT event (title, time,
+  // status, distance) to a member who was removed or left, for as long as they hold a log. Now
+  // `event` is null for a caller who is not an active member; the log carries its own snapshot.
+  it('DEFECT P5-QA-6: a removed member does not see later edits of the event', async () => {
     const { communityId, organizerId, memberIds } = await createPack(1);
     const [m] = memberIds;
     await grantConsents(m, ['workout_logs']);
@@ -285,12 +284,15 @@ describe('QA: who can reach private.workout_logs', () => {
     await admin.query("update public.training_sessions set title = 'Secret organizers meeting' where id = $1", [event.id]);
     const screen = await getLog(m, event.id);
     expect(JSON.stringify(screen)).not.toContain('Secret organizers meeting');
+    expect(screen.event).toBeNull();
+    expect(screen.log).toMatchObject({ distance_m: 10000 });
+    expect(JSON.stringify(screen.log)).toContain('Original title');
   });
 });
 
 describe('QA: consent and erasure', () => {
   it('withdrawing then granting again does not resurrect logs; logs of a member without consent never count', async () => {
-    const pack = await createPack(5);
+    const pack = await createPack(20);
     for (const id of pack.memberIds) await grantConsents(id, ['workout_logs']);
     const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
     for (const id of pack.memberIds) await save(id, event.id, RUN);
@@ -473,27 +475,38 @@ describe('QA: validation against type confusion and hostile payloads', () => {
 
   it('pace and totals: no division by zero, nothing overflows at the limits', async () => {
     const { m, event } = await setup('running');
-    expect(await saveRaw(m, event.id, '{"duration_s":1,"distance_m":1000000}')).toMatchObject({ pace_s_per_km: 0 });
-    expect(await saveRaw(m, event.id, '{"duration_s":604800,"distance_m":1}')).toMatchObject({ pace_s_per_km: 604800000 });
+    // The extreme field values alone are accepted (no pace), and the largest plausible combinations.
+    expect(await saveRaw(m, event.id, '{"distance_m":1000000}')).toMatchObject({ pace_s_per_km: null });
+    expect(await saveRaw(m, event.id, '{"duration_s":604800}')).toMatchObject({ pace_s_per_km: null });
+    expect(await saveRaw(m, event.id, '{"duration_s":60000,"distance_m":1000000}')).toMatchObject({ pace_s_per_km: 60 });
+    expect(await saveRaw(m, event.id, '{"duration_s":604800,"distance_m":336000}')).toMatchObject({ pace_s_per_km: 1800 });
+    // The extreme combinations are implausible (P5-QA-7) and refused.
+    await expect(saveRaw(m, event.id, '{"duration_s":1,"distance_m":1000000}')).rejects.toMatchObject(raised('validation_failed:duration_s'));
+    await expect(saveRaw(m, event.id, '{"duration_s":604800,"distance_m":1}')).rejects.toMatchObject(raised('validation_failed:duration_s'));
     await expect(saveRaw(m, event.id, '{"duration_s":600,"distance_m":0}')).rejects.toMatchObject(raised('validation_failed:distance_m'));
     // The previous valid log survives a refused save.
-    expect((await getLog(m, event.id)).log?.pace_s_per_km).toBe(604800000);
+    expect((await getLog(m, event.id)).log?.pace_s_per_km).toBe(1800);
     const stats = await myStats(m);
-    expect(stats.total_distance_m).toBe(1);
+    expect(stats.total_distance_m).toBe(336000);
   });
 
-  // KNOWN LIMIT (P5-QA-7, low): nothing checks that a log is plausible. One member can log 1000 km
-  // in one second (pace 0:00 /km) or 7 days for 1 m; the community totals and the average pace then
-  // follow that one value. Not a privacy problem; it lets a single member distort the organizers'
-  // numbers. Suggested fix: refuse paces outside a sane range (for example 1:00 to 60:00 /km) or
-  // ignore implausible logs in the community totals.
-  it('KNOWN LIMIT P5-QA-7: an implausible log (1000 km in one second) is accepted and counts in totals', async () => {
-    const pack = await createPack(5);
-    for (const id of pack.memberIds) await grantConsents(id, ['workout_logs']);
-    const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
-    for (const id of pack.memberIds.slice(1)) await save(id, event.id, { distance_m: 5000, duration_s: 1500 });
-    await save(pack.memberIds[0], event.id, { distance_m: 1_000_000, duration_s: 1 });
-    expect(await communityStats(pack.organizerId, pack.communityId)).toMatchObject({ total_distance_km: 1020 });
+  // P5-QA-7 (low, FIXED): nothing checked that a log is plausible; one member could log 1000 km in
+  // one second and dominate the organizers' totals and average pace. Now a log with both a distance
+  // and a time must have a pace between 1:00 and 30:00 min/km (validation_failed:duration_s).
+  it('P5-QA-7: an implausible log (1000 km in one second, 1 m in 7 days) is refused and stores nothing', async () => {
+    const { m, event } = await setup('running');
+    for (const input of [
+      { distance_m: 1_000_000, duration_s: 1 },
+      { distance_m: 1, duration_s: 604800 },
+      { distance_m: 42195, duration_s: 2531 }, // marathon in 42:11 (0:59.98 /km)
+      { distance_m: 5000, duration_s: 9001 }, // 5 km in 2.5 hours (30:00.2 /km)
+    ]) {
+      await expect(save(m, event.id, input), JSON.stringify(input)).rejects.toMatchObject(raised('validation_failed:duration_s'));
+    }
+    expect(await storedCount(m)).toBe(0);
+    // Just inside the range on both ends.
+    expect(await save(m, event.id, { distance_m: 42195, duration_s: 2532 })).toMatchObject({ pace_s_per_km: 60 });
+    expect(await save(m, event.id, { distance_m: 5000, duration_s: 9000 })).toMatchObject({ pace_s_per_km: 1800 });
   });
 });
 
@@ -520,7 +533,7 @@ describe('QA: log type follows the event, also when the event changes later', ()
   });
 
   it('an event that becomes cancelled after logging keeps the log (readable, deletable) but leaves the totals', async () => {
-    const pack = await createPack(5);
+    const pack = await createPack(20);
     for (const id of pack.memberIds) await grantConsents(id, ['workout_logs']);
     const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
     for (const id of pack.memberIds) await save(id, event.id, RUN);
@@ -580,22 +593,26 @@ describe('QA: the prompt job', () => {
     await expect(save(m, event.id, RUN)).rejects.toMatchObject(raised('not_loggable'));
   });
 
-  // KNOWN LIMIT (P5-QA-8, low): the first run after deployment (and any outage of up to 7 days)
-  // sends one prompt (and one push) per event of the last 7 days to every member who was going:
-  // a member who went to 8 events gets 8 pushes within one minute.
-  // Suggested fix: backfill only the last 24-48 hours, or at most one push per member per run.
-  it('KNOWN LIMIT P5-QA-8: a first run sends one prompt per event of the last 7 days', async () => {
+  // P5-QA-8 (low, FIXED): the first run after deployment (and any outage of up to 7 days) sent one
+  // prompt (and one push) per event of the last 7 days to every member who was going. Now only
+  // events that ended within the last 48 hours are back-filled; older ones are never prompted.
+  it('P5-QA-8: a first run back-fills only the events of the last 48 hours', async () => {
     const { communityId, organizerId, memberIds } = await createPack(1);
     const [m] = memberIds;
+    const events: EventSession[] = [];
     for (let day = 0; day < 7; day += 1) {
-      await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: 30 + day * 24 * 60 });
+      events.push(await endedEvent(organizerId, communityId, { going: [m], endedMinutesAgo: 30 + day * 24 * 60 }));
     }
-    expect(await runPrompts()).toBe(7);
+    // Ended 30 min, 24 h 30 min ago: prompted; 48 h 30 min ago and older: not.
+    expect(await runPrompts()).toBe(2);
     const { rows } = await admin.query<{ n: number }>(
       "select count(*)::int as n from public.notification_delivery_jobs j join public.notifications n on n.id = j.notification_id where j.user_id = $1 and n.kind = 'workout_log_prompt'",
       [m],
     );
-    expect(rows[0].n).toBe(7);
+    expect(rows[0].n).toBe(2);
+    for (const [day, e] of events.entries()) expect(await promptsFor(e.id), `day ${day}`).toEqual(day < 2 ? [m] : []);
+    // Later runs never pick up the older events either.
+    expect(await runPrompts()).toBe(0);
   });
 
   it('deep links: look-alikes of /events/<uuid>/log are refused by the database check', async () => {
@@ -640,28 +657,41 @@ describe('QA: community totals and what an organizer can work out', () => {
     return pack;
   }
 
+  const WINDOWS = ['7d', '30d', '90d', 'all'] as const;
+
+  /** Every pair of published distances (both windows published) differs from `value` by more than 1 km. */
+  async function noPairReveals(organizerId: string, communityId: string, value: number) {
+    const answers: { window: (typeof WINDOWS)[number]; stats: Community }[] = [];
+    for (const window of WINDOWS) answers.push({ window, stats: await communityStats(organizerId, communityId, window) });
+    for (const a of answers) {
+      for (const b of answers) {
+        if (a.window === b.window || a.stats.total_distance_km === null || b.stats.total_distance_km === null) continue;
+        const difference = a.stats.total_distance_km - b.stats.total_distance_km;
+        expect(Math.abs(difference - value), `${a.window} - ${b.window}`).toBeGreaterThan(1);
+      }
+    }
+    return Object.fromEntries(answers.map((a) => [a.window, a.stats])) as Record<(typeof WINDOWS)[number], Community>;
+  }
+
   it('the organizer is one of the contributors when they log; other communities never mix in', async () => {
-    const a = await createPack(4);
-    const b = await createPack(5);
+    const a = await createPack(19);
+    const b = await createPack(20);
     for (const id of [...a.memberIds, a.organizerId, ...b.memberIds]) await grantConsents(id, ['workout_logs']);
     const ea = await endedEvent(a.organizerId, a.communityId, { going: [...a.memberIds, a.organizerId] });
     const eb = await endedEvent(b.organizerId, b.communityId, { going: b.memberIds });
     for (const id of [...a.memberIds, a.organizerId]) await save(id, ea.id, { distance_m: 4000, duration_s: 1200 });
     for (const id of b.memberIds) await save(id, eb.id, { distance_m: 40000, duration_s: 12000 });
     const stats = await communityStats(a.organizerId, a.communityId);
-    expect(stats).toMatchObject({ insufficient_data: false, total_distance_km: 20 }); // 5 x 4 km, nothing of B
+    expect(stats).toMatchObject({ insufficient_data: false, members_contributing: 20, total_distance_km: 80 }); // 20 x 4 km, nothing of B
     await expect(communityStats(a.organizerId, b.communityId)).rejects.toMatchObject(raised('forbidden'));
   });
 
-  // DEFECT P5-QA-1 (medium, design; same class as P3-QA-1): the "5 contributing members" rule is
-  // defeated by an organizer who controls the other contributors. Organizers create invitation
-  // codes and accounts are free: four sock-puppet members who log a known distance plus one real
-  // member make "5 contributors", and the published total (rounded to 1 km, time to 5 min) minus
-  // the known puppet values is that one member's distance to within 1 km. For About you the same
-  // problem was fixed with a floor of 20 members and rounded totals.
-  // Fix: raise the minimum number of contributing members (for example 20, as for demographics),
-  // or require the contributors to be a share of the active members.
-  it.fails('DEFECT P5-QA-1: five contributors (four of them controlled by the organizer) must not publish a total', async () => {
+  // DEFECT P5-QA-1 (medium, design; same class as P3-QA-1; FIXED): the "5 contributing members"
+  // rule was defeated by an organizer who controls the other contributors: four sock-puppet
+  // members who log a known distance plus one real member made "5 contributors", and the published
+  // total minus the puppets' values was that one member's distance to within 1 km. Now the floor
+  // is 20 (as for demographics) and distance is rounded to 10 km.
+  it('DEFECT P5-QA-1: five contributors (four of them controlled by the organizer) must not publish a total', async () => {
     const pack = await createPack(5);
     for (const id of pack.memberIds) await grantConsents(id, ['workout_logs']);
     const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
@@ -673,42 +703,99 @@ describe('QA: community totals and what an organizer can work out', () => {
     expect(stats.total_distance_km).toBeNull();
   });
 
-  // DEFECT P5-QA-2 (medium): the windows are nested (7d inside 30d inside 90d inside all) and each
-  // is only checked for its OWN contributor count. Five members who logged this week plus one
-  // member who logged 14 days ago: the 7d answer (5 members) and the 30d answer (6 members) are both
-  // published and their difference is exactly the one member's log, without any puppet.
-  // Fix: publish the totals in fixed non-overlapping periods, or require the minimum for the
-  // difference between windows too (for example by dropping the 7d / 30d / 90d choices and showing
-  // only all-time, or by suppressing a window whose members differ from a smaller window by fewer
-  // than the minimum).
-  it.fails('DEFECT P5-QA-2: the difference between two windows must not isolate one member', async () => {
-    const pack = await createPack(6);
-    for (const id of pack.memberIds) await grantConsents(id, ['workout_logs']);
-    const recent = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds.slice(0, 5) });
-    const old = await endedEvent(pack.organizerId, pack.communityId, {
-      going: [pack.memberIds[5]],
-      endedMinutesAgo: 14 * 24 * 60,
-    });
-    for (const id of pack.memberIds.slice(0, 5)) await save(id, recent.id, { distance_m: 10000, duration_s: 3000 });
-    await save(pack.memberIds[5], old.id, { distance_m: 14000, duration_s: 4200 });
-
-    const week = await communityStats(pack.organizerId, pack.communityId, '7d');
-    const month = await communityStats(pack.organizerId, pack.communityId, '30d');
-    expect(week.insufficient_data).toBe(false);
-    expect(month.insufficient_data).toBe(false);
-    const difference = (month.total_distance_km ?? 0) - (week.total_distance_km ?? 0);
-    // The one member logged 14 km; the safe behaviour is that no published pair reveals it.
-    expect(Math.abs(difference - 14)).toBeGreaterThan(1);
+  // KNOWN LIMIT (P5-QA-1, documented in STATS_DEFINITIONS.md): an organizer who controls 19
+  // accounts can still subtract their known values; the floor makes that costlier and the 10 km /
+  // 30 min rounding is all that is left between the published total and the one real member.
+  it('KNOWN LIMIT P5-QA-1: 19 puppets + 1 member reveal that member only to within the rounding (10 km)', async () => {
+    const pack = await logged(20);
+    const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
+    const [victim, ...puppets] = pack.memberIds;
+    await save(victim, event.id, { distance_m: 21000, duration_s: 7200 });
+    for (const puppet of puppets) await save(puppet, event.id, { distance_m: 5000, duration_s: 1500 });
+    const stats = await communityStats(pack.organizerId, pack.communityId);
+    // 116 km -> 120; 120 - 95 = 25 km, the true 21 km is somewhere in [20, 30).
+    expect(stats.total_distance_km).toBe(120);
+    expect(stats.total_distance_km! % 10).toBe(0);
   });
 
-  // DEFECT P5-QA-3 (medium, same root cause): totals before and after the organizer REMOVES a
-  // member differ by that member's contribution (to within 1 km / 5 min). Removal is an organizer
-  // power, so one removal + two reads reveals one member's distance whenever 6+ members logged.
-  // Fix: same as P5-QA-1 (a larger minimum) and, because it also applies to leaving members, a
-  // coarser rounding (for example 5 km) or a snapshot that is not recomputed on every read.
-  it.fails('DEFECT P5-QA-3: removing a member must not reveal that member\'s distance', async () => {
-    const pack = await createPack(6);
-    for (const id of pack.memberIds) await grantConsents(id, ['workout_logs']);
+  // DEFECT P5-QA-2 (medium, FIXED): the windows are nested (7d inside 30d inside 90d inside all)
+  // and each was only checked for its OWN contributor count; five members logging this week plus
+  // one member who logged 14 days ago made 7d and 30d both publishable, and their difference was
+  // exactly that member's log. Now a window is published only when the members with a log in the
+  // band between it and the next smaller published window number 0 or at least 20.
+  it('DEFECT P5-QA-2: the difference between two windows must not isolate one member', async () => {
+    // The original scenario (5 this week + 1 member 14 days ago): nothing is published at all.
+    const small = await logged(6);
+    const recent = await endedEvent(small.organizerId, small.communityId, { going: small.memberIds.slice(0, 5) });
+    const old = await endedEvent(small.organizerId, small.communityId, {
+      going: [small.memberIds[5]],
+      endedMinutesAgo: 14 * 24 * 60,
+    });
+    for (const id of small.memberIds.slice(0, 5)) await save(id, recent.id, { distance_m: 10000, duration_s: 3000 });
+    await save(small.memberIds[5], old.id, { distance_m: 14000, duration_s: 4200 });
+    const smallAnswers = await noPairReveals(small.organizerId, small.communityId, 14);
+    for (const window of WINDOWS) expect(smallAnswers[window].insufficient_data, window).toBe(true);
+
+    // The same at the new floor: 20 members this week + 1 member 14 days ago.
+    await resetData();
+    const pack = await logged(21);
+    const week = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds.slice(0, 20) });
+    const earlier = await endedEvent(pack.organizerId, pack.communityId, {
+      going: [pack.memberIds[20]],
+      endedMinutesAgo: 14 * 24 * 60,
+    });
+    for (const id of pack.memberIds.slice(0, 20)) await save(id, week.id, { distance_m: 10000, duration_s: 3000 });
+    await save(pack.memberIds[20], earlier.id, { distance_m: 14000, duration_s: 4200 });
+    const answers = await noPairReveals(pack.organizerId, pack.communityId, 14);
+    expect(answers['7d'].insufficient_data).toBe(false);
+    // 30d (and every larger window) differs from 7d by one member: suppressed.
+    expect(answers['30d'].insufficient_data).toBe(true);
+    expect(answers['90d'].insufficient_data).toBe(true);
+    expect(answers.all.insufficient_data).toBe(true);
+  });
+
+  it('nested windows: an older log of a member who is also in the smaller window cannot be isolated', async () => {
+    const pack = await logged(20);
+    const week = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
+    const earlier = await endedEvent(pack.organizerId, pack.communityId, {
+      going: [pack.memberIds[0]],
+      endedMinutesAgo: 14 * 24 * 60,
+    });
+    for (const id of pack.memberIds) await save(id, week.id, { distance_m: 10000, duration_s: 3000 });
+    await save(pack.memberIds[0], earlier.id, { distance_m: 14000, duration_s: 4200 });
+    const answers = await noPairReveals(pack.organizerId, pack.communityId, 14);
+    expect(answers['7d'].insufficient_data).toBe(false);
+    expect(answers['30d'].insufficient_data).toBe(true);
+  });
+
+  it('nested windows: a suppressed middle window does not let 90d be compared with 7d either', async () => {
+    // 20 this week, 1 member 14 days ago (30d band), 20 more members 60 days ago (90d band).
+    const pack = await logged(41);
+    const week = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds.slice(0, 20) });
+    const earlier = await endedEvent(pack.organizerId, pack.communityId, {
+      going: [pack.memberIds[20]],
+      endedMinutesAgo: 14 * 24 * 60,
+    });
+    const older = await endedEvent(pack.organizerId, pack.communityId, {
+      going: pack.memberIds.slice(21),
+      endedMinutesAgo: 60 * 24 * 60,
+    });
+    for (const id of pack.memberIds.slice(0, 20)) await save(id, week.id, { distance_m: 10000, duration_s: 3000 });
+    await save(pack.memberIds[20], earlier.id, { distance_m: 14000, duration_s: 4200 });
+    for (const id of pack.memberIds.slice(21)) await save(id, older.id, { distance_m: 10000, duration_s: 3000 });
+    const answers = await noPairReveals(pack.organizerId, pack.communityId, 14);
+    expect(answers['7d']).toMatchObject({ insufficient_data: false, total_distance_km: 200 });
+    expect(answers['30d'].insufficient_data).toBe(true);
+    // 90d minus 7d covers 21 members (the one of 14 days ago among them): published.
+    expect(answers['90d']).toMatchObject({ insufficient_data: false, members_contributing: 40, total_distance_km: 410 });
+  });
+
+  // DEFECT P5-QA-3 (medium, same root cause; FIXED at the rounding granularity): totals before and
+  // after the organizer REMOVES a member differed by that member's contribution to within 1 km /
+  // 5 min. Now the floor is 20 and the distance is rounded to 10 km (time to 30 min): one removal
+  // reveals the member's contribution only to within that rounding (the documented limit).
+  it("DEFECT P5-QA-3: removing a member must not reveal that member's distance", async () => {
+    const pack = await logged(21);
     const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
     const [victim, ...others] = pack.memberIds;
     await save(victim, event.id, { distance_m: 12300, duration_s: 4000 });
@@ -719,39 +806,59 @@ describe('QA: community totals and what an organizer can work out', () => {
     expect(after.insufficient_data).toBe(false);
     const revealed = (before.total_distance_km ?? 0) - (after.total_distance_km ?? 0);
     expect(Math.abs(revealed - 12.3)).toBeGreaterThan(1);
+    expect(revealed % 10).toBe(0);
+  });
+
+  it('removing a member whose contribution is below the rounding changes nothing visible', async () => {
+    const pack = await logged(21);
+    const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
+    const [victim, ...others] = pack.memberIds;
+    await save(victim, event.id, { distance_m: 4000, duration_s: 1200 });
+    for (const id of others) await save(id, event.id, { distance_m: 10000, duration_s: 3000 });
+    const before = await communityStats(pack.organizerId, pack.communityId);
+    await removeMember(pack.organizerId, pack.communityId, victim);
+    const after = await communityStats(pack.organizerId, pack.communityId);
+    // 204 km -> 200 and 200 km -> 200; 1020 min -> 1020 and 1000 min -> 990 (time to 30 min).
+    expect(before).toMatchObject({ total_distance_km: 200, members_contributing: 20, average_pace_s_per_km: 300 });
+    expect(after).toMatchObject({ total_distance_km: 200, members_contributing: 20, average_pace_s_per_km: 300 });
   });
 
   it('a single dominating contributor cannot be told apart from the rounding, but the totals do follow it', async () => {
-    const pack = await logged(5);
+    const pack = await logged(20);
     const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
     const [big, ...small] = pack.memberIds;
     await save(big, event.id, { distance_m: 100000, duration_s: 36000 });
     for (const id of small) await save(id, event.id, { distance_m: 1000, duration_s: 400 });
     const stats = await communityStats(pack.organizerId, pack.communityId);
-    // 104 km in total: the one large log is 96 % of the number an organizer sees.
-    expect(stats.total_distance_km).toBe(104);
+    // 119 km in total -> 120: the one large log is 84 % of the number an organizer sees.
+    expect(stats.total_distance_km).toBe(120);
   });
 
-  it('rounding and threshold arithmetic at the edges (4/5/7/8 members, x.5 values)', async () => {
+  it('rounding and threshold arithmetic at the edges (19/20/22/23 members, x.5 values)', async () => {
     for (const [members, shownMembers] of [
-      [4, null],
-      [5, 5],
-      [7, 5],
-      [8, 10],
+      [19, null],
+      [20, 20],
+      [22, 20],
+      [23, 25],
     ] as const) {
       await resetData();
       const pack = await createPack(members);
       for (const id of pack.memberIds) await grantConsents(id, ['workout_logs']);
       const event = await endedEvent(pack.organizerId, pack.communityId, { going: pack.memberIds });
-      for (const id of pack.memberIds) await save(id, event.id, { distance_m: 500, duration_s: 150 });
+      for (const id of pack.memberIds) await save(id, event.id, { distance_m: 750, duration_s: 225 });
       const stats = await communityStats(pack.organizerId, pack.communityId);
       expect(stats.members_contributing, `${members} members`).toBe(shownMembers);
       if (shownMembers !== null) {
-        // members x 0.5 km: half-way values round up (2.5 -> 3, 3.5 -> 4, 4 -> 4); time in 5 min steps.
-        expect(stats.total_distance_km).toBe(Math.round(members * 0.5 + 1e-9));
-        expect(stats.total_duration_minutes! % 5).toBe(0);
-        expect(stats.average_pace_s_per_km! % 5).toBe(0);
+        // members x 0.75 km to the nearest 10 km (20 members: 15 km, half-way, rounds up to 20);
+        // members x 3.75 min to the nearest 30 min (20 members: 75 min, half-way, rounds up to 90).
+        expect(stats.total_distance_km).toBe(Math.round((members * 0.75) / 10 + 1e-9) * 10);
+        expect(stats.total_duration_minutes).toBe(Math.round((members * 3.75) / 30 + 1e-9) * 30);
+        expect(stats.total_distance_km! % 10).toBe(0);
+        expect(stats.total_duration_minutes! % 30).toBe(0);
+        expect(stats.average_pace_s_per_km! % 10).toBe(0);
         expect(stats.average_pace_s_per_km).toBe(300);
+      } else {
+        expect(stats).toMatchObject({ insufficient_data: true, total_distance_km: null, total_duration_minutes: null });
       }
     }
   });

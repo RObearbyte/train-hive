@@ -26,6 +26,10 @@ import {
   validateReps,
   validateTime,
   validateWeight,
+  validatePace,
+  serverFieldMessage,
+  timePreview,
+  PACE_RANGE_MESSAGE,
   type WorkoutFormValues,
 } from './workoutLog';
 
@@ -284,5 +288,40 @@ describe('shape checks', () => {
     expect(isWorkoutLogScreen({ ...screen, can_log: 'yes' })).toBe(false);
     expect(isWorkoutLogPage({ logs: [log()], next_before: null })).toBe(true);
     expect(isWorkoutLogPage({ logs: [{}], next_before: null })).toBe(false);
+  });
+});
+
+describe('P5 app fixes after QA', () => {
+  it('formatKm is exact', () => {
+    expect(formatKm(5555)).toBe('5.555');
+    expect(formatKm(1)).toBe('0.001');
+    expect(formatKm(999999)).toBe('999.999');
+  });
+
+  it('weights are exact multiples of 0.25', () => {
+    expect(validateWeight('62.50000000001')).not.toBeNull();
+    expect(validateWeight('62.250')).toBeNull();
+    expect(validateWeight('62.2500001')).not.toBeNull();
+  });
+
+  it('pace must be plausible when distance and time are both given', () => {
+    expect(validatePace('10', '52:10')).toBeNull();
+    expect(validatePace('10', '1:30')).toBe(PACE_RANGE_MESSAGE);
+    expect(validatePace('1', '31:00')).toBe(PACE_RANGE_MESSAGE);
+    expect(validatePace('1', '30:00')).toBeNull();
+    expect(validatePace('1', '1:00')).toBeNull();
+    expect(validatePace('', '1:30')).toBeNull();
+    const schema = createWorkoutSchema('running');
+    const result = schema.safeParse({ exercises: [], notes: '', distanceKm: '1000', time: '0:10:00' });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0].path).toEqual(['time']);
+  });
+
+  it('the time is shown back and the server pace error maps to the time field', () => {
+    expect(timePreview('1:30')).toBe('1 min 30 s');
+    expect(timePreview('1:05:30')).toBe('1 h 05 min');
+    expect(timePreview('abc')).toBeNull();
+    expect(serverFieldMessage('duration_s', 'x')).toBe(PACE_RANGE_MESSAGE);
+    expect(serverFieldMessage('notes', 'x')).toBe('x');
   });
 });

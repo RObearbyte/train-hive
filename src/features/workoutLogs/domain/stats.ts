@@ -8,7 +8,7 @@ import { formatDuration, formatKm, formatPace, formatWeight } from './workoutLog
 
 export const DASH = '—';
 
-export const INSUFFICIENT_COMMUNITY_MESSAGE = 'Not enough members have logged yet (needs at least 5)';
+export const INSUFFICIENT_COMMUNITY_MESSAGE = 'Not enough members have logged yet (needs at least 20)';
 
 export type StatLine = { key: string; label: string; value: string };
 
@@ -58,4 +58,4 @@ export function communityStatLines(stats: CommunityWorkoutStats): StatLine[] {
 }
 
 export const COMMUNITY_NOTE =
-  'Rounded totals from members who chose to log workouts. Nobody is named, individual logs are never shown, and nothing appears until at least 5 members have contributed.';
+  'Rounded totals from members who chose to log workouts. Nobody is named, individual logs are never shown, and nothing appears until at least 20 members have contributed.';

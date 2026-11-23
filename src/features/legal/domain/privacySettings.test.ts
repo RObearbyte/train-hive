@@ -47,7 +47,7 @@ describe('optional rows', () => {
     expect(PURPOSE_COPY.push_notifications.withdrawMessage).toMatch(/delete the push tokens/);
     expect(PURPOSE_COPY.workout_logs.withdrawMessage).toMatch(/All your workout logs will be deleted for good/);
     expect(PURPOSE_COPY.workout_logs.description).toMatch(/organizers never see an individual log/);
-    expect(PURPOSE_COPY.workout_logs.description).toMatch(/at least 5 members/);
+    expect(PURPOSE_COPY.workout_logs.description).toMatch(/at least 20 members/);
     expect(PURPOSE_COPY.emergency_contact.withdrawMessage).toMatch(/deleted/);
     expect(PURPOSE_COPY.profile_demographics.withdrawMessage).toMatch(/deleted/);
   });

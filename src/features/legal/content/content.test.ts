@@ -290,7 +290,7 @@ describe('later-phase features appear in the texts only when their flag is on', 
     expect(text).toContain('exercises (names, repetitions and weights), distance, time, pace and notes');
     expect(text).toMatch(/special-category data/);
     expect(text).toMatch(/no member and no organizer can see an individual log/);
-    expect(text).toMatch(/only once at least 5 members have contributed/);
+    expect(text).toMatch(/only once at least 20 members have contributed/);
     expect(text).toContain('Workout logs: kept until you delete them, withdraw your consent (which deletes all of them) or delete your account');
     expect(text).toMatch(/Profile, then My workouts/);
   });

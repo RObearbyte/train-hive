@@ -94,8 +94,8 @@ describe('QA: what a person types', () => {
   });
 
   it('"1:30" means one minute thirty (m:ss), not an hour and a half', () => {
-    // The label says h:mm:ss. Entered as a finish time for 10 km it is a pace of 9 s per km, which
-    // the form shows in the live pace; nothing rejects it (see KNOWN LIMIT P5-QA-7).
+    // The label says "h:mm:ss or m:ss" and the form shows the understood time back. Entered as a
+    // finish time for 10 km it is a pace of 9 s per km, which validatePace now refuses (P5-QA-7).
     expect(parseDuration('1:30')).toBe(90);
   });
 
@@ -139,7 +139,7 @@ describe('QA: what a person types', () => {
   // saved again (to change only the note or the time) silently becomes 5.56 km (or 5.55): the
   // distance and the pace change without the person touching them.
   // Fix: prefill with the exact value: String(metres / 1000) (three decimals at most).
-  it.fails('DEFECT P5-QA-4: editing a log keeps a distance of 5555 m exactly', () => {
+  it('FIXED P5-QA-4: editing a log keeps a distance of 5555 m exactly', () => {
     const values = formValuesFrom('running', log({ distance_m: 5555, duration_s: 1800 }), null);
     expect(buildInput('running', values)).toMatchObject({ distance_m: 5555 });
   });
@@ -157,7 +157,7 @@ describe('QA: what a person types', () => {
   // passes the form and the server (exact arithmetic on numerics) answers validation_failed:weight_kg
   // with a screen-level message instead of the field hint.
   // Fix: compare with the exact decimal (parse to hundredths, or require at most two decimals).
-  it.fails('DEFECT P5-QA-5: a weight that is not a 0.25 step is refused by the form', () => {
+  it('FIXED P5-QA-5: a weight that is not a 0.25 step is refused by the form', () => {
     expect(validateWeight('62.50000000001')).not.toBeNull();
   });
 
@@ -240,7 +240,7 @@ describe('QA: accessibility labels of the form', () => {
   // no set or exercise number (the reps field does say "Set 2 reps", but not which exercise).
   // Fix: label={`Set ${setIndex + 1} weight (kg), exercise ${index + 1}`} (and the same exercise
   // number on the reps label).
-  it.fails('DEFECT P5-QA-9: the weight and reps fields say which set of which exercise they belong to', () => {
+  it('FIXED P5-QA-9: the weight and reps fields say which set of which exercise they belong to', () => {
     expect(form).not.toMatch(/label="Weight \(kg\)"/);
     expect(form).toMatch(/label=\{`[^`]*exercise \$\{index \+ 1\}[^`]*reps/i);
   });

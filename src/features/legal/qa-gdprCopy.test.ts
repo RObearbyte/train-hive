@@ -40,10 +40,10 @@ describe('texts versus what exists', () => {
       // ...and a flag is on only when the migrations really store that data (and off while they do not).
       expect(migrations.includes(column), `migration: ${phrase} -> ${column}`).toBe(flag);
     }
-    // The group rules are stated because the data exists: 20 answers for demographics, 5 contributors for workout totals.
+    // The group rules are stated because the data exists: 20 answers for demographics, 20 contributors for workout totals.
     expect(privacyText).toContain('rounded to the nearest 5');
     expect(privacyText).toContain('at least 20 members');
-    expect(privacyText).toContain('only once at least 5 members have contributed');
+    expect(privacyText).toContain('only once at least 20 members have contributed');
     expect(privacyText).toContain('no member and no organizer can see an individual log');
     expect(privacyText).toContain('Workout logs: kept until you delete them, withdraw your consent');
     expect(termsText).toMatch(/emergency contact/i);
