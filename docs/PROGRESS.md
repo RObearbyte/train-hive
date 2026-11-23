@@ -78,3 +78,5 @@ Make the web build a first-class way to use TrainHive: responsive desktop layout
 
 ## 2026-11-22 — Copy / share the attendance list
 - Organizer attendance screen: "Copy list" and "Share" buttons produce plain text (title, time, counts, then Present / Absent / Not recorded groups sorted by name, walk-ins marked). Pure formatter `attendanceListText` with unit tests; no backend change. Not yet checked on a device.
+
+- 2026-11-23: Owner decision on the P4 open question: members may reply as many times as they want, so `reply_to_event_post` stays WITHOUT a rate limit (no change needed). Organizers' top-level posts keep the 5 per event per hour cap. Next: P3 "About you", then P5, G3.
