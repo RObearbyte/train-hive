@@ -99,7 +99,7 @@ export function buildTerms(config: LegalConfig, features: LegalFeatures = FEATUR
         blocks: [
           {
             type: 'paragraph',
-            text: `You are responsible for the ${features.eventPosts ? 'posts and replies' : 'announcements'} you write. Post only what you are entitled to share, and keep it respectful and relevant to the community. Do not post other people's private information, and keep health details out of posts. Organizers may cancel an announcement that has not been sent yet if it breaks these rules. You keep your rights in what you write, and you allow TrainHive to store it and show it to your community so the service can work.`,
+            text: `You are responsible for the ${features.eventPosts ? 'posts and replies' : 'announcements'} you write. Post only what you are entitled to share, and keep it respectful and relevant to the community. Do not post other people's private information, and keep health details out of posts. Organizers may cancel an announcement that has not been sent yet if it breaks these rules.${features.eventPosts ? ' Posts and replies in an event discussion are visible to the active members of the community, and the first part of their text can appear in notifications on their phones. Organizers may delete any post or reply that breaks these rules, and you can delete your own replies.' : ''} You keep your rights in what you write, and you allow TrainHive to store it and show it to your community so the service can work.`,
           },
         ],
       },

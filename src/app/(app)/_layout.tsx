@@ -6,6 +6,7 @@ import { useEventFeedRealtime } from '@/features/eventFeed/hooks/useEventFeedRea
 import { PushProvider } from '@/features/notifications/hooks/PushProvider';
 import { useActivityRealtime } from '@/features/notifications/hooks/useActivityRealtime';
 import { useNotificationLinks } from '@/features/notifications/hooks/useNotificationLinks';
+import { useRecordAppOpen } from '@/features/retention/hooks/useRecordAppOpen';
 import { ContentColumn } from '@/features/shell/components/ContentColumn';
 import { WebSidebar } from '@/features/shell/components/WebSidebar';
 import { useLayout } from '@/features/shell/hooks/useLayout';
@@ -46,10 +47,17 @@ function AppShell() {
   );
 }
 
+/** Reports app opens (inactivity retention) for the whole signed-in area; renders nothing. */
+function AppOpenRecorder() {
+  useRecordAppOpen();
+  return null;
+}
+
 /** Everything behind the membership gate. Detail and form screens are pushed above the tabs. */
 export default function AppLayout() {
   return (
     <PushProvider>
+      <AppOpenRecorder />
       {/* Members from before the consent ledger (or after a new version) accept the current terms first. */}
       <ConsentGate>
         <AppShell />

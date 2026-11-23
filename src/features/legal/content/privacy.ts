@@ -83,7 +83,8 @@ export function buildPrivacyNotice(
               features.eventPosts
                 ? {
                     label: 'Announcements, posts and replies in event discussions',
-                    value: 'To let members communicate about events. Basis: contract.',
+                    value:
+                      "Organizers write posts under an event and members reply to them (one level). Each post or reply is stored with its text, its date and its author, and is shown with the author's display name. It is used so members can talk about events. Basis: contract. Please keep health details and other people's private information out of posts.",
                   }
                 : {
                     label: 'Announcements organizers publish',
@@ -125,7 +126,7 @@ export function buildPrivacyNotice(
               {
                 label: 'Technical data held by our providers',
                 value:
-                  "Internet addresses and server logs created when your device talks to our providers. Basis: the providers' legitimate interest in running and securing their services, covered by their data processing terms with us.",
+                  "Internet addresses and server logs created when your device talks to our providers. Our hosting providers keep these technical logs for a limited time, according to their own settings. Basis: the providers' legitimate interest in running and securing their services, covered by their data processing terms with us.",
               },
             ],
           },
@@ -155,6 +156,11 @@ export function buildPrivacyNotice(
                     'Organizers never see your birth year or gender next to your name, and never as an individual answer. They see only approximate group totals for the whole community, rounded to the nearest 5, and only once at least 20 members have answered that question. Groups of fewer than 5 people are hidden, and TrainHive also hides a larger group when showing it would reveal a smaller one. Even so, an organizer who watches the numbers change over time, or who controls who joins, may be able to work out something about a few people.',
                   ]
                 : []),
+              ...(features.eventPosts
+                ? [
+                    "The posts and replies in an event's discussion are visible to the active members of that community, with the author's display name. Organizers can delete any post or reply, and you can delete your own replies. Members who have left or were removed can no longer read the discussion.",
+                  ]
+                : []),
               ...(features.workoutLogs
                 ? [
                     'Your workout logs are private to you: no member and no organizer can see an individual log. Organizers see only approximate community totals (for example the total distance and the number of sessions logged), and only once at least 20 members have contributed to the period shown. The values are rounded and approximate. The totals count only members who are still in the community and have agreed to workout logs. You can delete a log at any time.',
@@ -181,6 +187,14 @@ export function buildPrivacyNotice(
               'The hosting provider of the web version of TrainHive: serves the website files.',
             ],
           },
+          ...(features.eventPosts
+            ? [
+                {
+                  type: 'paragraph' as const,
+                  text: 'A push notification about a new post (sent to members who answered that they are going) or a new reply (sent to the author of the post) contains the first 200 characters of its text, and for a reply the name of the person who wrote it. The text can therefore appear on the lock screen of your phone, and Expo and Google receive it. You can turn push notifications off at any time.',
+                },
+              ]
+            : []),
           ...(features.workoutLogs || features.emergencyContact
             ? [
                 {
@@ -215,11 +229,16 @@ export function buildPrivacyNotice(
             type: 'list',
             items: [
               `In-app notifications: deleted once they are more than ${RETENTION.readNotificationsDays} days old if you have read them, and once they are more than ${RETENTION.unreadNotificationsDays} days old if you never read them.`,
-              `Records of failed code attempts (used to stop guessing): deleted after ${RETENTION.failedAttemptsHours} hours.`,
-              'Push device identifiers (tokens): deleted when you turn push notifications off, when you delete your account, and when a device stops working, within 30 days.',
+              `Records of failed code attempts (used to stop guessing): deleted once they are more than ${RETENTION.failedAttemptsHours} hours old. The clean-up runs once a day, so a record can stay for up to about two days.`,
+              'Push device identifiers (tokens): deleted when you withdraw your push consent (Profile, then Privacy), when you delete your account, when a device stops working, within 30 days, and when a device has not been used for 9 months. The "Push notifications" switch in the notification settings only stops pushes from being sent: it does not delete the identifier. Withdrawing the consent does.',
               `Account data (name, membership, RSVPs, attendance${features.eventPosts ? ', posts' : ''}${optionalConsents ? ', optional data you gave' : ''}, your consent records): kept until you delete your account. When you delete it, attendance counts and the attendance change history stay without your name or identifier.`,
               ...(features.demographics
                 ? ['Birth year and gender: kept until you withdraw your consent (which deletes them), clear them yourself or delete your account.']
+                : []),
+              ...(features.eventPosts
+                ? [
+                    'Event discussions: posts and replies are kept until they are deleted (new ones can be written until 30 days after the event). A deleted post or reply keeps no text. If you leave a community, or are removed, your posts and replies stay in its discussions. When you delete your account your replies are deleted and the posts you wrote stay without your name.',
+                  ]
                 : []),
               ...(features.workoutLogs
                 ? [
@@ -271,7 +290,13 @@ export function buildPrivacyNotice(
                   ]
                 : []),
               'Download your data: Profile, then Privacy, then Download my data. You get a file with the data we hold about you. You can do this up to 10 times per hour.',
-              'Delete your account: Profile, then Privacy, then Delete my account. This deletes your profile, memberships, RSVPs, notifications, push devices and consent records, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you published stay visible to your community; after you delete your account they are no longer linked to you. In a very small community these anonymous counts can still point to a person. If you are the only organizer of a community that still has other members, hand over to another organizer first (Profile, then Members). A community in which you are the only member is deleted together with your account.',
+              `Delete your account: Profile, then Privacy, then Delete my account. This deletes your profile, memberships, RSVPs, notifications, push devices, read markers, invitation code records, the log of your data downloads, your app activity record and consent records${
+                features.demographics || features.emergencyContact ? ', your About you details' : ''
+              }${features.workoutLogs ? ', all your workout logs' : ''}${
+                features.eventPosts ? ', your replies in event discussions' : ''
+              }, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you published${
+                features.eventPosts ? ', posts you wrote in event discussions' : ''
+              } and events you organized stay visible to your community; after you delete your account they are no longer linked to you. In a very small community these anonymous counts can still point to a person. If you are the only organizer of a community that still has other members, hand over to another organizer first (Profile, then Members). A community in which you are the only member is deleted together with your account.`,
               'Leave a community: Profile, then Leave this community. You lose access to it, and your attendance history stays in its records until you delete your account.',
               `Restrict or object to processing: contact us at ${config.privacyEmail}. Because accounts are anonymous, we can only act on a request if you can show that the account is yours, for example by creating a code inside the app when we ask.`,
               'We answer within one month.',
@@ -290,7 +315,7 @@ export function buildPrivacyNotice(
           {
             type: 'list',
             items: [
-              'Every data table is protected by row-level security: the database itself decides who may read what.',
+              'Every table the app can read is protected by row-level security: the database itself decides who may read what. The most sensitive tables cannot be reached by the app at all.',
               'All changes go through server functions that check permissions, so the app cannot bypass the rules.',
               'Data is encrypted in transit. The app contains no administrator keys.',
               'Attendance changes are written to an audit log, and the service limits repeated attempts to guess codes.',

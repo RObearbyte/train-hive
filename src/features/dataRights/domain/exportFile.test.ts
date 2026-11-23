@@ -47,6 +47,16 @@ describe('the About-you details in the summary', () => {
   });
 });
 
+describe('the app activity record in the summary', () => {
+  it('is named when the file holds it, and only then', () => {
+    const activity = { last_app_open_at: '2026-11-23T10:00:00Z', inactivity_notice_at: null };
+    const withActivity = summarizeExport(payload({ extensions: { account_activity: activity } }));
+    expect(withActivity.parts.at(-1)).toBe('your app activity record');
+    expect(summarizeExport(payload({ extensions: { account_activity: null } })).parts.join(' ')).not.toMatch(/activity/);
+    expect(summarizeExport(payload()).parts.join(' ')).not.toMatch(/activity/);
+  });
+});
+
 describe('the workout logs in the summary', () => {
   it('are counted when the file holds some, and only then', () => {
     const log = { log_id: 'l1', session_id: 's1', log_type: 'running' };

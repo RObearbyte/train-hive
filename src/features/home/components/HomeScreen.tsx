@@ -7,6 +7,7 @@ import { CommunityTitle } from '@/features/communities/components/CommunitySwitc
 import { useSession } from '@/features/community/hooks/SessionProvider';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { useRemovalNotice } from '@/features/community/hooks/useRemovalNotice';
+import { useInactivityNotice } from '@/features/retention/hooks/useInactivityNotice';
 import { QuickInvite } from '@/features/invitations/components/QuickInvite';
 import { FAB_CLEARANCE } from '@/features/invitations/domain/quickInvite';
 import { AnnouncementRow } from '@/features/notifications/components/AnnouncementRow';
@@ -49,6 +50,7 @@ export function HomeScreen() {
   const trainings = useCommunityTrainings(now);
   const activity = useActivity();
   const removal = useRemovalNotice();
+  const inactivity = useInactivityNotice();
 
   const feed = buildHomeFeed(
     [...trainings.upcoming, ...trainings.past],
@@ -240,6 +242,14 @@ export function HomeScreen() {
             tone="info"
             message={removal.message}
             action={{ label: 'Dismiss', onPress: removal.dismiss }}
+          />
+        ) : null}
+        {inactivity.message ? (
+          <Banner
+            tone="info"
+            title="Welcome back"
+            message={inactivity.message}
+            action={{ label: 'Dismiss', onPress: inactivity.dismiss }}
           />
         ) : null}
         {hasAnswered ? <PushPromptCard /> : null}

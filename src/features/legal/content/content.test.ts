@@ -236,8 +236,8 @@ describe('what the privacy notice must say (GDPR plan sections 1 to 4)', () => {
 });
 
 const OFF: LegalFeatures = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
-/** What ships now: About you and workout logs are built (backend, app and these texts); event posts are not described yet. */
-const SHIPPED: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: false };
+/** What ships now: About you, workout logs and event discussions are built (backend, app and these texts). */
+const SHIPPED: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
 const ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
 const SINGLE: [keyof LegalFeatures, RegExp][] = [
   ['demographics', /birth year|gender|rounded to the nearest 5/i],
@@ -247,7 +247,7 @@ const SINGLE: [keyof LegalFeatures, RegExp][] = [
 ];
 
 describe('later-phase features appear in the texts only when their flag is on', () => {
-  it('ships with About you and workout logs on and the later features still off', () => {
+  it('ships with About you, workout logs and event discussions on', () => {
     expect(FEATURES).toEqual(SHIPPED);
   });
 
@@ -280,8 +280,6 @@ describe('later-phase features appear in the texts only when their flag is on', 
     expect(text).toMatch(/Profile, then About you/);
     expect(text).toMatch(/explicit consent/);
     expect(text).toMatch(/Notification texts never contain workout data or emergency contact details/);
-    // Still not promised: event discussions.
-    expect(text).not.toMatch(/event discussions|replies/i);
   });
 
   it('privacy (shipped): says what workout logs hold, why, who sees them and how long they are kept', () => {
@@ -293,6 +291,28 @@ describe('later-phase features appear in the texts only when their flag is on', 
     expect(text).toMatch(/only once at least 20 members have contributed/);
     expect(text).toContain('Workout logs: kept until you delete them, withdraw your consent (which deletes all of them) or delete your account');
     expect(text).toMatch(/Profile, then My workouts/);
+  });
+
+  it('privacy (shipped): says who sees event posts, how long they stay, what deletion does and what the push shows', () => {
+    const text = textOf(buildLegalDocument('privacy', FAKE));
+    expect(text).toContain('Announcements, posts and replies in event discussions');
+    expect(text).toMatch(/visible to the active members of that community, with the author's display name/);
+    expect(text).toMatch(/Organizers can delete any post or reply, and you can delete your own replies/);
+    expect(text).toMatch(/Event discussions: posts and replies are kept until they are deleted/);
+    expect(text).toMatch(/A deleted post or reply keeps no text/);
+    expect(text).toMatch(/your posts and replies stay in its discussions/);
+    expect(text).toMatch(/your replies are deleted and the posts you wrote stay without your name/);
+    expect(text).toMatch(/first 200 characters of its text/);
+    expect(text).toMatch(/lock screen/);
+  });
+
+  it('privacy: the push token and failed-attempt wording matches what the server does', () => {
+    const text = textOf(buildLegalDocument('privacy', FAKE));
+    expect(text).toMatch(/deleted when you withdraw your push consent \(Profile, then Privacy\)/);
+    expect(text).toMatch(/only stops pushes from being sent: it does not delete the identifier/);
+    expect(text).toMatch(/more than 24 hours old\. The clean-up runs once a day/);
+    expect(text).toMatch(/Our hosting providers keep these technical logs for a limited time/);
+    expect(text).toMatch(/The most sensitive tables cannot be reached by the app at all/);
   });
 
   it('terms (shipped): organizers must treat the shared emergency contact and T-shirt size with care', () => {

@@ -1,6 +1,6 @@
 # TrainHive — Claims audit of the privacy notice and the terms
 
-**2026-11-23, phase G3.** Every factual claim in `src/features/legal/content/privacy.ts` and `terms.ts`, rendered with the shipped flags (`src/features/legal/constants.ts`: `demographics`, `emergencyContact`, `workoutLogs` true; `eventPosts` **false**), checked against what the code and the migrations (through `20261202000100_retention.sql`) really do. Legal texts are version 2 (`PRIVACY_VERSION`, `TERMS_VERSION`), `LEGAL_REVIEWED = false`.
+**2026-11-23, phase G3.** Every factual claim in `src/features/legal/content/privacy.ts` and `terms.ts`, rendered with the shipped flags (`src/features/legal/constants.ts`: `demographics`, `emergencyContact`, `workoutLogs` true; `eventPosts` **false when this audit was run, true since 2026-11-23: see section 2b**), checked against what the code and the migrations (through `20261202000100_retention.sql`) really do. Legal texts are version 2 (`PRIVACY_VERSION`, `TERMS_VERSION`), `LEGAL_REVIEWED = false`.
 
 Status: **OK** = the code does what the text says (evidence named); **GAP** = the text is wrong, incomplete or will become wrong; **OWNER** = true only once the owner does something outside the code. Evidence is "file / function" (migrations in `supabase/migrations/`, tests in `supabase/tests/`).
 
@@ -69,6 +69,12 @@ Status: **OK** = the code does what the text says (evidence named); **GAP** = th
 | T8 | Changes need confirmation before joining another community | as P46 | OK |
 | T9 | Romanian law | Text | OK (lawyer review) |
 
+## 2b. Follow-up (2026-11-23, mobile task after G3)
+
+- **Gap A fixed:** `FEATURES.eventPosts` is now `true`; the privacy notice and the terms describe event discussions (who writes, who sees, deletion, what stays when a member leaves, what account deletion does, the 200-character push preview on the lock screen). P6, T1 and T5 are now OK. The legal version stays **2** (version 2 was never published to the hosted server; it now covers About you, workout logs and event discussions). Tests: `qa-gdprCopy.test.ts` (Q7-7 now also ties the event text to the migrations: preview length 200, replies deleted and posts de-authored in `erase_user`) and `content/content.test.ts`.
+- **Gap B, app side done:** `record_app_open()` is called when the signed-in area starts and on every return to the foreground (at most once an hour on the client; `src/features/retention/`), and a pending notice shows once as a dismissible banner on Home. The notice text below is still **not** published and the server clean-up stays **disabled**.
+- **Gap C fixed (copy):** P24 (24 hours, up to about two days), P25 (what the notification switch does vs withdrawing consent, 270 days unused), P32 (full list of what deletion removes and what stays), P36 (RLS wording), P11 / P20 (hosting providers keep technical logs for a limited time, no vendor named). The export summary names the new `account_activity` part as "your app activity record".
+
 ## 3. Gaps and exactly what to change
 
 ### Gap A (high): event discussions are live but not described
@@ -86,7 +92,9 @@ The event feed (organizer posts, member replies, push notifications with a post 
    - Tests to update with it: `src/features/legal/qa-gdprCopy.test.ts` (it asserts `eventPosts: false` and "no event discussions"; turn it into "mentioned exactly when the flag is on and `public.event_posts` exists in the migrations", like the other items) and `src/features/legal/content/content.test.ts` (`SHIPPED`).
 2. **Hide it until the text is approved:** render `DiscussionEntry` (`src/app/(app)/trainings/[id].tsx`), the route `src/app/(app)/events/[id]/feed.tsx`, the Realtime hook and the notification deep links only when `FEATURES.eventPosts` is true. The backend can stay deployed: without a screen nobody posts, so no post data and no post notifications are created.
 
-### Gap B (conditional, before enabling inactivity clean-up)
+### Gap B (conditional, before enabling inactivity clean-up) — TO PUBLISH BEFORE ENABLING
+
+**Status 2026-11-23:** app side done (see section 2b); the text below is not in the notice yet because the clean-up is disabled. Publishing it needs a legal version bump (3) and the steps in this section.
 
 Add to "How long we keep data" (and enable only after this text is published): *"Accounts that are not used: if an account shows no activity for 24 months (no app opens, answers, attendance, posts or logs), we may schedule it for deletion. If you open the app within 30 days, the deletion is cancelled and you see a message. Otherwise the account is deleted exactly as with Delete my account."* The app must call `record_app_open()` on start and on return to the foreground and show `notice` once (mobile task; contract in `docs/API_CONTRACT.md` "Retention (G3)").
 

@@ -2,7 +2,7 @@
 
 Everything built since your last APK (consents, account export/deletion, Members screen, Events, bell and Home feed, quick invite) has only been checked by automated tests, a few stand-in browser runs and code reviews. This session is the first time it meets your real Supabase project and real phones. Expect to find problems; write them down and send them to me.
 
-Order matters: **new app first, database migrations after.** (The new database rules refuse joins from app versions that don't record consent.)
+Order matters: **new app first, database migrations after** (section B has the exact order). The new database rules refuse joins from app versions that do not record consent.
 
 ## A. Prepare (about 15 minutes of work, plus the build wait)
 
@@ -23,14 +23,23 @@ Order matters: **new app first, database migrations after.** (The new database r
    ```
 3. **Install it** on both phones from the link the build prints. Uninstalling the old app first is optional; keeping it keeps the test accounts.
 
-## B. Apply the database migrations (after the new APK is installed)
+## B. Order for the owner (updated 2026-11-23)
 
-4. In the project folder:
+The new APK must be installed before the database is changed (the new rules refuse joins from older app versions). Exactly this order:
+
+1. **Set the EAS legal variables** (section A step 1: name, address, privacy email, environment `preview`).
+2. **Build the APK** (section A step 2) and **install it on both phones** (step 3).
+3. **Then apply the migrations:**
    ```bash
    npx supabase@latest db push --remote
    ```
-   It lists the pending migrations (the newest ones are `20261123…` to `20261127…`: consents, member roles, data rights, GDPR fixes, events, text hygiene). Confirm. If it fails, paste the error to me and do not retry blindly.
-5. Check: `npx supabase@latest migration list --remote` should show every row with a Remote value.
+   Pending migrations, in order: `20261129000100` event feed, `20261130000100` about you, `20261201000100` workout logs, `20261202000100` retention (earlier ones may also be listed if not applied yet). Confirm. If it fails, paste the error to me and do not retry blindly. Check afterwards with `npx supabase@latest migration list --remote` (every row has a Remote value).
+4. **Then publish the legal version** (the build bundles privacy and terms version 2; the server still holds 1). Run once in the Supabase SQL editor:
+   ```sql
+   select public.admin_set_legal_version('terms','2'), public.admin_set_legal_version('privacy','2');
+   ```
+   Until then new joins from this build are refused as "app update required"; afterwards every existing member sees "We updated our terms" once. Do not run it before the new build is on every phone you want to keep working. Version 2 now also describes event discussions, workout logs and About you.
+5. **Retention stays disabled.** Do not run `admin_set_retention_enabled(true)`: the privacy notice does not describe the inactivity clean-up yet (`docs/CLAIMS_AUDIT.md`, gap B).
 
 ## C. Test script (two phones: A = organizer, B = member; optionally a browser as C)
 
@@ -59,12 +68,17 @@ For every problem: the screen, what you tapped, the exact text of any error, and
 - **`db push` partly applied:** do not re-run migrations by hand; paste the output and I'll tell you how to continue.
 - **Deleting an account fails on the hosted project:** the plan has a fallback (an Edge Function with the admin API), documented in `docs/API_CONTRACT.md` ("GDPR G2"); tell me and I'll build it.
 
-## F. Extra step since the About-you page (legal version 2)
+## F. Test script additions for the newest features
 
-This build bundles privacy/terms version **2**, but the hosted server still holds version 1. After `db push --remote` AND installing the new APK, run once in the Supabase SQL editor:
+Run these after section C. A = organizer, B = member.
 
-```sql
-select public.admin_set_legal_version('terms','2'), public.admin_set_legal_version('privacy','2');
-```
-
-Until then, new joins from this build are refused as "app update required". Afterwards every existing member sees "We updated our terms" once. Run it only when the build with version 2 is installed on every phone you want to keep working (older builds are refused afterwards).
+1. **Communications tab:** a badge shows unread announcements and event discussions; opening the tab and the items clears it.
+2. **Push opt-in box:** shown on the first screen after B answers an RSVP; try "Not now" and then turning it on from Profile, Privacy.
+3. **Cancellation reason:** A cancels an event with a reason; B sees the reason on the event and in the notification.
+4. **Attendance Copy list:** on the attendance screen A uses Copy list and pastes it somewhere to check names and statuses.
+5. **About you:** Profile, About you on B: save a birth year, gender, emergency contact and T-shirt size (consent switches in Profile, Privacy). On A open Members: the emergency contact and T-shirt size of B are visible to the organizer, the birth year and gender are not (only group totals once 20 members answered, so A will see "not enough yet"). Withdraw the consent on B: the data disappears for A.
+6. **Event feed:** on an event, A writes a post; B (going) gets a push whose text starts with the first part of the post; B replies; A gets a reply notification. A deletes a post (no text remains), B deletes their own reply. Open the notification: it lands on the discussion.
+7. **Workout log and My workouts:** after an event B took part in, B saves a workout log from the prompt or the event; Profile, My workouts lists it with stats; edit and delete one.
+8. **Community workout totals:** they only appear with at least 20 contributors, so A will see "not enough yet" on the test community. That is correct.
+9. **Download my data** on B: the summary names the new parts (About you, workout logs, app activity record).
+10. **Retention:** nothing visible should happen (disabled). Opening the app only records the last open; no banner appears.

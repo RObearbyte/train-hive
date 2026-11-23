@@ -21,7 +21,8 @@ export const DRAFT_BANNER_TEXT = 'Draft — to be reviewed by a lawyer before la
 
 /**
  * Versions of the bundled texts. They must match `legal_documents` on the server (seeded as '1'):
- * version '2' (About you: birth year, gender, emergency contact, T-shirt size) is published on the
+ * version '2' (About you: birth year, gender, emergency contact, T-shirt size; workout logs; event
+ * discussions; it has never been published to the hosted server, so it still covers all of them) is published on the
  * server with `select public.admin_set_legal_version('terms','2'), public.admin_set_legal_version('privacy','2');`
  * when the new app build is in use, which makes every member accept the updated texts.
  */
@@ -92,5 +93,5 @@ export const FEATURES: LegalFeatures = {
   demographics: true,
   emergencyContact: true,
   workoutLogs: true,
-  eventPosts: false,
+  eventPosts: true,
 };

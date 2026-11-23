@@ -98,6 +98,8 @@ export function summarizeExport(payload: MyDataExport): ExportSummary {
   // Workout logs (P5): absent in files exported before P5; named only when the person has logs.
   const workoutLogs = payload.extensions?.workout_logs?.length ?? 0;
   if (workoutLogs > 0) parts.push(`${workoutLogs} ${workoutLogs === 1 ? 'workout log' : 'workout logs'}`);
+  // G3: when the app last told the server it was opened (and a pending inactivity notice); absent in older files.
+  if (payload.extensions?.account_activity) parts.push('your app activity record');
   const truncated: string[] = [];
   const flags = (payload.truncated ?? {}) as Record<string, unknown>;
   for (const [key, label] of Object.entries(TRUNCATED_LABELS)) {

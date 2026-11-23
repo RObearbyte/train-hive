@@ -27,12 +27,13 @@ const termsText = JSON.stringify(buildTerms(config as never));
 describe('texts versus what exists', () => {
   // Q7-7 (fixed, updated for P3): the texts name a data item exactly when its flag is on AND the migrations
   // build it; later phases flip a flag in constants.ts in the same change that ships the feature.
-  it('Q7-7: the notice describes About you and workout logs (flags on, migrations present) and nothing unbuilt (flags off)', () => {
-    expect(FEATURES).toEqual({ demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: false });
+  it('Q7-7: the notice describes About you, workout logs and event discussions (flags on, migrations present) and nothing unbuilt (flags off)', () => {
+    expect(FEATURES).toEqual({ demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true });
     const items = [
       { flag: FEATURES.demographics, phrase: 'Birth year and gender', column: 'birth_year' },
       { flag: FEATURES.emergencyContact, phrase: 'Emergency contact and T-shirt size', column: 'tshirt_size' },
       { flag: FEATURES.workoutLogs, phrase: 'Workout logs', column: 'private.workout_logs' },
+      { flag: FEATURES.eventPosts, phrase: 'Announcements, posts and replies in event discussions', column: 'public.event_posts' },
     ];
     for (const { flag, phrase, column } of items) {
       // The text mentions the data exactly when the flag is on...
@@ -49,18 +50,26 @@ describe('texts versus what exists', () => {
     expect(termsText).toMatch(/emergency contact/i);
     // The Terms ask organizers to protect the contact; they say nothing about workouts.
     expect(termsText).not.toMatch(/workout/i);
-    // Event discussions (feature flag still false) must not be promised.
-    expect(privacyText).not.toMatch(/event discussions/i);
+    // Event discussions: what the notice says is what the migrations do.
+    expect(privacyText).toContain('first 200 characters of its text');
+    expect(migrations).toContain("select left(btrim(regexp_replace(p_body, '\\s+', ' ', 'g')), 200)");
+    expect(privacyText).toContain('visible to the active members of that community');
+    expect(privacyText).toContain('A deleted post or reply keeps no text');
+    expect(migrations).toContain('delete from public.event_posts ep where ep.author_id = p_user_id and ep.parent_id is not null;');
+    expect(migrations).toContain('update public.event_posts ep set author_id = null where ep.author_id = p_user_id;');
+    expect(privacyText).toContain('your replies in event discussions');
+    expect(privacyText).toContain('posts you wrote in event discussions');
+    expect(termsText).toMatch(/Posts and replies in an event discussion are visible to the active members/);
   });
 
   it('Q7-7: with the About-you flags off the texts say nothing about the data (the guard for a flag that is false)', () => {
     const off = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
     const privacyOff = JSON.stringify(buildPrivacyNotice(config as never, off));
     const termsOff = JSON.stringify(buildTerms(config as never, off));
-    for (const phrase of ['Birth year and gender', 'Emergency contact', 'Workout logs', 'rounded to the nearest 5']) {
+    for (const phrase of ['Birth year and gender', 'Emergency contact', 'Workout logs', 'rounded to the nearest 5', 'event discussions', 'first 200 characters']) {
       expect(privacyOff.includes(phrase), phrase).toBe(false);
     }
-    expect(termsOff).not.toMatch(/emergency contact|workout/i);
+    expect(termsOff).not.toMatch(/emergency contact|workout|event discussion|replies/i);
   });
 
   it('Q7-7: with every flag on, the notice names each item and the 5-person rule', () => {
