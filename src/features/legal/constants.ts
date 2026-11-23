@@ -78,7 +78,7 @@ export const LEGAL_DOC_TITLES: Record<LegalDocKind, string> = {
  * flag in the same change that ships the feature.
  */
 export type LegalFeatures = {
-  /** Birth year and gender, with grouped statistics (groups of 5 or more). */
+  /** Birth year and gender, with approximate group totals. */
   demographics: boolean;
   /** Emergency contact and T-shirt size. */
   emergencyContact: boolean;

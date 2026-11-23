@@ -545,7 +545,7 @@ Migration `20261123000100_consents.sql`. Plan: `docs/GDPR_PLAN.md` sections 2 an
 ## RPCs (`authenticated`; errors are raised, `P0001`, message = code)
 
 `record_consent(p_purpose text, p_document_version text default null) → jsonb` → `ConsentEvent` `{ purpose, granted: true, document_version, at, changed }`
-- `terms_privacy`: `p_document_version` must equal the current combined version (`my_consents().terms_privacy_version`), else `validation_failed:document_version`. Other purposes: optional; if given it must equal the current privacy version.
+- `terms_privacy`: `p_document_version` must equal the current combined version (`my_consents().terms_privacy_version`), else `validation_failed:document_version`. Other purposes: optional; if given it must equal the current privacy version, else `validation_failed:document_version` (nothing written); the stored stamp is that version. **P3-QA-7:** the app passes the privacy version it showed (its bundled version) for optional purposes, so a grant is stamped with the text the person actually saw; on `validation_failed:document_version` it shows `app_update_required`, as for `terms_privacy`. Null / omitted (older builds): stamped with the version in force, as before.
 - Idempotent: if the latest event is already a grant of the same version, nothing is written and `changed` is false.
 - Rate limit: a new grant is refused with `rate_limited` when the caller already has 30 ledger events in the last hour. Withdrawals are never limited (a withdrawal must stay as easy as the grant; each needs a prior grant, so they are bounded too).
 - Errors: `not_authenticated` (no user, or the JWT's user was deleted), `validation_failed:purpose`, `validation_failed:document_version`, `rate_limited`.
@@ -894,7 +894,7 @@ TypeScript (`src/lib/database.types.ts`): tables `event_posts` (`EventPost`), `e
 
 # About you (P3, append-only)
 
-Migration `20261130000100_about_you.sql`. Plan: `docs/EVENTS_PLAN.md` section 3, `docs/GDPR_PLAN.md` sections 1-2. Tests: `supabase/tests/about-you.test.ts`, plus the privilege matrix (`qa-privileges.test.ts`) and the GDPR suites (`data-export.test.ts`, `account-deletion.test.ts`). All functions below: `security definer`, `set search_path = ''`, `authenticated` only (anon and service_role: no execute); errors are raised (`P0001`, message = code).
+Migration `20261130000100_about_you.sql`. Plan: `docs/EVENTS_PLAN.md` section 3, `docs/GDPR_PLAN.md` sections 1-2. Tests: `supabase/tests/about-you.test.ts`, `supabase/tests/about-you-qa.test.ts`, plus the privilege matrix (`qa-privileges.test.ts`) and the GDPR suites (`data-export.test.ts`, `account-deletion.test.ts`). All functions below: `security definer`, `set search_path = ''`, `authenticated` only (anon and service_role: no execute); errors are raised (`P0001`, message = code).
 
 ## Storage
 
@@ -946,13 +946,19 @@ Migration `20261130000100_about_you.sql`. Plan: `docs/EVENTS_PLAN.md` section 3,
 
 `get_community_demographics(p_community_id uuid) → jsonb` (`CommunityDemographics`)
 ```
-{ community_id, min_group_size: 5, member_count, reference_year,
+{ community_id, min_group_size: 5, min_members_with_data: 20, rounded_to: 5, member_count, reference_year,
+  insufficient_data: { age_bands: boolean, genders: boolean },
   age_bands: [ { key, count, suppressed } ],   -- under_18, 18_29, 30_39, 40_49, 50_59, 60_plus, not_provided
   genders:   [ { key, count, suppressed } ] }  -- woman, man, other, prefer_not_to_say, not_provided
 ```
-- Caller: active organizer. Population: the community's **active** members (organizers included); a missing field or one without current consent is `not_provided`. Age = `reference_year` (server, UTC) - birth year (the age reached this calendar year). Errors: `not_authenticated`, `forbidden`.
-- **Suppression rule (each dimension separately; `count` null when suppressed):** (1) every cell below 5 (0 included) is suppressed; (2) while the suppressed cells are only one, or add up to less than 5, the smallest remaining cell (first in the listed order on ties) is suppressed too; (3) stop when nothing is suppressed, when at least two suppressed cells add up to 5 or more, or when everything is suppressed. Why: the organizer knows `member_count` (the member list), so the sum of the suppressed cells can always be derived by subtraction; the rule makes that sum cover at least 5 people over at least 2 categories, so no group below 5 (and no "nobody / everybody else is X" fact) can be recovered by differencing. There is no age × gender cross-table.
-- **Known limits (not prevented):** differencing over time (asking before and after one member joins, leaves or edits can reveal that member's band); an organizer of two communities with overlapping members can compare the two results. The app should not offer history or comparisons of these numbers.
+- Caller: active organizer. Population: the community's **active** members (organizers included); a missing field or one without current consent is `not_provided`. Age = `reference_year` (server, UTC) - birth year (the age reached this calendar year). `member_count` is exact (organizers see the member list anyway). Errors: `not_authenticated`, `forbidden`.
+- **Publication rule (each dimension separately, `private.publish_demographic_cells`; `count` null when suppressed). The numbers are approximate group totals (P3-QA-1):**
+  1. **Minimum data:** unless at least 20 active members have a value for the dimension (any cell except `not_provided`), every cell is suppressed and `insufficient_data.<dimension>` is true.
+  2. **Suppression of the exact counts:** (a) every cell below 5 (0 included) is suppressed; (b) while the suppressed cells are only one, or add up to less than 5, the smallest remaining cell (first in the listed order on ties) is suppressed too; (c) stop when nothing is suppressed, when at least two suppressed cells add up to 5 or more, or when everything is suppressed. Why: the organizer knows `member_count`, so the sum of the suppressed cells can be estimated by subtraction; the rule makes it cover at least 5 people over at least 2 categories.
+  3. **Rounding:** every shown count is the real count rounded to the nearest multiple of 5 (`rounded_to`; remainder 0-2 down, 3-4 up), so it is at least 5 and within 2 of the real count; a cell whose rounded value would be 0 is never shown (cannot happen after step 2). The app must present them as approximate ("about 10").
+  There is no age × gender cross-table.
+- **What this protects:** no organizer ever sees a person's age or gender; a group's exact size is never returned; adding a few accounts once (sock puppets through an invitation code) no longer reveals a hidden group: with 1, 2 or 3 real members in a group the answer is identical (test "P3-QA-1" in `about-you-qa.test.ts`). Honest privacy wording: "organizers see only approximate group totals (rounded to 5), and nothing until at least 20 members have answered".
+- **Known limits (not prevented):** repeated differencing over time: an organizer who adds or removes accounts (or watches members join, leave or edit) one at a time and queries after each change can find where a rounded total crosses a rounding boundary and so infer a hidden group's size (each added account needs an invitation code redemption, which is recorded; test "KNOWN LIMIT: adding accounts one at a time ..."); an organizer of two communities with overlapping members can compare the two results. The app should not offer history or comparisons of these numbers.
 
 ## GDPR
 

@@ -1259,3 +1259,15 @@ Legal wording vs code: accurate for what is stored, who sees it, the groups-of-5
 Privacy of logs: only `lib/logger.ts` reports errors (no Sentry / crash reporter is installed); apart from P3-QA-3 and P3-QA-4 the About-you code logs only codes. `tel:` links keep digits and one leading "+" only (injection corpus tested). Query cache: members' details live 30 s after unmount and everything is cleared on sign-out and account deletion; no persisted query cache exists.
 
 Not verified: hosted Supabase, device, browser, TalkBack, clipboard, `tel:` handling, Realtime.
+
+### P3 QA - status after the fixes (2026-11-23)
+
+- P3-QA-1: fixed in the backend (approximate totals: rounded to 5, minimum 20 members with data); the app now shows "about N", "Not enough answers yet (needs at least 20 members)" per dimension, and the explanatory note, privacy notice and settings text say "approximate group totals, rounded to the nearest 5, only once at least 20 members have answered, never individual birth years or genders" (the "one by one" claim is gone; the notice also admits that watching changes over time may reveal something). Open (known limit, tested on the backend): probing a rounding boundary by adding or removing sock-puppet accounts one at a time.
+- P3-QA-2: fixed. `aboutYouSignature` no longer includes the agreements, so a failed save keeps what was typed (test lost `.fails`).
+- P3-QA-3: fixed. `unexpected()` keeps only the function name (test lost `.fails`).
+- P3-QA-4: fixed. A failed call attempt logs a fixed message, never the `tel:` URL (test lost `.fails`).
+- P3-QA-5: fixed. `validatePhone` accepts `+` only as the first character (the server rule `^\+?[0-9 ()./-]+$`), with tests.
+- P3-QA-6: fixed. The welcome page is marked as seen when it is first shown. The sign-out confirmation now says that the About-you details and the community membership stay on the server, that nobody can reach them after signing out, and that "Clear my About-you data" can remove the details first. Not changed: the delete-account flow (it already deletes everything).
+- P3-QA-7: fixed in the app. `recordConsent` sends the bundled privacy version as `p_document_version` for the optional purposes (push, demographics, emergency contact, workout logs); `validation_failed:document_version` becomes `app_update_required` on every path. Unit tests in `src/features/legal/api/consents.test.ts` and `domain/consentState.test.ts`.
+- Very low: client `cleanText` strips control and bidi characters before collapsing whitespace (fixed). Open: a copied emergency list stays on the system clipboard (cannot be controlled from the app); the birth-year bound (server year - 16) is as the server defines it.
+- Not verified: device, browser, hosted backend (the migration is not applied there).

@@ -43,7 +43,7 @@ function recorder(overrides: Partial<SignOutEffects> = {}) {
 describe('sign-out confirmation text', () => {
   it('says what the person loses, in the words the product requires', () => {
     expect(SIGN_OUT_MESSAGE).toBe(
-      'You will lose access to this account on this device. TrainHive accounts are anonymous: without a login there is no way to get it back.',
+      'You will lose access to this account on this device. TrainHive accounts are anonymous: without a login there is no way to get it back. Your About-you details and your place in the community stay on the server, and nobody can reach them after you sign out. To remove the details first, cancel and use Profile, About you, Clear my About-you data.',
     );
   });
 });

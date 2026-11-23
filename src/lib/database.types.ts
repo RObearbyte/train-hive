@@ -1250,7 +1250,11 @@ export type Database = {
       };
       /**
        * Appends a grant. For `terms_privacy`, `p_document_version` must be `MyConsents.terms_privacy_version`
-       * exactly. Returns a `ConsentEvent`. Raises `validation_failed:purpose`,
+       * exactly. Other purposes (P3-QA-7): pass the privacy version the app SHOWED (its bundled
+       * privacy version); the server refuses one that is not the version in force with
+       * `validation_failed:document_version` (map to `app_update_required`, as for terms_privacy);
+       * null / omitted stamps the version in force (older builds).
+       * Returns a `ConsentEvent`. Raises `validation_failed:purpose`,
        * `validation_failed:document_version`, `rate_limited`, `not_authenticated`.
        */
       record_consent: {
@@ -1436,7 +1440,11 @@ export type Database = {
         Args: { p_community_id: string };
         Returns: Json;
       };
-      /** P3: active organizer. Returns `CommunityDemographics` (cells < 5 suppressed). Raises `not_authenticated`, `forbidden`. */
+      /**
+       * P3: active organizer. Returns `CommunityDemographics` (approximate: nothing below 20
+       * members with data, cells < 5 suppressed, shown cells rounded to 5). Raises
+       * `not_authenticated`, `forbidden`.
+       */
       get_community_demographics: {
         Args: { p_community_id: string };
         Returns: Json;
@@ -1636,22 +1644,36 @@ export type CommunityEmergencyList = {
   truncated: boolean;
 };
 
-/** P3: one cell of `get_community_demographics`. `count` is null when suppressed. */
+/**
+ * P3: one cell of `get_community_demographics`. `count` is null when suppressed; a shown count is
+ * APPROXIMATE: the real count rounded to a multiple of `rounded_to` (5), so at least 5 and within 2
+ * of the real count.
+ */
 export type DemographicsCell<K extends string> = { key: K; count: number | null; suppressed: boolean };
 
 export type AgeBand = 'under_18' | '18_29' | '30_39' | '40_49' | '50_59' | '60_plus' | 'not_provided';
 
 /**
- * P3: result of `get_community_demographics` over the community's active members. Every shown
- * cell is at least `min_group_size` (5); suppressed cells are at least two and add up to 5 or
- * more, or every cell of the dimension is suppressed. No age x gender cross-table.
+ * P3: result of `get_community_demographics` over the community's active members (approximate
+ * group totals, P3-QA-1). Per dimension: when fewer than `min_members_with_data` (20) members gave
+ * a value, every cell is suppressed and `insufficient_data[dimension]` is true; otherwise cells
+ * whose real count is below `min_group_size` (5) are suppressed, with complementary suppression
+ * (suppressed cells are at least two and hold 5 or more people, or every cell is suppressed), and
+ * shown cells are rounded to `rounded_to` (5). No age x gender cross-table.
  */
 export type CommunityDemographics = {
   community_id: string;
   min_group_size: number;
+  /** Members with a value (not `not_provided`) a dimension needs before any cell is shown: 20. */
+  min_members_with_data: number;
+  /** Shown counts are rounded to a multiple of this: 5. */
+  rounded_to: number;
+  /** Exact number of active members (the population). */
   member_count: number;
   /** Server year used for ages (age = reference_year - birth year). */
   reference_year: number;
+  /** True for a dimension with too few members with data: all its cells are suppressed. */
+  insufficient_data: { age_bands: boolean; genders: boolean };
   age_bands: DemographicsCell<AgeBand>[];
   genders: DemographicsCell<AboutYouGender | 'not_provided'>[];
 };

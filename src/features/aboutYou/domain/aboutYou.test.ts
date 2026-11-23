@@ -229,11 +229,11 @@ describe('form values from the server and the signature', () => {
     expect(form).toMatchObject({ birthYear: '1990', gender: 'other', tshirtSize: 'XL', agreeDemographics: false, agreeEmergency: false });
   });
 
-  it('the signature changes with the data and the agreements', () => {
+  it('the signature changes with the stored data, not with the agreements (a failed save must not wipe the form)', () => {
     const base = emptyAboutYou();
     expect(aboutYouSignature(base)).toBe(aboutYouSignature(emptyAboutYou()));
     expect(aboutYouSignature(base)).not.toBe(aboutYouSignature(emptyAboutYou({ updated_at: '2026-11-23T10:00:00Z' })));
-    expect(aboutYouSignature(base)).not.toBe(
+    expect(aboutYouSignature(base)).toBe(
       aboutYouSignature(emptyAboutYou({ consents: { profile_demographics: true, emergency_contact: false } })),
     );
   });
@@ -267,5 +267,21 @@ describe('isAboutYou', () => {
     expect(isAboutYou({ ...emptyAboutYou(), birth_year_min: '1926' })).toBe(false);
     expect(isAboutYou(null)).toBe(false);
     expect(isAboutYou([])).toBe(false);
+  });
+});
+
+describe('phone: the plus sign (P3-QA-5) and cleaning order (very low)', () => {
+  it('accepts + only as the first character, like the server', () => {
+    expect(validatePhone('+40 712 345 678')).toBeNull();
+    expect(validatePhone('0712+345 678')).toMatch(/with a \+ only at the start/);
+    expect(validatePhone('+40 +712 345 678')).toMatch(/with a \+ only at the start/);
+    expect(validatePhone('0712 345 678+')).toMatch(/with a \+ only at the start/);
+    expect(validatePhone('++40712345678')).toMatch(/with a \+ only at the start/);
+  });
+
+  it('removes bidi controls before collapsing spaces', () => {
+    expect(cleanText('Ion ‮ Pop')).toBe('Ion Pop');
+    expect(cleanText('Ion‮  Pop\tX')).toBe('Ion Pop X');
+    expect(cleanText('a\u0007b')).toBe('ab');
   });
 });

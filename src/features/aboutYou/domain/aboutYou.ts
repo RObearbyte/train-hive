@@ -73,12 +73,13 @@ export function formValuesFrom(data: AboutYou): AboutYouFormValues {
   };
 }
 
-/** Changes whenever the stored details or agreements change: tells the form to start again from the server's copy. */
+/**
+ * Changes whenever the stored details change: tells the form to start again from the server's copy.
+ * Agreements are left out on purpose: recording one before a save that then fails must not wipe what was typed.
+ */
 export function aboutYouSignature(data: AboutYou): string {
   return JSON.stringify([
     data.updated_at,
-    data.consents.profile_demographics,
-    data.consents.emergency_contact,
     data.birth_year_min,
     data.birth_year_max,
   ]);
@@ -96,8 +97,8 @@ export function charCount(text: string): number {
  */
 export function cleanText(text: string): string {
   return text
+    .replace(/[\p{Cc}​-‏‪-‮⁦-⁩؜﻿]/gu, (char) => (/\s/u.test(char) ? char : ''))
     .replace(/\s+/gu, ' ')
-    .replace(/[\p{Cc}​-‏‪-‮⁦-⁩؜﻿]/gu, '')
     .trim();
 }
 
@@ -116,8 +117,8 @@ export function validatePhone(text: string): string | null {
   const phone = cleanText(text);
   if (phone === '') return null;
   if (charCount(phone) > CONTACT_PHONE_MAX) return `Keep the phone number to ${CONTACT_PHONE_MAX} characters.`;
-  if (!/^[0-9 +()./-]+$/u.test(phone)) {
-    return 'Use digits, spaces and + ( ) . / - only.';
+  if (!/^\+?[0-9 ()./-]+$/u.test(phone)) {
+    return 'Use digits, spaces and ( ) . / - only, with a + only at the start.';
   }
   const digits = phoneDigitCount(phone);
   if (digits < PHONE_DIGITS_MIN || digits > PHONE_DIGITS_MAX) {

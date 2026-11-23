@@ -58,7 +58,7 @@ describe('optional rows', () => {
 
   it('describes the two About-you purposes correctly and says withdrawing deletes the stored data', () => {
     const demographics = PURPOSE_COPY.profile_demographics;
-    expect(demographics.description).toMatch(/groups of 5 or more/);
+    expect(demographics.description).toMatch(/rounded to the nearest 5/);
     expect(demographics.description).toMatch(/never your individual answer/);
     expect(demographics.withdrawMessage).toMatch(/birth year and gender stored for you will be deleted/);
     const emergency = PURPOSE_COPY.emergency_contact;

@@ -100,7 +100,7 @@ export function buildPrivacyNotice(
                     {
                       label: 'Birth year and gender (optional)',
                       value:
-                        'Only if you choose to give them, to give your organizers grouped statistics about the community (for example how many members are in each age band). Basis: your explicit consent, which you can withdraw at any time. They are kept until you withdraw your consent, clear them or delete your account.',
+                        'Only if you choose to give them, to give your organizers approximate group totals about the community (for example how many members are in each age band). Basis: your explicit consent, which you can withdraw at any time. They are kept until you withdraw your consent, clear them or delete your account.',
                     },
                   ]
                 : []),
@@ -152,7 +152,7 @@ export function buildPrivacyNotice(
                 : []),
               ...(features.demographics
                 ? [
-                    'Birth year and gender are never shown to organizers one by one. Organizers see only grouped statistics, and only for groups of 5 or more people: smaller groups are hidden. In a very small community even grouped numbers can point to a person, so TrainHive also hides a larger group when showing it would reveal a smaller one.',
+                    'Organizers never see your birth year or gender next to your name, and never as an individual answer. They see only approximate group totals for the whole community, rounded to the nearest 5, and only once at least 20 members have answered that question. Groups of fewer than 5 people are hidden, and TrainHive also hides a larger group when showing it would reveal a smaller one. Even so, an organizer who watches the numbers change over time, or who controls who joins, may be able to work out something about a few people.',
                   ]
                 : []),
               ...(features.workoutLogs

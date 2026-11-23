@@ -14,15 +14,16 @@ import { isAboutYou } from '../domain/aboutYou';
 import { isCommunityDemographics } from '../domain/demographics';
 import { isCommunityEmergencyList, isMemberEmergencyInfo } from '../domain/emergency';
 
-function unexpected(fn: string, data: unknown): AppError {
-  return new AppError('unknown', { message: `${fn} returned an unexpected shape`, original: data });
+/** Keeps only the function name: the answer is personal data and must not reach AppError.original or the logs. */
+function unexpected(fn: string): AppError {
+  return new AppError('unknown', { message: `${fn} returned an unexpected shape` });
 }
 
 /** My own details. Throws AppError (`not_authenticated`, ...). */
 export async function fetchMyAboutYou(): Promise<AboutYou> {
   const { data, error } = await getSupabase().rpc('get_my_about_you');
   if (error) throw toAppError(error);
-  if (!isAboutYou(data)) throw unexpected('get_my_about_you', data);
+  if (!isAboutYou(data)) throw unexpected('get_my_about_you');
   return data;
 }
 
@@ -34,7 +35,7 @@ export async function saveMyAboutYou(input: AboutYouInput, consents: readonly Co
   for (const purpose of consents) await recordConsent(purpose);
   const { data, error } = await getSupabase().rpc('save_my_about_you', { p_input: input });
   if (error) throw toAppError(error);
-  if (!isAboutYou(data)) throw unexpected('save_my_about_you', data);
+  if (!isAboutYou(data)) throw unexpected('save_my_about_you');
   return data;
 }
 
@@ -42,7 +43,7 @@ export async function saveMyAboutYou(input: AboutYouInput, consents: readonly Co
 export async function clearMyAboutYou(): Promise<AboutYou> {
   const { data, error } = await getSupabase().rpc('clear_my_about_you');
   if (error) throw toAppError(error);
-  if (!isAboutYou(data)) throw unexpected('clear_my_about_you', data);
+  if (!isAboutYou(data)) throw unexpected('clear_my_about_you');
   return data;
 }
 
@@ -53,7 +54,7 @@ export async function fetchMemberEmergencyInfo(communityId: string, userId: stri
     p_user_id: userId,
   });
   if (error) throw toAppError(error);
-  if (!isMemberEmergencyInfo(data)) throw unexpected('get_member_emergency_info', data);
+  if (!isMemberEmergencyInfo(data)) throw unexpected('get_member_emergency_info');
   return data;
 }
 
@@ -63,7 +64,7 @@ export async function fetchCommunityEmergencyList(communityId: string): Promise<
     p_community_id: communityId,
   });
   if (error) throw toAppError(error);
-  if (!isCommunityEmergencyList(data)) throw unexpected('list_community_emergency_info', data);
+  if (!isCommunityEmergencyList(data)) throw unexpected('list_community_emergency_info');
   return data;
 }
 
@@ -71,6 +72,6 @@ export async function fetchCommunityEmergencyList(communityId: string): Promise<
 export async function fetchCommunityDemographics(communityId: string): Promise<CommunityDemographics> {
   const { data, error } = await getSupabase().rpc('get_community_demographics', { p_community_id: communityId });
   if (error) throw toAppError(error);
-  if (!isCommunityDemographics(data)) throw unexpected('get_community_demographics', data);
+  if (!isCommunityDemographics(data)) throw unexpected('get_community_demographics');
   return data;
 }

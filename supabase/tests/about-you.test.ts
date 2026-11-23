@@ -55,8 +55,11 @@ type Cell = { key: string; count: number | null; suppressed: boolean };
 type Demographics = {
   community_id: string;
   min_group_size: number;
+  min_members_with_data: number;
+  rounded_to: number;
   member_count: number;
   reference_year: number;
+  insufficient_data: { age_bands: boolean; genders: boolean };
   age_bands: Cell[];
   genders: Cell[];
 };
@@ -625,7 +628,7 @@ describe('organizer access to emergency contact and T-shirt size', () => {
   });
 });
 
-describe('demographics: aggregates only, small cells suppressed', () => {
+describe('demographics: rounded aggregates only, small cells suppressed', () => {
   /** Adds active members with the given details (consents granted, saved through the RPC). */
   async function addPeople(
     communityId: string,
@@ -647,16 +650,16 @@ describe('demographics: aggregates only, small cells suppressed', () => {
 
   const cells = (list: Cell[]) => Object.fromEntries(list.map((c) => [c.key, c.suppressed ? 'x' : c.count]));
 
-  function expectSafe(list: Cell[], total: number) {
+  /** What one response guarantees: shown cells are multiples of 5 (so at least 5), hidden ones have no number and are never alone. */
+  function expectSafe(list: Cell[]) {
     const shown = list.filter((c) => !c.suppressed);
     const hidden = list.filter((c) => c.suppressed);
-    for (const c of shown) expect(c.count).toBeGreaterThanOrEqual(5);
-    for (const c of hidden) expect(c.count).toBeNull();
-    if (hidden.length > 0 && shown.length > 0) {
-      // What the organizer can derive by subtraction covers >= 5 people over >= 2 categories.
-      expect(hidden.length).toBeGreaterThanOrEqual(2);
-      expect(total - shown.reduce((s, c) => s + (c.count ?? 0), 0)).toBeGreaterThanOrEqual(5);
+    for (const c of shown) {
+      expect(c.count).toBeGreaterThanOrEqual(5);
+      expect((c.count ?? 1) % 5).toBe(0);
     }
+    for (const c of hidden) expect(c.count).toBeNull();
+    if (hidden.length > 0 && shown.length > 0) expect(hidden.length).toBeGreaterThanOrEqual(2);
   }
 
   it('authorization: organizers of the community only', async () => {
@@ -670,7 +673,7 @@ describe('demographics: aggregates only, small cells suppressed', () => {
     expect((await demographics(pack.organizerId, pack.communityId)).member_count).toBe(2);
   });
 
-  it('a small community gets nothing but suppressed cells', async () => {
+  it('a small community gets nothing but suppressed cells (insufficient data)', async () => {
     const pack = await createPack(0);
     await addPeople(pack.communityId, [
       { age: 30, gender: 'woman' },
@@ -680,56 +683,87 @@ describe('demographics: aggregates only, small cells suppressed', () => {
     const d = await demographics(pack.organizerId, pack.communityId);
     expect(d.member_count).toBe(4);
     expect(d.min_group_size).toBe(5);
+    expect(d.min_members_with_data).toBe(20);
+    expect(d.rounded_to).toBe(5);
     expect(d.reference_year).toBe(await serverYear());
+    expect(d.insufficient_data).toEqual({ age_bands: true, genders: true });
     expect(d.age_bands.every((c) => c.suppressed && c.count === null)).toBe(true);
     expect(d.genders.every((c) => c.suppressed && c.count === null)).toBe(true);
     expect(d.age_bands.map((c) => c.key)).toEqual(['under_18', '18_29', '30_39', '40_49', '50_59', '60_plus', 'not_provided']);
     expect(d.genders.map((c) => c.key)).toEqual(['woman', 'man', 'other', 'prefer_not_to_say', 'not_provided']);
   });
 
-  it('age bands from the server year; complementary suppression stops differencing', async () => {
+  it('a dimension needs 20 members with a value; the other dimension is judged on its own', async () => {
+    const pack = await createPack(0);
+    // 19 with gender and age, plus 6 with gender only: genders 25 with data, ages 19.
+    await addPeople(pack.communityId, Array.from({ length: 19 }, () => ({ age: 35, gender: 'man' })));
+    await addPeople(pack.communityId, Array.from({ length: 6 }, () => ({ gender: 'woman' })));
+    let d = await demographics(pack.organizerId, pack.communityId);
+    expect(d.member_count).toBe(26);
+    // not_provided does not count as data, however large it is.
+    expect(d.insufficient_data).toEqual({ age_bands: true, genders: false });
+    expect(d.age_bands.every((c) => c.suppressed && c.count === null)).toBe(true);
+    // man 19 -> 20, woman 6 -> 5; other 0, prefer_not_to_say 0, not_provided 1 (sum 1) -> the
+    // smallest shown cell (woman) is hidden with them.
+    expect(cells(d.genders)).toEqual({ woman: 'x', man: 20, other: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
+
+    // The 20th age makes the age dimension appear.
+    await addPeople(pack.communityId, [{ age: 36 }]);
+    d = await demographics(pack.organizerId, pack.communityId);
+    expect(d.insufficient_data).toEqual({ age_bands: false, genders: false });
+    // 30_39 = 20; not_provided = 7 (6 women without age + the organizer) -> 5; the zero cells
+    // add up to 0 with five cells, so the smallest shown one (not_provided) joins them.
+    expect(cells(d.age_bands)).toEqual({
+      under_18: 'x', '18_29': 'x', '30_39': 20, '40_49': 'x', '50_59': 'x', '60_plus': 'x', not_provided: 'x',
+    });
+    expectSafe(d.age_bands);
+    expectSafe(d.genders);
+  });
+
+  it('age bands from the server year; complementary suppression, then rounding', async () => {
     const pack = await createPack(0); // the organizer: no data -> not_provided
     await addPeople(pack.communityId, [
-      ...Array.from({ length: 6 }, () => ({ age: 25, gender: 'woman' })),
-      ...Array.from({ length: 7 }, () => ({ age: 35, gender: 'man' })),
+      ...Array.from({ length: 11 }, () => ({ age: 25, gender: 'woman' })),
+      ...Array.from({ length: 12 }, () => ({ age: 35, gender: 'man' })),
       { age: 17, gender: 'other' },
     ]);
     const d = await demographics(pack.organizerId, pack.communityId);
-    expect(d.member_count).toBe(15);
-    // under_18 = 1, 18_29 = 6, 30_39 = 7, not_provided = 1, rest 0. The small cells add up to 2,
-    // so the smallest shown cell (18_29) is suppressed too: the organizer can only derive
-    // under_18 + 18_29 + not_provided (+ zeros) = 8.
+    expect(d.member_count).toBe(25);
+    expect(d.insufficient_data).toEqual({ age_bands: false, genders: false });
+    // under_18 = 1, 18_29 = 11, 30_39 = 12, not_provided = 1, rest 0. The small cells add up to 2,
+    // so the smallest shown cell (18_29) is suppressed too; 30_39 = 12 is shown as 10.
     expect(cells(d.age_bands)).toEqual({
-      under_18: 'x', '18_29': 'x', '30_39': 7, '40_49': 'x', '50_59': 'x', '60_plus': 'x', not_provided: 'x',
+      under_18: 'x', '18_29': 'x', '30_39': 10, '40_49': 'x', '50_59': 'x', '60_plus': 'x', not_provided: 'x',
     });
-    expect(cells(d.genders)).toEqual({ woman: 'x', man: 7, other: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
-    expectSafe(d.age_bands, d.member_count);
-    expectSafe(d.genders, d.member_count);
+    expect(cells(d.genders)).toEqual({ woman: 'x', man: 10, other: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
+    expectSafe(d.age_bands);
+    expectSafe(d.genders);
   });
 
   it('a lone small cell is never left derivable from the total', async () => {
     const pack = await createPack(0);
-    // 9 women + the organizer (not provided): gender would be woman 9, not_provided 1.
-    await addPeople(pack.communityId, Array.from({ length: 9 }, () => ({ gender: 'woman' })));
+    // 21 women + the organizer (not provided): gender would be woman 21, not_provided 1.
+    await addPeople(pack.communityId, Array.from({ length: 21 }, () => ({ gender: 'woman' })));
     let d = await demographics(pack.organizerId, pack.communityId);
-    // Showing woman = 9 would reveal "everyone but one is a woman"; all suppressed instead.
+    // Enough data, but showing woman would reveal "everyone but one is a woman": all suppressed.
+    expect(d.insufficient_data.genders).toBe(false);
     expect(d.genders.every((c) => c.suppressed)).toBe(true);
-    // Five more, five other: woman 9, other 5, not_provided 1 -> the cells below 5 add up to 1, so
-    // the smallest shown cell (other) is suppressed too.
+    // Five more, five other: woman 21, other 5, not_provided 1 -> the cells below 5 add up to 1,
+    // so the smallest shown cell (other) is suppressed too; woman 21 is shown as 20.
     await addPeople(pack.communityId, Array.from({ length: 5 }, () => ({ gender: 'other' })));
     d = await demographics(pack.organizerId, pack.communityId);
-    expect(cells(d.genders)).toEqual({ woman: 9, man: 'x', other: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
-    expectSafe(d.genders, d.member_count);
+    expect(cells(d.genders)).toEqual({ woman: 20, man: 'x', other: 'x', prefer_not_to_say: 'x', not_provided: 'x' });
+    expectSafe(d.genders);
   });
 
   it('counts only active members and only fields with a current consent', async () => {
     const pack = await createPack(0);
-    const people = await addPeople(pack.communityId, Array.from({ length: 10 }, () => ({ age: 45, gender: 'man' })));
-    await addPeople(pack.communityId, Array.from({ length: 5 }, () => ({ age: 25, gender: 'woman' })));
+    const people = await addPeople(pack.communityId, Array.from({ length: 16 }, () => ({ age: 45, gender: 'man' })));
+    await addPeople(pack.communityId, Array.from({ length: 8 }, () => ({ age: 25, gender: 'woman' })));
     let d = await demographics(pack.organizerId, pack.communityId);
-    expect(d.member_count).toBe(16);
-    expect(cells(d.genders).man).toBe(10);
-    expect(cells(d.age_bands)['40_49']).toBe(10);
+    expect(d.member_count).toBe(25);
+    expect(cells(d.genders).man).toBe(15); // 16
+    expect(cells(d.age_bands)['40_49']).toBe(15); // 16
 
     await admin.query("update public.memberships set status = 'removed' where user_id = any($1::uuid[])", [
       people.slice(0, 2),
@@ -741,35 +775,57 @@ describe('demographics: aggregates only, small cells suppressed', () => {
       [people[3]],
     );
     d = await demographics(pack.organizerId, pack.communityId);
-    // 14 active: men 6, women 5, not provided 3 (the organizer, the withdrawal, the stray row).
-    expect(d.member_count).toBe(14);
-    expect(cells(d.genders)).toMatchObject({ man: 6 });
-    expect(cells(d.age_bands)).toMatchObject({ '40_49': 6 });
-    expectSafe(d.genders, d.member_count);
-    expectSafe(d.age_bands, d.member_count);
+    // 23 active: men 12, women 8, not provided 3 (the organizer, the withdrawal, the stray row);
+    // 20 with data, just enough.
+    expect(d.member_count).toBe(23);
+    expect(d.insufficient_data).toEqual({ age_bands: false, genders: false });
+    expect(cells(d.genders)).toMatchObject({ man: 10, woman: 'x' }); // 12
+    expect(cells(d.age_bands)).toMatchObject({ '40_49': 10, '18_29': 'x' }); // 12
+    expectSafe(d.genders);
+    expectSafe(d.age_bands);
+
+    // One more member out: 19 with data, nothing is shown.
+    await withdraw(people[4], 'profile_demographics');
+    d = await demographics(pack.organizerId, pack.communityId);
+    expect(d.insufficient_data).toEqual({ age_bands: true, genders: true });
+    expect([...d.genders, ...d.age_bands].every((c) => c.suppressed)).toBe(true);
   });
 
-  it('suppression rule holds for many random distributions', async () => {
+  it('publication rule holds for many random distributions', async () => {
     let seed = 7;
     const random = () => {
       seed = (seed * 1103515245 + 12345) % 2147483648;
       return seed / 2147483648;
     };
-    const keys = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    const keys = ['a', 'b', 'c', 'd', 'e', 'f', 'not_provided'];
     for (let run = 0; run < 300; run += 1) {
       const n = 2 + Math.floor(random() * 6);
-      const counts = Array.from({ length: n }, () => Math.floor(random() * (random() < 0.5 ? 6 : 30)));
-      const { rows } = await admin.query<{ r: Cell[] }>('select private.suppress_small_cells($1, $2, 5) as r', [
-        keys.slice(0, n),
-        counts,
-      ]);
-      const result = rows[0].r;
-      expect(result.map((c) => c.key)).toEqual(keys.slice(0, n));
-      const total = counts.reduce((s, c) => s + c, 0);
-      expectSafe(result, total);
+      const runKeys = [...keys.slice(0, n - 1), 'not_provided'];
+      const counts = Array.from({ length: n }, () => Math.floor(random() * (random() < 0.5 ? 8 : 40)));
+      const { rows } = await admin.query<{ r: { insufficient_data: boolean; cells: Cell[] } }>(
+        'select private.publish_demographic_cells($1, $2, 5, 20, 5) as r',
+        [runKeys, counts],
+      );
+      const { insufficient_data: insufficient, cells: result } = rows[0].r;
+      expect(result.map((c) => c.key)).toEqual(runKeys);
+      const withData = counts.slice(0, n - 1).reduce((s, c) => s + c, 0);
+      expect(insufficient).toBe(withData < 20);
+      if (insufficient) {
+        expect(result.every((c) => c.suppressed && c.count === null)).toBe(true);
+        continue;
+      }
+      expectSafe(result);
+      const hidden = result.filter((c) => c.suppressed);
+      if (hidden.length > 0 && hidden.length < n) {
+        // What subtraction from the exact total gives covers >= 5 real people.
+        expect(counts.filter((_, i) => result[i].suppressed).reduce((s, c) => s + c, 0)).toBeGreaterThanOrEqual(5);
+      }
       result.forEach((c, i) => {
-        if (!c.suppressed) expect(c.count).toBe(counts[i]);
-        // Cells of 5 or more are only suppressed as complements.
+        if (!c.suppressed) {
+          expect(c.count).toBe(Math.round(counts[i] / 5) * 5);
+          expect(Math.abs((c.count ?? 0) - counts[i])).toBeLessThanOrEqual(2);
+        }
+        // Cells below 5 are always suppressed.
         if (counts[i] < 5) expect(c.suppressed).toBe(true);
       });
     }

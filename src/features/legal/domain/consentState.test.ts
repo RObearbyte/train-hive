@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUNDLED_TERMS_PRIVACY_VERSION } from '../constants';
+import { BUNDLED_TERMS_PRIVACY_VERSION, PRIVACY_VERSION } from '../constants';
 import {
   ACCEPTANCE_STORAGE_KEY,
   createLocalAcceptance,
@@ -13,6 +13,8 @@ import {
   REQUIRED_PURPOSES,
   bundledMatchesServer,
   canContinue,
+  documentVersionFor,
+  mapConsentWriteError,
   needsConsentStep,
   parseStartTarget,
   planGateAcceptance,
@@ -166,5 +168,22 @@ describe('consent_required from a join', () => {
     // ensureConsentRecorded throws consent_required exactly when this plan is ask_user.
     expect(planRecording({ local: null, server: neverRecorded() }).action).toBe('ask_user');
     expect(needsConsentStep(null)).toBe(true);
+  });
+});
+
+describe('the document version sent with record_consent', () => {
+  it('optional purposes carry the bundled privacy version; terms keep the explicit string; age has none', () => {
+    for (const purpose of OPTIONAL_PURPOSES) expect(documentVersionFor(purpose)).toBe(PRIVACY_VERSION);
+    expect(documentVersionFor('terms_privacy', 'terms:2|privacy:2')).toBe('terms:2|privacy:2');
+    expect(documentVersionFor('age_16')).toBeNull();
+  });
+
+  it('a refused document version means the app must be updated, whatever the purpose', () => {
+    const refused = { code: 'P0001', message: 'validation_failed:document_version', details: null, hint: null };
+    expect(mapConsentWriteError(refused).code).toBe('app_update_required');
+    expect(mapConsentWriteError({ code: 'P0001', message: 'validation_failed:other', details: null, hint: null }).code).toBe(
+      'validation_failed',
+    );
+    expect(mapConsentWriteError({ code: 'P0001', message: 'rate_limited', details: null, hint: null }).code).toBe('rate_limited');
   });
 });

@@ -7,6 +7,8 @@ import {
   planRecording,
   type ConsentWrite,
   type RecordPlan,
+  documentVersionFor,
+  mapConsentWriteError,
 } from '../domain/consentState';
 import { readLocalAcceptance } from './acceptanceStorage';
 
@@ -19,8 +21,8 @@ export async function fetchMyConsents(): Promise<MyConsents> {
 
 /**
  * Appends a grant. For `terms_privacy`, `documentVersion` must be the
- * combined string `my_consents` returned, exactly as received. Throws
- * AppError (`validation_failed` with field `document_version`, `rate_limited`, ...).
+ * combined string `my_consents` returned, exactly as received; optional purposes are sent with the bundled privacy version. Throws
+ * AppError (`app_update_required` when the server refuses the document version, `rate_limited`, ...).
  */
 export async function recordConsent(
   purpose: ConsentPurpose,
@@ -28,9 +30,9 @@ export async function recordConsent(
 ): Promise<ConsentEvent> {
   const { data, error } = await getSupabase().rpc('record_consent', {
     p_purpose: purpose,
-    p_document_version: documentVersion ?? null,
+    p_document_version: documentVersionFor(purpose, documentVersion),
   });
-  if (error) throw toAppError(error);
+  if (error) throw mapConsentWriteError(error);
   return data as ConsentEvent;
 }
 
@@ -47,12 +49,7 @@ async function performWrites(writes: readonly ConsentWrite[]): Promise<void> {
       if (write.purpose === 'terms_privacy') await recordConsent('terms_privacy', write.documentVersion);
       else await recordConsent('age_16');
     } catch (error) {
-      const appError = toAppError(error);
-      // The texts changed on the server between the check and the write: this build no longer matches.
-      if (appError.code === 'validation_failed' && appError.field === 'document_version') {
-        throw new AppError('app_update_required', { original: error });
-      }
-      throw appError;
+      throw mapConsentWriteError(error);
     }
   }
 }

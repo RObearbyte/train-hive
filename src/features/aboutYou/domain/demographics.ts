@@ -1,7 +1,7 @@
 /**
- * The "Community profile" card: grouped age and gender numbers for
- * organizers. The server suppresses small groups; this only labels what it
- * returns. Pure TypeScript.
+ * The "Community profile" card: approximate group totals for
+ * organizers. The server hides small groups, rounds the numbers and shows nothing
+ * until enough members answered; this only labels what it returns. Pure TypeScript.
  */
 import type { AboutYouGender, AgeBand, CommunityDemographics, DemographicsCell } from '@/lib/database.types';
 
@@ -25,6 +25,11 @@ export function isCommunityDemographics(value: unknown): value is CommunityDemog
     isRecord(value) &&
     typeof value.community_id === 'string' &&
     typeof value.min_group_size === 'number' &&
+    typeof value.min_members_with_data === 'number' &&
+    typeof value.rounded_to === 'number' &&
+    isRecord(value.insufficient_data) &&
+    typeof value.insufficient_data.age_bands === 'boolean' &&
+    typeof value.insufficient_data.genders === 'boolean' &&
     typeof value.member_count === 'number' &&
     typeof value.reference_year === 'number' &&
     Array.isArray(value.age_bands) &&
@@ -52,7 +57,7 @@ export const GENDER_LABELS: Record<AboutYouGender | 'not_provided', string> = {
   not_provided: 'Not provided',
 };
 
-/** What a hidden cell shows. A hidden group is under 5 people, or hidden along with one so it cannot be worked out by subtraction. */
+/** What a hidden cell shows. A hidden group is small, or hidden along with one so it cannot be worked out by subtraction. */
 export const HIDDEN_LABEL = 'Hidden (small group)';
 
 export type DemographicsRow = {
@@ -66,7 +71,7 @@ export type DemographicsRow = {
 };
 
 function rowOf(label: string, cell: DemographicsCell<string>): DemographicsRow {
-  const value = cell.suppressed || cell.count === null ? HIDDEN_LABEL : String(cell.count);
+  const value = cell.suppressed || cell.count === null ? HIDDEN_LABEL : `about ${cell.count}`;
   return {
     key: cell.key,
     label,
@@ -84,9 +89,29 @@ export function genderRows(data: CommunityDemographics): DemographicsRow[] {
   return data.genders.map((cell) => rowOf(GENDER_LABELS[cell.key] ?? cell.key, cell));
 }
 
+export type DemographicsSection = {
+  rows: DemographicsRow[];
+  /** Set when too few members answered: nothing is shown for this dimension. */
+  insufficientMessage: string | null;
+};
+
+export function insufficientMessage(minMembers: number): string {
+  return `Not enough answers yet (needs at least ${minMembers} members)`;
+}
+
+export function ageBandSection(data: CommunityDemographics): DemographicsSection {
+  if (data.insufficient_data.age_bands) return { rows: [], insufficientMessage: insufficientMessage(data.min_members_with_data) };
+  return { rows: ageBandRows(data), insufficientMessage: null };
+}
+
+export function genderSection(data: CommunityDemographics): DemographicsSection {
+  if (data.insufficient_data.genders) return { rows: [], insufficientMessage: insufficientMessage(data.min_members_with_data) };
+  return { rows: genderRows(data), insufficientMessage: null };
+}
+
 /** The sentence under the card: why some numbers are hidden. */
-export function suppressionNote(minGroupSize: number): string {
-  return `To protect privacy, groups of fewer than ${minGroupSize} people are hidden, and a larger group may be hidden along with them so that nobody can be worked out by subtraction. Individual answers are never shown. The numbers describe today only.`;
+export function suppressionNote(data: Pick<CommunityDemographics, 'min_group_size' | 'min_members_with_data' | 'rounded_to'>): string {
+  return `These are approximate group totals, rounded to the nearest ${data.rounded_to}. A group is shown only once at least ${data.min_members_with_data} members have answered that question. Small groups (fewer than ${data.min_group_size} people) are hidden, and a larger group may be hidden along with them so that nobody can be worked out by subtraction. Individual answers, birth years and genders are never shown. The numbers describe today only.`;
 }
 
 /** "Based on 14 active members. Ages are the age reached in 2026." */

@@ -5,6 +5,7 @@ import { deleteMyAccount, exportMyData } from './account-deletion-helpers';
 import {
   addMember,
   admin,
+  asAnon,
   asService,
   asUser,
   closeDb,
@@ -36,7 +37,13 @@ type AboutYou = {
   consents: { profile_demographics: boolean; emergency_contact: boolean };
 };
 type Cell = { key: string; count: number | null; suppressed: boolean };
-type Demographics = { member_count: number; age_bands: Cell[]; genders: Cell[] } & Record<string, unknown>;
+type Demographics = {
+  community_id: string;
+  member_count: number;
+  insufficient_data: { age_bands: boolean; genders: boolean };
+  age_bands: Cell[];
+  genders: Cell[];
+} & Record<string, unknown>;
 
 const raised = (message: string) => ({ code: RAISED, message });
 const denied = { code: INSUFFICIENT_PRIVILEGE };
@@ -144,6 +151,7 @@ describe('authorization and leakage (extra)', () => {
     const { memberIds } = await createPack(1);
     const calls = [
       "select private.suppress_small_cells(array['a'], array[1], 5)",
+      "select private.publish_demographic_cells(array['a'], array[1], 5, 20, 5)",
       'select * from private.about_you_population(gen_random_uuid(), 2026)',
       'select private.about_you_self_json(gen_random_uuid())',
       "select private.erase_about_you_purpose(gen_random_uuid(), 'emergency_contact')",
@@ -257,24 +265,78 @@ describe('consent and data lifecycle (extra)', () => {
     }
   });
 
-  it('KNOWN LIMIT: a grant is stamped with the privacy version in force, not the text the app showed', async () => {
-    const { memberIds } = await createPack(1);
-    const [m] = memberIds;
-    // The app records optional purposes without a version; a build that bundles privacy v2 while
-    // the server still holds v1 therefore leaves a v1 stamp for a consent given on the v2 text.
-    await expect(
-      asUser(m, (db) => rpc(db, 'record_consent', ['profile_demographics', '2'])),
-    ).rejects.toMatchObject(raised('validation_failed:document_version'));
-    await asUser(m, (db) => rpc(db, 'record_consent', ['profile_demographics']));
-    await asService((db) => rpc(db, 'admin_set_legal_version', ['privacy', '2']));
-    const { rows } = await admin.query<{ document_version: string }>(
-      "select document_version from public.consent_records where user_id = $1 and purpose = 'profile_demographics'",
-      [m],
-    );
-    expect(rows.map((r) => r.document_version)).toEqual(['1']);
-    // And it stays current after the bump: nobody is asked again for the new wording.
-    const { rows: current } = await admin.query<{ ok: boolean }>("select private.has_consent($1, 'profile_demographics') as ok", [m]);
-    expect(current[0].ok).toBe(true);
+  describe('P3-QA-7: an optional grant carries the privacy version the person saw', () => {
+    const recordOptional = (userId: string, purpose: string, version?: string | null) =>
+      asUser(userId, (db) =>
+        rpc<{ granted: boolean; document_version: string; changed: boolean }>(
+          db,
+          'record_consent',
+          version === undefined ? [purpose] : [purpose, version],
+        ),
+      );
+    const stamps = async (userId: string, purpose: string) =>
+      (
+        await admin.query<{ document_version: string; granted: boolean }>(
+          'select document_version, granted from public.consent_records where user_id = $1 and purpose = $2 order by created_at',
+          [userId, purpose],
+        )
+      ).rows;
+
+    it('a version equal to the privacy version in force is stored as sent', async () => {
+      const { memberIds } = await createPack(1);
+      const [m] = memberIds;
+      await asService((db) => rpc(db, 'admin_set_legal_version', ['privacy', '2']));
+      for (const purpose of BOTH) {
+        expect(await recordOptional(m, purpose, '2')).toMatchObject({ granted: true, document_version: '2', changed: true });
+        // Same version again: nothing new is written.
+        expect(await recordOptional(m, purpose, '2')).toMatchObject({ changed: false });
+        expect(await stamps(m, purpose)).toEqual([{ document_version: '2', granted: true }]);
+      }
+      expect(await save(m, { gender: 'woman', tshirt_size: 'M' })).toMatchObject({ gender: 'woman', tshirt_size: 'M' });
+    });
+
+    it('a build showing another privacy version is refused and nothing is written (the app shows app_update_required)', async () => {
+      const { memberIds } = await createPack(1);
+      const [m] = memberIds;
+      // Server still at v1, the app bundles v2 (the deployment window from the QA report) ...
+      await expect(recordOptional(m, 'profile_demographics', '2')).rejects.toMatchObject(
+        raised('validation_failed:document_version'),
+      );
+      // ... or the server moved on while an old build shows v1.
+      await asService((db) => rpc(db, 'admin_set_legal_version', ['privacy', '3']));
+      await expect(recordOptional(m, 'emergency_contact', '1')).rejects.toMatchObject(
+        raised('validation_failed:document_version'),
+      );
+      for (const bad of ['', ' 3', 'terms:1|privacy:3']) {
+        await expect(recordOptional(m, 'emergency_contact', bad), bad).rejects.toMatchObject(
+          raised('validation_failed:document_version'),
+        );
+      }
+      expect(await stamps(m, 'profile_demographics')).toEqual([]);
+      expect(await stamps(m, 'emergency_contact')).toEqual([]);
+      await expect(save(m, { gender: 'man' })).rejects.toMatchObject(raised('consent_required:profile_demographics'));
+    });
+
+    it('no version (older builds): stamped with the privacy version in force, as before', async () => {
+      const { memberIds } = await createPack(1);
+      const [m] = memberIds;
+      expect(await recordOptional(m, 'profile_demographics')).toMatchObject({ document_version: '1', changed: true });
+      expect(await recordOptional(m, 'emergency_contact', null)).toMatchObject({ document_version: '1', changed: true });
+      await asService((db) => rpc(db, 'admin_set_legal_version', ['privacy', '2']));
+      // Optional consents are not reset by a new notice version (API_CONTRACT, "Versions").
+      const { rows } = await admin.query<{ ok: boolean }>("select private.has_consent($1, 'profile_demographics') as ok", [m]);
+      expect(rows[0].ok).toBe(true);
+      // Granting again with the new version appends a v2 stamp.
+      expect(await recordOptional(m, 'profile_demographics', '2')).toMatchObject({ document_version: '2', changed: true });
+      expect((await stamps(m, 'profile_demographics')).map((r) => r.document_version)).toEqual(['1', '2']);
+    });
+
+    it('anon cannot record a consent with or without a version', async () => {
+      for (const params of [['profile_demographics'], ['profile_demographics', '1']]) {
+        const sql = params.length === 1 ? 'select public.record_consent($1)' : 'select public.record_consent($1, $2)';
+        await expect(asAnon((db) => db.query(sql, params))).rejects.toMatchObject(denied);
+      }
+    });
   });
 
   it('the export and the erasure also cover a row whose consent is gone (stray data)', async () => {
@@ -384,7 +446,7 @@ describe('client and server agree on what a valid value is', () => {
   // DEFECT P3-QA-5 (low): src/features/aboutYou/domain/aboutYou.ts validatePhone allows "+" anywhere
   // (regex /^[0-9 +()./-]+$/); the server requires it only as the first character. The form says
   // "valid", Save then fails with a generic server message.
-  it.fails('DEFECT P3-QA-5: a plus sign inside the number is refused by the form too', async () => {
+  it('DEFECT P3-QA-5: a plus sign inside the number is refused by the form too', async () => {
     const { memberIds } = await createPack(1);
     const [m] = memberIds;
     await grantConsents(m, ['emergency_contact']);
@@ -485,44 +547,112 @@ describe('suppression: exhaustive and attacker-aware', () => {
     expect(Number(rows[0].bad)).toBe(0);
   }, 120_000);
 
-  // DEFECT P3-QA-1 (medium, design): the 5-person rule does not protect against an organizer who
-  // can add members. Organizers create invitation codes and anonymous accounts are free, so eight
-  // accounts (four "woman", four "prefer_not_to_say") lift a hidden group of ONE woman to a shown 5;
-  // 5 minus the 4 added reveals the real size. This test asserts the safe behaviour (the cell stays
-  // hidden) and therefore passes only while the defect exists.
-  it.fails('DEFECT P3-QA-1: sock-puppet accounts cannot lift a hidden group above the threshold', async () => {
-    const pack = await createPack(0);
-    await addPeople(pack.communityId, [...Array.from({ length: 12 }, () => ({ gender: 'man' })), { gender: 'woman' }]);
-    const before = await demographics(pack.organizerId, pack.communityId);
-    expect(before.genders.every((c) => c.suppressed)).toBe(true); // 12 / 1 / organizer 1: all hidden
+  it('published cells, every distribution of 4 data cells + not_provided: 20-member floor, suppression, rounding', async () => {
+    // For each distribution: below 20 members with data everything is hidden; otherwise a cell is
+    // hidden exactly when private.suppress_small_cells hides it, a shown cell is the real count
+    // rounded to a multiple of 5 (>= 5, within 2 of the real count, real count >= 5), and the
+    // hidden cells are 2+ and hold 5+ real people whenever something is shown.
+    const { rows } = await admin.query<{ bad: string; total: string }>(
+      `with v(n) as (select unnest(array[0, 1, 3, 4, 5, 7, 8, 12, 21])),
+            combos as (select array[a.n, b.n, c.n, d.n, e.n] as cnt from v a, v b, v c, v d, v e),
+            res as (
+              select cnt,
+                     private.publish_demographic_cells(array['k0','k1','k2','k3','not_provided'], cnt, 5, 20, 5) as p,
+                     private.suppress_small_cells(array['k0','k1','k2','k3','not_provided'], cnt, 5) as s
+              from combos
+            ),
+            cells as (
+              select res.cnt, res.p, e.ord,
+                     (e.v ->> 'suppressed')::boolean as sup,
+                     (e.v ->> 'count')::int as shown,
+                     (res.s -> (e.ord::int - 1) ->> 'suppressed')::boolean as base_sup,
+                     res.cnt[e.ord] as real
+              from res, jsonb_array_elements(res.p -> 'cells') with ordinality as e(v, ord)
+            ),
+            agg as (
+              select cnt,
+                     bool_or((p ->> 'insufficient_data')::boolean) as insufficient,
+                     cnt[1] + cnt[2] + cnt[3] + cnt[4] as with_data,
+                     count(*) as n,
+                     count(*) filter (where sup) as k,
+                     coalesce(sum(real) filter (where sup), 0) as s,
+                     bool_or(sup and shown is not null) as leaked,
+                     bool_or(not sup and shown is null) as missing,
+                     bool_or(not sup and (shown % 5 <> 0 or shown < 5 or abs(shown - real) > 2 or real < 5
+                                          or shown <> round(real / 5.0) * 5)) as bad_value,
+                     bool_or(sup <> base_sup) as differs
+              from cells group by cnt, p
+            )
+       select count(*) filter (where n <> 5 or leaked or missing
+                                  or insufficient <> (with_data < 20)
+                                  or (insufficient and k <> 5)
+                                  or (not insufficient and (bad_value or differs
+                                        or (k > 0 and k < 5 and (k < 2 or s < 5)))))::text as bad,
+              count(*)::text as total
+       from agg`,
+    );
+    expect(Number(rows[0].total)).toBe(9 ** 5);
+    expect(Number(rows[0].bad)).toBe(0);
+  }, 120_000);
 
-    await addPeople(pack.communityId, [
-      ...Array.from({ length: 4 }, () => ({ gender: 'woman' })),
-      ...Array.from({ length: 4 }, () => ({ gender: 'prefer_not_to_say' })),
-    ]);
-    const after = await demographics(pack.organizerId, pack.communityId);
-    // The organizer would now read woman = 5 and subtract the 4 accounts it added.
-    expect(shownCells(after.genders).woman).toBe('x');
+  // P3-QA-1 (fixed): before the fix eight accounts (four "woman", four "prefer_not_to_say") lifted a
+  // hidden group of ONE woman to a shown, exact 5, and 5 minus the 4 added revealed it. Now shown
+  // counts are rounded to 5, so the same answer comes back whether the hidden group was 1, 2 or 3.
+  it('P3-QA-1: sock-puppet accounts no longer reveal a hidden group (same answer for 1, 2 or 3 real women)', async () => {
+    const answers: Demographics[] = [];
+    for (const women of [1, 2, 3]) {
+      const pack = await createPack(0);
+      await addPeople(pack.communityId, [
+        ...Array.from({ length: 13 - women }, () => ({ gender: 'man' })),
+        ...Array.from({ length: women }, () => ({ gender: 'woman' })),
+      ]);
+      const before = await demographics(pack.organizerId, pack.communityId);
+      // 13 members with a gender: below the 20-member floor, nothing is shown.
+      expect(before.insufficient_data.genders).toBe(true);
+      expect(before.genders.every((c) => c.suppressed)).toBe(true);
+
+      await addPeople(pack.communityId, [
+        ...Array.from({ length: 4 }, () => ({ gender: 'woman' })),
+        ...Array.from({ length: 4 }, () => ({ gender: 'prefer_not_to_say' })),
+      ]);
+      answers.push(await demographics(pack.organizerId, pack.communityId));
+    }
+    const comparable = answers.map((a) => ({ ...a, community_id: null }));
+    expect(comparable[1]).toEqual(comparable[0]);
+    expect(comparable[2]).toEqual(comparable[0]);
+    // What the organizer reads: woman about 5 (real 5, 6 or 7 including the 4 it added).
+    expect(shownCells(answers[0].genders)).toMatchObject({ woman: 5, man: 10 });
   });
 
-  it('KNOWN LIMIT: removing one member shows the organizer which group that member was in', async () => {
+  it('KNOWN LIMIT: adding accounts one at a time until a rounded total flips still reveals a hidden group', async () => {
     const pack = await createPack(0);
-    const men = await addPeople(pack.communityId, Array.from({ length: 10 }, () => ({ gender: 'man' })));
-    await addPeople(pack.communityId, Array.from({ length: 6 }, () => ({ gender: 'woman' })));
-    expect(shownCells((await demographics(pack.organizerId, pack.communityId)).genders)).toMatchObject({ man: 10 });
-    await asUser(pack.organizerId, (db) => rpc(db, 'remove_member', [pack.communityId, men[0]]));
-    // 10 -> 9: the removed person was a man. Contract: differencing over time is not prevented.
-    expect(shownCells((await demographics(pack.organizerId, pack.communityId)).genders)).toMatchObject({ man: 9 });
+    // 20 men, 1 woman, 5 members without data + the organizer (not_provided 6).
+    await addPeople(pack.communityId, [
+      ...Array.from({ length: 20 }, () => ({ gender: 'man' })),
+      { gender: 'woman' },
+      ...Array.from({ length: 5 }, () => ({})),
+    ]);
+    const seen: (number | string | null)[] = [];
+    for (let added = 1; added <= 7; added += 1) {
+      await addPeople(pack.communityId, [{ gender: 'woman' }]);
+      seen.push(shownCells((await demographics(pack.organizerId, pack.communityId)).genders).woman);
+    }
+    // Real women 1 + added: shown only from 7 (as 5), and the total flips to 10 at 8, i.e. after
+    // the 7th account: 8 - 7 = 1 real woman. Rounding defeats one-off differencing, not a sequence
+    // of joins (each needs an invitation code redemption, which is recorded). Contract: known limits.
+    expect(seen).toEqual(['x', 'x', 'x', 'x', 'x', 5, 10]);
   });
 
   it('consent withdrawal moves a person to not_provided at once (no stale count)', async () => {
     const pack = await createPack(0);
-    const people = await addPeople(pack.communityId, Array.from({ length: 12 }, () => ({ gender: 'woman', age: 41 })));
+    const people = await addPeople(pack.communityId, Array.from({ length: 13 }, () => ({ gender: 'woman', age: 41 })));
     await addPeople(pack.communityId, Array.from({ length: 8 }, () => ({ gender: 'man', age: 25 })));
+    let d = await demographics(pack.organizerId, pack.communityId);
+    expect(shownCells(d.genders)).toMatchObject({ woman: 15, man: 'x' }); // 13
     await withdraw(people[0], 'profile_demographics');
-    const d = await demographics(pack.organizerId, pack.communityId);
-    expect(shownCells(d.genders)).toMatchObject({ woman: 11, man: 'x' });
-    expect(shownCells(d.age_bands)).toMatchObject({ '40_49': 11, '18_29': 'x' });
+    d = await demographics(pack.organizerId, pack.communityId);
+    expect(shownCells(d.genders)).toMatchObject({ woman: 10, man: 'x' }); // 12
+    expect(shownCells(d.age_bands)).toMatchObject({ '40_49': 10, '18_29': 'x' });
   });
 });
 

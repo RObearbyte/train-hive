@@ -58,6 +58,11 @@ export function MemberEmergencySection({ communityId, userId }: { communityId: s
       </View>
     );
     if (href !== null) {
+      // The rejection's message contains the tel: URL (the phone number): log a fixed message only.
+      const onCallFailed = () => {
+        reportError('aboutYou.call', 'could not open the phone app');
+        setCallProblem('Could not open the phone app. Copy the number instead.');
+      };
       body = (
         <View style={{ gap: spacing.sm }}>
           {body}
@@ -68,10 +73,7 @@ export function MemberEmergencySection({ communityId, userId }: { communityId: s
             accessibilityHint="Opens your phone app with this number. Nothing is dialed until you confirm."
             onPress={() => {
               setCallProblem(null);
-              Linking.openURL(href).catch((error: unknown) => {
-                reportError('aboutYou.call', error);
-                setCallProblem('Could not open the phone app. Copy the number instead.');
-              });
+              Linking.openURL(href).catch(onCallFailed);
             }}
           />
           {callProblem ? <Banner tone="warning" message={callProblem} /> : null}

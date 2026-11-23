@@ -13,7 +13,9 @@
  */
 import type { ConsentPurpose, MyConsents } from '@/lib/database.types';
 
-import { BUNDLED_TERMS_PRIVACY_VERSION } from '../constants';
+import { AppError, toAppError } from '@/lib/errors';
+
+import { BUNDLED_TERMS_PRIVACY_VERSION, PRIVACY_VERSION } from '../constants';
 import { isAcceptanceCurrent, type LocalAcceptance } from './acceptance';
 
 export type ConsentWrite =
@@ -105,3 +107,22 @@ export const OPTIONAL_PURPOSES: readonly ConsentPurpose[] = [
 ];
 
 export const REQUIRED_PURPOSES: readonly ConsentPurpose[] = ['terms_privacy', 'age_16'];
+
+/**
+ * The `p_document_version` for `record_consent`: an optional purpose is stamped with the privacy
+ * version this build shows (the server refuses a mismatch), `terms_privacy` with the combined
+ * string the caller read from the server, `age_16` with nothing.
+ */
+export function documentVersionFor(purpose: ConsentPurpose, explicit?: string): string | null {
+  if (explicit !== undefined) return explicit;
+  return OPTIONAL_PURPOSES.includes(purpose) ? PRIVACY_VERSION : null;
+}
+
+/** A refused document version means the texts on the server differ from this build: the app must be updated. */
+export function mapConsentWriteError(error: unknown): AppError {
+  const appError = toAppError(error);
+  if (appError.code === 'validation_failed' && appError.field === 'document_version') {
+    return new AppError('app_update_required', { original: error });
+  }
+  return appError;
+}

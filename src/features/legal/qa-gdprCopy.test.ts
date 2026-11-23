@@ -41,7 +41,8 @@ describe('texts versus what exists', () => {
       expect(migrations.includes(column), `migration: ${phrase} -> ${column}`).toBe(flag);
     }
     // The 5-person rule is stated because demographics exist; the Terms ask organizers to protect the contact, not workouts.
-    expect(privacyText).toContain('groups of 5 or more');
+    expect(privacyText).toContain('rounded to the nearest 5');
+    expect(privacyText).toContain('at least 20 members');
     expect(termsText).toMatch(/emergency contact/i);
     expect(termsText).not.toMatch(/workout/i);
     expect(privacyText).not.toMatch(/workout/i);
@@ -51,7 +52,7 @@ describe('texts versus what exists', () => {
     const off = { demographics: false, emergencyContact: false, workoutLogs: false, eventPosts: false };
     const privacyOff = JSON.stringify(buildPrivacyNotice(config as never, off));
     const termsOff = JSON.stringify(buildTerms(config as never, off));
-    for (const phrase of ['Birth year and gender', 'Emergency contact', 'Workout logs', 'groups of 5 or more']) {
+    for (const phrase of ['Birth year and gender', 'Emergency contact', 'Workout logs', 'rounded to the nearest 5']) {
       expect(privacyOff.includes(phrase), phrase).toBe(false);
     }
     expect(termsOff).not.toMatch(/emergency contact|workout/i);
@@ -60,7 +61,7 @@ describe('texts versus what exists', () => {
   it('Q7-7: with every flag on, the notice names each item and the 5-person rule', () => {
     const all = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
     const text = JSON.stringify(buildPrivacyNotice(config as never, all));
-    for (const phrase of ['Birth year and gender', 'Emergency contact and T-shirt size', 'Workout logs', 'groups of 5 or more']) {
+    for (const phrase of ['Birth year and gender', 'Emergency contact and T-shirt size', 'Workout logs', 'rounded to the nearest 5']) {
       expect(text).toContain(phrase);
     }
   });

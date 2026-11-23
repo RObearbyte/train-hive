@@ -42,10 +42,10 @@ export const PURPOSE_COPY: Record<ConsentPurpose, PurposeCopy> = {
   profile_demographics: {
     title: 'Birth year and gender',
     description:
-      'Optional. Used only for statistics: organizers see grouped numbers for groups of 5 or more, never your individual answer. Add or change them in Profile, then About you.',
+      'Optional. Used only for statistics: organizers see only approximate group totals (rounded to the nearest 5, and only once at least 20 members have answered), never your individual answer. Add or change them in Profile, then About you.',
     withdrawTitle: 'Withdraw consent for birth year and gender?',
     withdrawMessage:
-      'The birth year and gender stored for you will be deleted from TrainHive for good, and you will no longer be counted in the grouped statistics. You can give them again later.',
+      'The birth year and gender stored for you will be deleted from TrainHive for good, and you will no longer be counted in the group totals. You can give them again later.',
   },
   emergency_contact: {
     title: 'Emergency contact and T-shirt size',

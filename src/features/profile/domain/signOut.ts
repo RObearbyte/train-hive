@@ -20,7 +20,7 @@ import { PUSH_PROMPT_DISMISSED_KEY } from '@/features/notifications/domain/pushS
 export const SIGN_OUT_TITLE = 'Sign out of TrainHive?';
 
 export const SIGN_OUT_MESSAGE =
-  'You will lose access to this account on this device. TrainHive accounts are anonymous: without a login there is no way to get it back.';
+  'You will lose access to this account on this device. TrainHive accounts are anonymous: without a login there is no way to get it back. Your About-you details and your place in the community stay on the server, and nobody can reach them after you sign out. To remove the details first, cancel and use Profile, About you, Clear my About-you data.';
 
 /** Every record kept on this device that belongs to the account or its choices (including the "About you page seen" note). */
 export function storedKeysToClear(input: { userId: string | null; authStorageKey: string }): string[] {

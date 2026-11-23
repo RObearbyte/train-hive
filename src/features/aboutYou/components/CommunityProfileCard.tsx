@@ -5,19 +5,21 @@ import { reportError } from '@/lib/logger';
 import { Banner, Card, Divider, ErrorState, LoadingState, Text, useTheme } from '@/ui';
 
 import {
-  ageBandRows,
+  ageBandSection,
   basisLine,
-  genderRows,
+  genderSection,
   suppressionNote,
-  type DemographicsRow,
+  type DemographicsSection,
 } from '../domain/demographics';
 import { useCommunityDemographics } from '../hooks/useOrganizerData';
 
-function Rows({ title, rows }: { title: string; rows: DemographicsRow[] }) {
+function Rows({ title, section }: { title: string; section: DemographicsSection }) {
   const { spacing } = useTheme();
+  const { rows, insufficientMessage } = section;
   return (
     <View style={{ gap: spacing.xs }}>
       <Text variant="label">{title}</Text>
+      {insufficientMessage ? <Text color="textMuted">{insufficientMessage}</Text> : null}
       {rows.map((row, index) => (
         <View key={row.key}>
           {index > 0 ? <Divider /> : null}
@@ -38,8 +40,8 @@ function Rows({ title, rows }: { title: string; rows: DemographicsRow[] }) {
 }
 
 /**
- * Organizers: "Community profile", the grouped age and gender numbers the
- * server computes (small groups are hidden by the server). Today's numbers
+ * Organizers: "Community profile", the approximate age and gender totals the
+ * server computes (small groups hidden, rounded, nothing until enough answers). Today's numbers
  * only: no history and no comparison.
  */
 export function CommunityProfileCard({ communityId }: { communityId: string | null }) {
@@ -67,10 +69,10 @@ export function CommunityProfileCard({ communityId }: { communityId: string | nu
           <Banner tone="warning" message={`${userMessage(query.error.code, query.error.field)} Showing the last numbers that loaded.`} />
         ) : null}
         <Text color="textMuted">{basisLine(data)}</Text>
-        <Rows title="Age" rows={ageBandRows(data)} />
-        <Rows title="Gender" rows={genderRows(data)} />
+        <Rows title="Age" section={ageBandSection(data)} />
+        <Rows title="Gender" section={genderSection(data)} />
         <Text variant="caption" color="textMuted">
-          {suppressionNote(data.min_group_size)}
+          {suppressionNote(data)}
         </Text>
       </View>
     );
@@ -80,7 +82,7 @@ export function CommunityProfileCard({ communityId }: { communityId: string | nu
     <Card style={{ gap: spacing.md }}>
       <Text variant="heading">Community profile</Text>
       <Text color="textMuted">
-        Grouped totals from what members chose to share. Nobody is named, and individual answers are never shown.
+        Approximate group totals from what members chose to share, shown only once enough members have answered. Nobody is named, and individual answers are never shown.
       </Text>
       {body}
     </Card>

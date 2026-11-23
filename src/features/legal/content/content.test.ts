@@ -240,7 +240,7 @@ const OFF: LegalFeatures = { demographics: false, emergencyContact: false, worko
 const SHIPPED: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: false, eventPosts: false };
 const ON: LegalFeatures = { demographics: true, emergencyContact: true, workoutLogs: true, eventPosts: true };
 const SINGLE: [keyof LegalFeatures, RegExp][] = [
-  ['demographics', /birth year|gender|groups of 5/i],
+  ['demographics', /birth year|gender|rounded to the nearest 5/i],
   ['emergencyContact', /emergency contact|T-shirt/i],
   ['workoutLogs', /workout/i],
   ['eventPosts', /event discussions|replies/i],
@@ -271,8 +271,10 @@ describe('later-phase features appear in the texts only when their flag is on', 
     expect(text).toMatch(/safety at events and for race kits/);
     expect(text).toMatch(/visible to the organizers of the communities you belong to/);
     expect(text).toMatch(/Other members cannot see them/);
-    expect(text).toMatch(/never shown to organizers one by one/);
-    expect(text).toMatch(/groups of 5 or more people: smaller groups are hidden/);
+    expect(text).toMatch(/never see your birth year or gender next to your name/);
+    expect(text).toMatch(/approximate group totals for the whole community, rounded to the nearest 5, and only once at least 20 members have answered/);
+    expect(text).toMatch(/Groups of fewer than 5 people are hidden/);
+    expect(text).not.toMatch(/one by one/);
     expect(text).toMatch(/Birth year and gender: kept until you withdraw your consent \(which deletes them\), clear them yourself or delete your account/);
     expect(text).toMatch(/Emergency contact and T-shirt size: kept until you withdraw your consent/);
     expect(text).toMatch(/Profile, then About you/);
@@ -303,7 +305,8 @@ describe('later-phase features appear in the texts only when their flag is on', 
   it.each(LEGAL_DOC_KINDS)('%s: with every flag on, all of it is described and the 5-person rule is stated', (kind) => {
     const text = textOf(buildLegalDocument(kind, FAKE, ON));
     if (kind === 'privacy') {
-      expect(text).toMatch(/groups of 5 or more/);
+      expect(text).toMatch(/rounded to the nearest 5/);
+      expect(text).toMatch(/at least 20 members/);
       expect(text).toMatch(/explicit consent/);
       expect(text).toMatch(/Workout logs/);
       expect(text).toMatch(/Emergency contact and T-shirt size/);

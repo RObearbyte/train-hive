@@ -14,8 +14,10 @@
 --                                               member: emergency contact + T-shirt size
 --   list_community_emergency_info(community)    organizer: every active member with such data
 --                                               (cap 500)
---   get_community_demographics(community)       organizer: age-band and gender counts, each cell
---                                               >= 5 or suppressed (complementary suppression)
+--   get_community_demographics(community)       organizer: approximate age-band and gender group
+--                                               totals: nothing unless >= 20 members gave a value,
+--                                               cells < 5 suppressed (complementary suppression),
+--                                               shown cells rounded to a multiple of 5 (P3-QA-1)
 --
 -- Consent (G1 ledger, private.has_consent):
 --   * birth_year / gender need a current `profile_demographics` grant to be SET (not to clear);
@@ -32,7 +34,13 @@
 -- Visibility: birth year and gender never leave the database per person except to the member
 -- themselves (get_my_about_you, export_my_data). Organizers see emergency contact and T-shirt size
 -- of ACTIVE members of a community they actively organize; leaving or being removed ends it at
--- once (checked at read time, no copy is kept). Age and gender reach organizers only as counts.
+-- once (checked at read time, no copy is kept). Age and gender reach organizers only as rounded
+-- group totals (see get_community_demographics for what that does and does not protect against).
+--
+-- Consent version (P3-QA-7): record_consent (20261123000100_consents.sql, unchanged) already takes
+-- an optional p_document_version for optional purposes and refuses one that is not the privacy
+-- version in force (validation_failed:document_version, which the app maps to
+-- app_update_required, as for terms_privacy). The app sends the privacy version it shows.
 --
 -- GDPR: export_my_data gains extensions.about_you; private.erase_user deletes the row (the foreign
 -- key to profiles cascades too).
@@ -211,6 +219,62 @@ begin
     ));
   end loop;
   return v_result;
+end;
+$$;
+
+-- What get_community_demographics publishes for one dimension (P3-QA-1). Live exact counts can be
+-- differenced by an organizer who adds or removes accounts (invitation codes, anonymous sign-in),
+-- so on top of private.suppress_small_cells:
+--   1. minimum data: unless at least p_min_with_data members have a value for the dimension (every
+--      cell except the one keyed 'not_provided'), every cell is suppressed and insufficient_data is
+--      true;
+--   2. complementary suppression of the EXACT counts with p_min (as before);
+--   3. every shown cell is rounded to the nearest multiple of p_round (counts are integers, so
+--      there are no ties: remainder 0-2 down, 3-4 up); a cell whose rounded value would be 0 is
+--      suppressed (cannot happen while p_min >= p_round / 2, kept as a guard).
+-- Returns { insufficient_data, cells: [ { key, count (null when suppressed), suppressed } ] }.
+create function private.publish_demographic_cells(
+  p_keys text[],
+  p_counts integer[],
+  p_min integer,
+  p_min_with_data integer,
+  p_round integer
+) returns jsonb
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  v_with_data integer;
+  v_cells jsonb;
+begin
+  select coalesce(sum(t.n), 0)::integer into v_with_data
+  from unnest(p_keys, p_counts) as t(k, n)
+  where t.k <> 'not_provided';
+
+  if v_with_data < p_min_with_data then
+    select coalesce(jsonb_agg(jsonb_build_object('key', t.k, 'count', null, 'suppressed', true)
+                              order by t.o), '[]'::jsonb)
+      into v_cells
+    from unnest(p_keys) with ordinality as t(k, o);
+    return jsonb_build_object('insufficient_data', true, 'cells', v_cells);
+  end if;
+
+  select coalesce(jsonb_agg(
+           case
+             when (e.c ->> 'suppressed')::boolean then e.c
+             when round((e.c ->> 'count')::numeric / p_round) = 0 then
+               jsonb_build_object('key', e.c ->> 'key', 'count', null, 'suppressed', true)
+             else
+               jsonb_build_object('key', e.c ->> 'key',
+                                  'count', (round((e.c ->> 'count')::numeric / p_round) * p_round)::integer,
+                                  'suppressed', false)
+           end
+           order by e.o), '[]'::jsonb)
+    into v_cells
+  from jsonb_array_elements(private.suppress_small_cells(p_keys, p_counts, p_min))
+       with ordinality as e(c, o);
+  return jsonb_build_object('insufficient_data', false, 'cells', v_cells);
 end;
 $$;
 
@@ -597,16 +661,23 @@ begin
 end;
 $$;
 
--- get_community_demographics: an active organizer of the community gets counts over the
--- community's ACTIVE members (organizers included):
+-- get_community_demographics: an active organizer of the community gets APPROXIMATE group totals
+-- over the community's ACTIVE members (organizers included):
 --   age_bands: under_18, 18_29, 30_39, 40_49, 50_59, 60_plus, not_provided
 --     (age = server year - birth year, i.e. the age reached this calendar year)
 --   genders:   woman, man, other, prefer_not_to_say, not_provided
--- Each dimension separately through private.suppress_small_cells(..., 5): every shown cell is at
--- least 5; suppressed cells (count null) are at least two and add up to at least 5, or everything
--- is suppressed. There is no age x gender cross-table. A field without a current consent counts as
--- not_provided.
--- { community_id, min_group_size: 5, member_count, reference_year,
+-- Each dimension separately through private.publish_demographic_cells: nothing is shown unless at
+-- least 20 active members gave a value for it (insufficient_data); cells below 5 are suppressed
+-- with complementary suppression (on the exact counts); every shown cell is rounded to a multiple
+-- of 5 (so it is at least 5 and within 2 of the real count). There is no age x gender
+-- cross-table. A field without a current consent counts as not_provided. member_count is exact
+-- (organizers see the member list anyway).
+-- What this protects: an organizer never sees a person's age or gender, and cannot read a small
+-- group's exact size from one answer or by adding a few accounts once (P3-QA-1). What it does not:
+-- an organizer who adds or removes accounts one at a time and watches a rounded total change can
+-- still find where it crosses a rounding boundary (docs/API_CONTRACT.md, known limits).
+-- { community_id, min_group_size: 5, min_members_with_data: 20, rounded_to: 5, member_count,
+--   reference_year, insufficient_data: { age_bands, genders },
 --   age_bands: [ { key, count, suppressed } ], genders: [ { key, count, suppressed } ] }
 -- Errors: not_authenticated, forbidden.
 create function public.get_community_demographics(p_community_id uuid) returns jsonb
@@ -617,6 +688,8 @@ set search_path = ''
 as $$
 declare
   c_min constant integer := 5;
+  c_min_with_data constant integer := 20;
+  c_round constant integer := 5;
   c_age_keys constant text[] := array['under_18', '18_29', '30_39', '40_49', '50_59', '60_plus',
                                       'not_provided'];
   c_gender_keys constant text[] := array['woman', 'man', 'other', 'prefer_not_to_say',
@@ -626,6 +699,8 @@ declare
   v_total integer;
   v_age_counts integer[];
   v_gender_counts integer[];
+  v_ages jsonb;
+  v_genders jsonb;
 begin
   if v_uid is null then
     raise exception using errcode = 'P0001', message = 'not_authenticated';
@@ -653,13 +728,23 @@ begin
     group by x.gender
   ) c on c.gender = t.k;
 
+  v_ages := private.publish_demographic_cells(c_age_keys, v_age_counts, c_min, c_min_with_data, c_round);
+  v_genders := private.publish_demographic_cells(c_gender_keys, v_gender_counts, c_min, c_min_with_data,
+                                                 c_round);
+
   return jsonb_build_object(
     'community_id', p_community_id,
     'min_group_size', c_min,
+    'min_members_with_data', c_min_with_data,
+    'rounded_to', c_round,
     'member_count', v_total,
     'reference_year', v_year,
-    'age_bands', private.suppress_small_cells(c_age_keys, v_age_counts, c_min),
-    'genders', private.suppress_small_cells(c_gender_keys, v_gender_counts, c_min)
+    'insufficient_data', jsonb_build_object(
+      'age_bands', v_ages -> 'insufficient_data',
+      'genders', v_genders -> 'insufficient_data'
+    ),
+    'age_bands', v_ages -> 'cells',
+    'genders', v_genders -> 'cells'
   );
 end;
 $$;
@@ -1288,6 +1373,8 @@ revoke all on function private.about_you_year() from public, anon, authenticated
 revoke all on function private.erase_about_you_purpose(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function private.about_you_self_json(uuid) from public, anon, authenticated, service_role;
 revoke all on function private.suppress_small_cells(text[], integer[], integer)
+  from public, anon, authenticated, service_role;
+revoke all on function private.publish_demographic_cells(text[], integer[], integer, integer, integer)
   from public, anon, authenticated, service_role;
 revoke all on function private.about_you_population(uuid, integer) from public, anon, authenticated, service_role;
 revoke all on function private.member_emergency_json(uuid, text, public.membership_role, private.member_about_you)

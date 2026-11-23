@@ -194,7 +194,7 @@ describe('the form after an agreement is recorded', () => {
   // agreements flag flips, aboutYouSignature changes and AboutYouForm resets every field to the
   // stored copy: the person loses what they typed. The signature should ignore the agreements, or
   // the form should not reset while it holds unsaved edits.
-  it.fails('DEFECT P3-QA-2: recording an agreement alone does not change the signature that resets the form', () => {
+  it('DEFECT P3-QA-2: recording an agreement alone does not change the signature that resets the form', () => {
     const before = stored({ updated_at: null });
     const after = stored({ updated_at: null, consents: { profile_demographics: true, emergency_contact: false } });
     expect(aboutYouSignature(after)).toBe(aboutYouSignature(before));
@@ -210,13 +210,13 @@ describe('personal data in error reports', () => {
   // (a server change, a partial answer) therefore writes birth year, phone numbers and names of
   // every member in the emergency list to the device log. Keep only the function name and the
   // type of each field.
-  it.fails('DEFECT P3-QA-3: a shape error does not carry the answer it could not read', () => {
+  it('DEFECT P3-QA-3: a shape error does not carry the answer it could not read', () => {
     expect(read('api/aboutYou.ts')).not.toMatch(/original:\s*data/);
   });
 
   // DEFECT P3-QA-4 (low): MemberEmergencySection reports the Linking.openURL rejection, whose
   // message contains the tel: URL (the emergency contact's phone number), through reportError.
-  it.fails('DEFECT P3-QA-4: a failed call attempt does not log the number', () => {
+  it('DEFECT P3-QA-4: a failed call attempt does not log the number', () => {
     const source = read('components/MemberEmergencySection.tsx');
     expect(source).not.toMatch(/reportError\('aboutYou\.call',\s*error\)/);
   });

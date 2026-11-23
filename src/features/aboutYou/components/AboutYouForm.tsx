@@ -29,7 +29,7 @@ import { ChoiceChips } from './ChoiceChips';
 
 /** Plain-language text of the two agreements. Kept here, next to the boxes it explains. */
 const DEMOGRAPHICS_TEXT =
-  'Organizers never see your birth year or gender next to your name. They only see grouped totals for the whole community (for example how many members are in an age band), and only for groups of 5 or more people: smaller groups are hidden. You can clear these details at any time, and turning off this agreement in Profile, then Privacy, deletes them.';
+  'Organizers never see your birth year or gender next to your name. They only see approximate group totals for the whole community (rounded to the nearest 5, for example how many members are in an age band), and only once at least 20 members have answered; small groups are hidden. You can clear these details at any time, and turning off this agreement in Profile, then Privacy, deletes them.';
 const EMERGENCY_TEXT =
   'The organizers of your communities can see your emergency contact and T-shirt size, so they can reach someone if something happens at an event and can order race kits. Other members cannot see them. Please tell your contact that you gave their details. You can clear these details at any time, and turning off this agreement in Profile, then Privacy, deletes them.';
 
