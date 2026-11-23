@@ -137,6 +137,9 @@ describe('QA: who can reach private.workout_logs', () => {
   // Every function body that mentions the table. A new reader of the table (a new way to leak a
   // log) shows up here and must be reviewed on purpose.
   const READERS = [
+    // G3 (reviewed): reads only max(updated_at) of one account's logs as an activity signal; no
+    // API role can execute it; its callers return counts / timestamps, never log content.
+    'private.account_last_activity',
     'private.erase_user',
     'public.delete_my_workout_log',
     'public.enqueue_workout_log_prompts',

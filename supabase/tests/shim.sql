@@ -14,7 +14,9 @@ create schema auth;
 create table auth.users (
   id uuid primary key default gen_random_uuid(),
   is_anonymous boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Hosted Supabase Auth has it (set on sign-in); G3 retention reads it as an activity signal.
+  last_sign_in_at timestamptz
 );
 
 create function auth.uid() returns uuid

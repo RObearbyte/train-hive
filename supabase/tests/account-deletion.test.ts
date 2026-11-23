@@ -309,6 +309,8 @@ describe('delete_my_account: export consistency', () => {
       'private.member_about_you.user_id': ex.extensions.about_you ? 1 : 0,
       // P5: workout logs.
       'private.workout_logs.user_id': (ex.extensions.workout_logs as unknown[]).length,
+      // G3: record_app_open / inactivity notice.
+      'private.account_activity.user_id': ex.extensions.account_activity ? 1 : 0,
     };
     const nonZero = Object.fromEntries(Object.entries(expected).filter(([, n]) => n > 0));
     // Every place the database refers to the victim is a section of the export, with the same count.

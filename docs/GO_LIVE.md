@@ -100,6 +100,25 @@ TrainHive stores a display name, attendance and participation records, push toke
 | 39 | Decide **retention** (for example attendance history kept for N years; notification rows are already purged after 90–180 days). | Owner |
 | 40 | If members can be under 16, check local rules on consent for minors. | Owner |
 
+### GDPR operations documents (G3, 2026-11-23)
+
+Read these first; each one names the owner actions it needs. All are drafts and none contains your personal details (placeholders like `[CONTROLLER NAME]`).
+
+- `docs/RECORD_OF_PROCESSING.md` — record of processing (Art. 30), including the **retention register for every table** and the procedures for e-mail requests and operator erasure.
+- `docs/DPIA_DRAFT.md` — DPIA screening and draft assessment (workout logs, emergency contacts); you sign the conclusion.
+- `docs/PROCESSORS_CHECKLIST.md` — DPAs with Supabase, Expo, Google Firebase and the web host; EU region check; sub-processors; transfers.
+- `docs/BREACH_RUNBOOK.md` — what to do in the first hour, 72-hour notification to ANSPDCP, member message templates, key rotation steps.
+- `docs/CLAIMS_AUDIT.md` — every claim of the privacy notice and the terms checked against the code; gaps and the exact text changes.
+
+| # | Step | Owner |
+|---|---|---|
+| 40a | **Sign / accept the DPAs** and confirm the Supabase project is in an EU region (`docs/PROCESSORS_CHECKLIST.md`). | Owner |
+| 40b | **Event discussions are live in the app but not described in the privacy notice or the terms** (`docs/CLAIMS_AUDIT.md`, gap A). Before real members: either describe them (flip `FEATURES.eventPosts`, add the listed text, version 3) or hide the feature. | Owner decides, Claude implements |
+| 40c | **Inactive-account clean-up is built but switched OFF.** Turn it on only deliberately, after: the app calls `record_app_open` (mobile task), the notice describes it (`docs/CLAIMS_AUDIT.md`, gap B), and `select public.retention_preview();` shows numbers you expect. Then `select public.admin_set_retention_enabled(true);`. | Owner |
+| 40d | Fill in and sign the **DPIA** conclusion; fill in the **breach runbook** contacts in your private copy. | Owner |
+| 40e | **Lawyer review** of the notice, the terms, the record of processing and the DPIA; only then set `LEGAL_REVIEWED = true`. | Owner + lawyer |
+| 40f | Decide whether attendance history should be capped at N years (today it is kept for the life of the community, anonymized on deletion) and check the Supabase Auth audit-log retention (`docs/RECORD_OF_PROCESSING.md` section 7). | Owner |
+
 ---
 
 ## Phase 7 — Google Play Store

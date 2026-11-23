@@ -37,6 +37,8 @@ describe('export_my_data: content', () => {
       },
       // P5: the victim withdrew the workout_logs consent, which deletes every log.
       workout_logs: [],
+      // G3: the victim never called record_app_open and has no inactivity notice.
+      account_activity: null,
     });
     expect(ex.account).toMatchObject({ user_id: life.victim, is_anonymous: true });
     expect(ex.profile).toMatchObject({ display_name: 'Victor Victim' });

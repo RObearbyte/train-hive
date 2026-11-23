@@ -1078,3 +1078,43 @@ New error codes: `not_loggable`, `event_not_ended`, `not_eligible`, `consent_req
 TypeScript (`src/lib/database.types.ts`): functions `save_workout_log`, `get_my_workout_log`, `delete_my_workout_log`, `list_my_workout_logs`, `get_my_workout_stats`, `get_community_workout_stats`, `enqueue_workout_log_prompts`; types `WorkoutLogType`, `WorkoutSet`, `WorkoutExercise`, `WorkoutLogInput`, `WorkoutLog`, `WorkoutLogBlockReason`, `WorkoutLogScreen`, `DeleteWorkoutLogResult`, `WorkoutLogPage`, `MyWorkoutStats`, `CommunityWorkoutStats`; `NotificationKind` gains `workout_log_prompt`; `MyDataExport.extensions.workout_logs` (optional: absent in files exported before P5) and `truncated.workout_logs`. No table type (the tables are not reachable by the API).
 
 Legal / app notes: `FEATURES.workoutLogs` stays false until the app ships. The tripwire `src/features/legal/qa-gdprCopy.test.ts` looks for `public.workout_logs ` in the migrations, but the table is `private.workout_logs`, so the app task must update that check when it turns the flag on. The privacy notice must then describe the logs (what, why, owner only, organizers see only rounded totals from 20 members, deleted on withdrawal or account deletion).
+
+---
+
+# Retention (G3, append-only)
+
+Migration `20261202000100_retention.sql`. Tests: `supabase/tests/retention.test.ts`; privilege matrix in `qa-privileges.test.ts`. Plan: `docs/GDPR_PLAN.md` section 4 item 6. Register of every table: `docs/RECORD_OF_PROCESSING.md` section 7.
+
+**Rule (only while enabled).** An anonymous account (`auth.users.is_anonymous`) with no activity for **24 months** gets an inactivity notice. Any activity ends the notice. When the notice is **30 days** old and the account is still inactive, it is erased with `private.erase_user`, exactly like `delete_my_account` (attendance anonymized, a community where it is the last active member deleted, auth user deleted). The last active organizer of a community with other active members is never erased (counted as `blocked_last_organizer`, notice kept, retried every run). At most 100 erasures per run. Linked (non-anonymous) accounts are not handled.
+
+**Kill switch: disabled by default** (`private.retention_settings.inactive_erasure_enabled = false`). While disabled nothing is noticed or erased and the job writes nothing. Switching off clears every pending notice, so switching on always starts a fresh 30-day window.
+
+**Activity** (`private.account_last_activity(user)`, computed by the job; no existing RPC changed): the latest of `auth.users.created_at` / `last_sign_in_at`, `record_app_open`, profile update, membership join, consent ledger entry, push token registration (`last_seen_at`), RSVP change, the member's `present` attendance records, attendance the member recorded, notifications read, announcements read, event feed read, event posts written, announcements and events authored (`updated_at`), workout logs, About you, data exports, invitation attempts.
+Limits: (1) a member who only reads, with push off, in an app version that does not call `record_app_open`, leaves no trace; enable the clean-up only after the app version that calls it is the one in use. (2) `auth.sessions` / refresh tokens (token refreshes) are not used: their columns differ between Supabase Auth versions and a mismatch would break the migration; after deploying, the owner can check them with `select column_name from information_schema.columns where table_schema = 'auth' and table_name = 'sessions';` and they can be added later. (3) Some signals move on other people's actions (an organizer editing old attendance or an event): they can only keep an account longer.
+
+## `record_app_open() → jsonb` (authenticated)
+
+Call on app start and on every return to the foreground, once signed in. Records the app open (at most one write per hour per account) and ends a pending notice. Returns `AppOpenResult` `{ inactivity_erasure_enabled, inactive_after_months: 24, notice_days: 30, notice: { noticed_at, erase_after } | null }`: `notice` is the notice that was pending **before** this call (now ended); when it is not null show a one-time banner such as "This account had been inactive for 2 years and was going to be deleted on <erase_after>. Because you opened the app, it is kept." Errors: `not_authenticated` (no user, or the account no longer exists, also when it was erased while the call waited). Fire and forget: a failure must not block the app.
+
+## `retention_preview() → jsonb` (service_role; also `postgres` in the SQL editor)
+
+Dry run, counts only, writes nothing. `RetentionPreview` `{ enabled, inactive_after_months, notice_days, generated_at, anonymous_accounts, inactive_accounts, inactive_without_notice, notices_pending, due_for_erasure, blocked_last_organizer, communities_deleted_with_due, communities_of_inactive_sole_members, last_run: { ran_at, notices_created, notices_cleared, accounts_erased, communities_deleted, blocked_last_organizer, deferred } | null }`.
+
+## `run_account_retention() → jsonb` (service_role; pg_cron `trainhive_account_retention`, daily 03:41 UTC)
+
+`RetentionRunResult` `{ enabled, notices_created, notices_cleared, accounts_erased, communities_deleted, blocked_last_organizer, deferred, due_remaining }`. Disabled: `enabled: false`, all zero, nothing written. Steps: end notices of accounts that came back; give new notices; erase due accounts (per account: `private.lock_user_for_erasure`, re-check the activity under those locks, then `private.erase_user`); log the counts in `private.retention_runs` (kept 2 years). Idempotent. One run at a time (the settings row is locked). `lock_timeout` 5 s: an account whose rows are busy, or a deadlock, is counted as `deferred` and retried next day; any other error aborts the whole run.
+
+## `admin_set_retention_enabled(p_enabled boolean) → jsonb` (service_role; also `postgres`)
+
+`RetentionSwitchResult` `{ enabled, changed, notices_cleared }`. Errors: `validation_failed:enabled` (null). Enable deliberately: `select public.admin_set_retention_enabled(true);`.
+
+## Export, erasure, privileges
+
+- `export_my_data`: `extensions.account_activity: { last_app_open_at, inactivity_notice_at } | null`; README sentence added. Nothing else changed.
+- Erasure: `private.account_activity` goes with the auth user (cascade); `private.erase_user` unchanged.
+- Tables `private.retention_settings`, `private.account_activity`, `private.retention_runs`: no API role has any privilege. Helpers `private.account_last_activity`, `private.inactive_accounts`, `private.retention_inactive_after`, `private.retention_notice_period`: no API role can execute them.
+- Lock order: job = settings row → per account the erasure order (consent lock → … → `auth.users` FOR UPDATE → …) → the account's activity row. `record_app_open` = `auth.users` FOR KEY SHARE → activity row. The job's notice insert skips accounts that already have a notice, so it never holds the activity row of an account it may erase in the same run (tested: a concurrent `record_app_open` either keeps the account or gets `not_authenticated` after the erasure).
+
+New error code: `validation_failed:enabled`. TypeScript (`src/lib/database.types.ts`): functions `record_app_open`, `retention_preview`, `run_account_retention`, `admin_set_retention_enabled`; types `AppOpenResult`, `RetentionPreview`, `RetentionRunLog`, `RetentionRunResult`, `RetentionSwitchResult`; `MyDataExport.extensions.account_activity` (optional).
+
+**App (not done, mobile task):** call `record_app_open()` on start and foreground (signed in only), show the one-time banner, mention the new export key in the download summary if wanted. **Legal:** the notice must describe the clean-up before it is enabled (`docs/CLAIMS_AUDIT.md`, gap B).

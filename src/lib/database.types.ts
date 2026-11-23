@@ -1493,6 +1493,31 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      // GDPR G3: retention of inactive accounts.
+      /**
+       * G3: call on app start and on return to the foreground (signed in). Records that the app
+       * was opened (at most one write per hour) and ends a pending inactivity notice. Returns an
+       * `AppOpenResult`; show `notice` once when it is not null. Raises `not_authenticated`.
+       */
+      record_app_open: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      /** G3: service_role only. Dry run, counts only. Returns a `RetentionPreview`. */
+      retention_preview: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      /** G3: service_role / pg_cron daily. Returns a `RetentionRunResult`. Does nothing while disabled. */
+      run_account_retention: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      /** G3: service_role only (the kill switch). Returns a `RetentionSwitchResult`. Raises `validation_failed:enabled`. */
+      admin_set_retention_enabled: {
+        Args: { p_enabled: boolean };
+        Returns: Json;
+      };
     };
     Enums: {
       membership_role: 'organizer' | 'member';
@@ -2277,6 +2302,11 @@ export type MyDataExport = {
     } | null;
     /** P5: the caller's workout logs, oldest event first (absent in files exported before P5). */
     workout_logs?: (Omit<WorkoutLog, 'id'> & { log_id: string })[];
+    /**
+     * G3: when the app last recorded an app open, and a pending inactivity notice; null when
+     * neither exists (absent in files exported before G3).
+     */
+    account_activity?: { last_app_open_at: string | null; inactivity_notice_at: string | null } | null;
   };
   /** true for a section that had more than 5000 items. */
   truncated: Record<
@@ -2544,3 +2574,50 @@ export type MemberStatisticsSummary = StatisticsEnvelope & {
   truncated: boolean;
   members: MemberStatisticsSummaryRow[];
 };
+
+// GDPR G3: retention of inactive accounts -------------------------------------------------------
+
+/** Result of `record_app_open`. `notice` is the inactivity notice that was pending before the call (now ended). */
+export type AppOpenResult = {
+  inactivity_erasure_enabled: boolean;
+  inactive_after_months: 24;
+  notice_days: 30;
+  notice: { noticed_at: string; erase_after: string } | null;
+};
+
+/** Result of `retention_preview` (service_role): counts only. */
+export type RetentionPreview = {
+  enabled: boolean;
+  inactive_after_months: 24;
+  notice_days: 30;
+  generated_at: string;
+  anonymous_accounts: number;
+  inactive_accounts: number;
+  inactive_without_notice: number;
+  notices_pending: number;
+  due_for_erasure: number;
+  blocked_last_organizer: number;
+  communities_deleted_with_due: number;
+  communities_of_inactive_sole_members: number;
+  last_run: RetentionRunLog | null;
+};
+
+/** One row of the retention run log (counts only). */
+export type RetentionRunLog = {
+  ran_at: string;
+  notices_created: number;
+  notices_cleared: number;
+  accounts_erased: number;
+  communities_deleted: number;
+  blocked_last_organizer: number;
+  deferred: number;
+};
+
+/** Result of `run_account_retention` (service_role). All zero and `enabled: false` while disabled. */
+export type RetentionRunResult = Omit<RetentionRunLog, 'ran_at'> & {
+  enabled: boolean;
+  due_remaining: number;
+};
+
+/** Result of `admin_set_retention_enabled` (service_role). */
+export type RetentionSwitchResult = { enabled: boolean; changed: boolean; notices_cleared: number };

@@ -63,6 +63,11 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   get_my_workout_stats: 'authenticated',
   list_my_workout_logs: 'authenticated',
   save_workout_log: 'authenticated',
+  // G3: retention of inactive accounts.
+  admin_set_retention_enabled: 'service_role',
+  record_app_open: 'authenticated',
+  retention_preview: 'service_role',
+  run_account_retention: 'service_role',
   cancel_announcement: 'authenticated',
   cancel_training: 'authenticated',
   claim_notification_jobs: 'service_role',
@@ -320,6 +325,7 @@ describe('QA function privileges', () => {
       ['select public.list_my_workout_logs($1, $2)', [20, null]],
       ['select public.get_my_workout_stats($1, $2, $3)', [communityId, null, null]],
       ['select public.get_community_workout_stats($1, $2)', [communityId, '30d']],
+      ['select public.record_app_open()', []],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
@@ -346,6 +352,14 @@ describe('QA function privileges', () => {
     await expect(
       asUser(organizerId, (db) => db.query('select public.enqueue_workout_log_prompts()')),
     ).rejects.toMatchObject(denied);
+    // G3: retention (preview, job, kill switch).
+    for (const sql of [
+      'select public.retention_preview()',
+      'select public.run_account_retention()',
+      'select public.admin_set_retention_enabled(true)',
+    ]) {
+      await expect(asUser(organizerId, (db) => db.query(sql)), sql).rejects.toMatchObject(denied);
+    }
   });
 });
 
@@ -475,6 +489,19 @@ describe('QA table privileges', () => {
       `select r.role, t.name as table, p.privilege
        from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
        cross join unnest(array['private.workout_logs', 'private.workout_prompt_runs']) as t(name)
+       cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
+       where has_table_privilege(r.role, t.name, p.privilege)
+          or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+              and has_any_column_privilege(r.role, t.name, p.privilege))`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('the retention tables in private grant nothing to any API role (G3)', async () => {
+    const { rows } = await admin.query<{ role: string; table: string; privilege: string }>(
+      `select r.role, t.name as table, p.privilege
+       from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
+       cross join unnest(array['private.retention_settings', 'private.account_activity', 'private.retention_runs']) as t(name)
        cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
        where has_table_privilege(r.role, t.name, p.privilege)
           or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')

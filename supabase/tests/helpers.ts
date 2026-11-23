@@ -162,6 +162,12 @@ export async function resetData(): Promise<void> {
   await admin.query(
     "update public.legal_documents set version = '1' where version <> '1'",
   );
+  // G3: the retention kill switch back to its default (off) and no run history.
+  // (private.account_activity goes with auth.users by cascade.)
+  await admin.query(
+    'update private.retention_settings set inactive_erasure_enabled = false where inactive_erasure_enabled',
+  );
+  await admin.query('delete from private.retention_runs where true');
 }
 
 /** Closes the pool; call from `afterAll` in every test file that imports these helpers. */
