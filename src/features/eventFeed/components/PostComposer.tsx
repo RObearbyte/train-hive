@@ -1,11 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
 
-import { Banner, Button, TextField, useTheme } from '@/ui';
+import { Banner, Button, Text, TextField, useTheme } from '@/ui';
 
 import {
+  ANONYMOUS_HELPER,
   EVENT_POST_MAX,
   counterText,
   feedErrorMessage,
@@ -17,8 +18,10 @@ import {
 type Props = {
   label: string;
   submitLabel: string;
-  /** Sends the trimmed text. Rejects with the AppError when the server refuses. */
-  onSubmit: (body: string) => Promise<unknown>;
+  /** Sends the trimmed text (and whether it is anonymous). Rejects with the AppError when the server refuses. */
+  onSubmit: (body: string, anonymous: boolean) => Promise<unknown>;
+  /** Show the "Post anonymously" switch (members only; off by default). */
+  allowAnonymous?: boolean;
   /** Called after a successful send (e.g. to close a reply box). */
   onDone?: () => void;
   onCancel?: () => void;
@@ -28,9 +31,18 @@ type Props = {
 /**
  * One text box with a character counter. The text is trimmed before it is
  * sent and kept (with the error) when the send fails, so nothing typed is lost.
+ * The anonymous switch starts off and goes back off after a send.
  */
-export function PostComposer({ label, submitLabel, onSubmit, onDone, onCancel, autoFocus }: Props) {
-  const { spacing } = useTheme();
+export function PostComposer({
+  label,
+  submitLabel,
+  onSubmit,
+  allowAnonymous = false,
+  onDone,
+  onCancel,
+  autoFocus,
+}: Props) {
+  const { spacing, colors } = useTheme();
   const { control, handleSubmit, reset } = useForm<PostFormValues>({
     defaultValues: { body: '' },
     resolver: zodResolver(postFormSchema),
@@ -39,17 +51,20 @@ export function PostComposer({ label, submitLabel, onSubmit, onDone, onCancel, a
   const body = useWatch({ control, name: 'body' });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [anonymous, setAnonymous] = useState(false);
+  const sendAnonymously = allowAnonymous && anonymous;
 
   const submit = handleSubmit(async (values) => {
     if (sending) return;
     setSending(true);
     setError(null);
     try {
-      await onSubmit(toPostBody(values));
+      await onSubmit(toPostBody(values), sendAnonymously);
       reset({ body: '' });
+      setAnonymous(false);
       onDone?.();
     } catch (failure) {
-      setError(feedErrorMessage(failure));
+      setError(feedErrorMessage(failure, 'post', sendAnonymously));
     } finally {
       setSending(false);
     }
@@ -83,6 +98,26 @@ export function PostComposer({ label, submitLabel, onSubmit, onDone, onCancel, a
           />
         )}
       />
+      {allowAnonymous ? (
+        <View style={{ gap: spacing.xxs }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <Text variant="label" style={{ flex: 1 }}>
+              Post anonymously
+            </Text>
+            <Switch
+              value={anonymous}
+              disabled={sending}
+              onValueChange={setAnonymous}
+              accessibilityLabel="Post anonymously"
+              trackColor={{ false: colors.borderStrong, true: colors.primary }}
+              thumbColor={colors.surface}
+            />
+          </View>
+          <Text variant="caption" color="textMuted">
+            {ANONYMOUS_HELPER}
+          </Text>
+        </View>
+      ) : null}
       {error !== null ? <Banner tone="error" message={error} /> : null}
       <View style={{ flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' }}>
         {onCancel ? (

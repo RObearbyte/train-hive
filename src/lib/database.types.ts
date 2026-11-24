@@ -951,13 +951,20 @@ export type Database = {
           id: string;
           session_id: string;
           community_id: string;
-          /** null once the author deleted their account ("Former member"). */
+          /**
+           * null for an anonymous item (`is_anonymous`; the author is never readable) or once the
+           * author deleted their account ("Former member").
+           */
           author_id: string | null;
           parent_id: string | null;
           /** null exactly when the post is deleted. */
           body: string | null;
           created_at: string;
           deleted_at: string | null;
+          /** 'post' (organizer, top level), 'comment' (any member, top level), 'reply'. */
+          kind: EventPostKind;
+          /** Posted anonymously (comments and replies of members only). */
+          is_anonymous: boolean;
         };
         Insert: never;
         Update: never;
@@ -1397,7 +1404,23 @@ export type Database = {
        * `validation_failed:body`.
        */
       reply_to_event_post: {
-        Args: { p_post_id: string; p_body: string };
+        /**
+         * Anonymous comments: `p_anonymous` (default false) posts it anonymously; organizers get
+         * `anonymous_not_allowed`; anonymous writes also raise `rate_limited` (10 anonymous
+         * comments + replies per member per event per rolling hour) and `alias_pool_exhausted`.
+         * An anonymous reply notifies the parent's author as "<nickname>: <preview>".
+         */
+        Args: { p_post_id: string; p_body: string; p_anonymous?: boolean };
+        Returns: Database['public']['Tables']['event_posts']['Row'];
+      };
+      /**
+       * Active member (organizers too): a top-level comment on an event, optionally anonymous
+       * (members only). Raises `not_authenticated`, `not_found`, `not_a_member`,
+       * `anonymous_not_allowed`, `event_closed`, `validation_failed:body`, `rate_limited`
+       * (anonymous only), `alias_pool_exhausted`. Notifies nobody.
+       */
+      create_event_comment: {
+        Args: { p_session_id: string; p_body: string; p_anonymous?: boolean };
         Returns: Database['public']['Tables']['event_posts']['Row'];
       };
       /**
@@ -1618,20 +1641,35 @@ export type EventPost = Tables<'event_posts'>;
 /** P4: a row of `event_feed_reads`. */
 export type EventFeedRead = Tables<'event_feed_reads'>;
 
-/** P4: one post or reply in `get_event_feed`. */
+/** Kind of an `event_posts` row (anonymous comments, 20261204000100). */
+export type EventPostKind = 'post' | 'comment' | 'reply';
+
+/**
+ * P4: one post, comment or reply in `get_event_feed`. The server always sends `kind`,
+ * `is_anonymous` and `mine` (and `can_comment` / `can_comment_anonymously` on `EventFeed`) since
+ * 20261204000100; they are optional here only so the existing app fixtures still compile. Make
+ * them required when the app adopts comments.
+ */
 export type EventFeedItem = {
   id: string;
   parent_id: string | null;
-  /** null for a deleted account: show "Former member". */
+  /** 'post' / 'comment' for top-level items, 'reply' for replies. */
+  kind: EventPostKind;
+  /** null for an anonymous item and for a deleted account ("Former member" when not anonymous). */
   author_id: string | null;
+  /** The display name; for an anonymous item the author's nickname on this event ("Sleepy Capybara"). */
   author_name: string | null;
-  /** The author's current active role in the community, else null. */
+  /** The author's current active role in the community, else null (always null when anonymous). */
   author_role: MembershipRole | null;
+  /** Posted anonymously: show `author_name` as a nickname. */
+  is_anonymous: boolean;
+  /** The caller wrote it (anonymous ones included). */
+  mine: boolean;
   body: string;
   created_at: string;
   /** Not written by the caller and created after the caller's cursor. */
   is_unread: boolean;
-  /** The caller may delete it: organizers any post, authors their own replies. */
+  /** The caller may delete it: organizers anything, authors their own comments and replies. */
   can_delete: boolean;
 };
 
@@ -1648,6 +1686,10 @@ export type EventFeed = {
   can_post: boolean;
   /** is_open (every active member may reply). */
   can_reply: boolean;
+  /** is_open (every active member may write a top-level comment). */
+  can_comment: boolean;
+  /** is_open and not is_organizer (organizers never post anonymously). */
+  can_comment_anonymously: boolean;
   last_read_at: string | null;
   /** Posts plus replies. */
   post_count: number;
@@ -2272,9 +2314,23 @@ export type MyDataExport = {
       community_name: string;
       event_title: string;
       parent_id: string | null;
+      /** Anonymous comments (20261204000100); absent in files exported before. */
+      kind?: EventPostKind;
+      /** true for an item the caller posted anonymously (only the caller's own items are listed). */
+      is_anonymous?: boolean;
+      /** The caller's own nickname on that event for an anonymous item, else null. */
+      alias?: string | null;
       body: string | null;
       created_at: string;
       deleted_at: string | null;
+    }[];
+    /** The caller's own nicknames, one per event where they posted anonymously (absent before 20261204000100). */
+    event_aliases?: {
+      session_id: string;
+      community_id: string;
+      event_title: string;
+      alias: string;
+      created_at: string;
     }[];
     events_organized: {
       session_id: string;
@@ -2347,7 +2403,9 @@ export type MyDataExport = {
     | 'data_export_requests'
     | 'workout_logs',
     boolean
-  >;
+  > &
+    /** Anonymous comments (20261204000100); absent in files exported before. */
+    Partial<Record<'event_aliases', boolean>>;
 };
 
 /** Keys shared by every event kind in `create_training` / `update_training`. */

@@ -226,13 +226,14 @@ describe('QA: sensitive data stays out of the logger and the console', () => {
 });
 
 describe('QA: accessibility labels of the form', () => {
-  const form = readFileSync(path.join(DIR, 'components', 'WorkoutLogForm.tsx'), 'utf8');
+  const form = readFileSync(path.join(DIR, 'components', 'StrengthEditor.tsx'), 'utf8');
 
   it('icon buttons, the pace readout and the exercise names are labelled', () => {
     expect(form).toMatch(/accessibilityLabel=\{`Remove exercise \$\{index \+ 1\}`\}/);
     expect(form).toMatch(/accessibilityLabel=\{`Remove set \$\{setIndex \+ 1\} of exercise \$\{index \+ 1\}`\}/);
     expect(form).toMatch(/accessibilityLiveRegion="polite"/);
-    expect(form).toMatch(/label=\{`Exercise \$\{index \+ 1\}`\}/);
+    expect(form).toMatch(/label=\{`Exercise \$\{index \+ 1\} name`\}/);
+    expect(form).toMatch(/accessibilityState=\{\{ expanded \}\}/);
   });
 
   // DEFECT P5-QA-9 (low, accessibility): every weight field of every set has the same label
@@ -241,7 +242,8 @@ describe('QA: accessibility labels of the form', () => {
   // Fix: label={`Set ${setIndex + 1} weight (kg), exercise ${index + 1}`} (and the same exercise
   // number on the reps label).
   it('FIXED P5-QA-9: the weight and reps fields say which set of which exercise they belong to', () => {
-    expect(form).not.toMatch(/label="Weight \(kg\)"/);
-    expect(form).toMatch(/label=\{`[^`]*exercise \$\{index \+ 1\}[^`]*reps/i);
+    // The visible label is short ("Weight (kg)"); the spoken label carries exercise name and set number.
+    expect(form).toMatch(/accessibilityLabel=\{`\$\{prefix\} reps`\}/);
+    expect(form).toMatch(/accessibilityLabel=\{`\$\{prefix\} weight \(kg\)`\}/);
   });
 });

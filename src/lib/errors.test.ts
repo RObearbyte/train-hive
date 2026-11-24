@@ -23,7 +23,9 @@ describe('contract coverage', () => {
     expect([...BACKEND_ERROR_CODES].sort()).toEqual(
       [
         'announcement_not_cancellable',
+        'alias_pool_exhausted',
         'announcement_not_editable',
+        'anonymous_not_allowed',
         'attendee_has_going_rsvp',
         'attendee_not_a_member',
         'cannot_change_own_role',

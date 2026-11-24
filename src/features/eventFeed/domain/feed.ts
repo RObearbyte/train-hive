@@ -42,11 +42,26 @@ export function counterText(body: string): string {
   return `${charCount(body.trim())} / ${EVENT_POST_MAX}`;
 }
 
-/** Friendly text for a failed post, reply or delete. */
-export function feedErrorMessage(error: unknown, action: 'post' | 'delete' = 'post'): string {
+/** Anonymous comments and replies per member per event per rolling hour (server limit; for the message only). */
+export const ANONYMOUS_HOURLY_LIMIT = 10;
+
+/** One line under the "Post anonymously" switch. */
+export const ANONYMOUS_HELPER = 'Other members and organizers will see a nickname instead of your name.';
+
+/**
+ * Friendly text for a failed post, comment, reply or delete. `anonymous` says the
+ * failed write was anonymous (the rate limit differs).
+ */
+export function feedErrorMessage(
+  error: unknown,
+  action: 'post' | 'delete' = 'post',
+  anonymous = false,
+): string {
   const appError = toAppError(error);
   if (appError.code === 'rate_limited') {
-    return `You can post ${EVENT_POST_HOURLY_LIMIT} messages per event per hour. Please try again later.`;
+    return anonymous
+      ? `You can post up to ${ANONYMOUS_HOURLY_LIMIT} anonymous comments per event per hour. Please try again later or comment with your name.`
+      : `You can post ${EVENT_POST_HOURLY_LIMIT} messages per event per hour. Please try again later.`;
   }
   if (appError.code === 'forbidden') {
     return action === 'delete'
@@ -80,12 +95,50 @@ export function unreadRowFor(
   return rows?.find((row) => row.session_id === sessionId) ?? null;
 }
 
-export function authorLabel(item: Pick<EventFeedItem, 'author_name'>): string {
-  return item.author_name === null || item.author_name.trim() === '' ? 'Former member' : item.author_name;
+/**
+ * Who wrote it, as shown. An anonymous item shows its nickname (`author_name`);
+ * your own anonymous item reads "You (Sleepy Capybara)". No name and not anonymous
+ * means the account was deleted.
+ */
+export function authorLabel(
+  item: Pick<EventFeedItem, 'author_name'> & Partial<Pick<EventFeedItem, 'is_anonymous' | 'mine'>>,
+): string {
+  const name = item.author_name === null || item.author_name.trim() === '' ? null : item.author_name;
+  if (item.is_anonymous === true) {
+    if (name === null) return 'Anonymous';
+    return item.mine === true ? `You (${name})` : name;
+  }
+  return name ?? 'Former member';
 }
 
-export function roleLabel(item: Pick<EventFeedItem, 'author_role'>): string | null {
-  return item.author_role === 'organizer' ? 'Organizer' : null;
+/** The role chip: organizers only, and never on an anonymous item. */
+export function roleLabel(
+  item: Pick<EventFeedItem, 'author_role'> & Partial<Pick<EventFeedItem, 'is_anonymous'>>,
+): string | null {
+  return item.author_role === 'organizer' && item.is_anonymous !== true ? 'Organizer' : null;
+}
+
+/**
+ * Soft color tokens used behind an anonymous nickname. All are theme tokens
+ * (light and dark variants exist and carry the normal text color).
+ */
+export const ALIAS_TINTS = ['primarySoft', 'infoSoft', 'warningSoft', 'successSoft', 'dangerSoft'] as const;
+export type AliasTint = (typeof ALIAS_TINTS)[number];
+
+/** A stable color for a nickname: the same string always gives the same token. */
+export function aliasTint(nickname: string): AliasTint {
+  let hash = 0;
+  for (let i = 0; i < nickname.length; i += 1) hash = (hash * 31 + nickname.charCodeAt(i)) >>> 0;
+  return ALIAS_TINTS[hash % ALIAS_TINTS.length] ?? 'primarySoft';
+}
+
+/** Two letters for the circle of a nickname: "Sleepy Capybara" -> "SC". */
+export function aliasInitials(nickname: string): string {
+  const parts = nickname.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  const first = Array.from(parts[0] ?? '')[0] ?? '';
+  const last = parts.length > 1 ? (Array.from(parts[parts.length - 1] ?? '')[0] ?? '') : '';
+  return (first + last).toUpperCase();
 }
 
 /**

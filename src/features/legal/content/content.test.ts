@@ -296,13 +296,14 @@ describe('later-phase features appear in the texts only when their flag is on', 
 
   it('privacy (shipped): says who sees event posts, how long they stay, what deletion does and what the push shows', () => {
     const text = textOf(buildLegalDocument('privacy', FAKE));
-    expect(text).toContain('Announcements, posts and replies in event discussions');
+    expect(text).toContain('Announcements, posts, comments and replies in event discussions');
     expect(text).toMatch(/visible to the active members of that community, with the author's display name/);
-    expect(text).toMatch(/Organizers can delete any post or reply, and you can delete your own replies/);
-    expect(text).toMatch(/Event discussions: posts and replies are kept until they are deleted/);
-    expect(text).toMatch(/A deleted post or reply keeps no text/);
-    expect(text).toMatch(/your posts and replies stay in its discussions/);
-    expect(text).toMatch(/your replies are deleted and the posts you wrote stay without your name/);
+    expect(text).toMatch(/Organizers can delete any post, comment or reply, anonymous ones included, and you can delete your own comments and replies/);
+    expect(text).toMatch(/other members and organizers see only the nickname and never who wrote it/);
+    expect(text).toMatch(/Event discussions: posts, comments and replies are kept until they are deleted/);
+    expect(text).toMatch(/A deleted post, comment or reply keeps no text/);
+    expect(text).toMatch(/your posts, comments and replies stay in its discussions/);
+    expect(text).toMatch(/your comments and replies are deleted, anonymous ones included.*the posts you wrote stay without your name/);
     expect(text).toMatch(/first 200 characters of its text/);
     expect(text).toMatch(/lock screen/);
   });

@@ -8,7 +8,6 @@ import {
   cleanNotes,
   computePace,
   createWorkoutSchema,
-  emptyExercise,
   EMPTY_FORM_VALUES,
   formatDuration,
   formatDurationInput,
@@ -182,9 +181,6 @@ describe('strength form', () => {
     });
   });
 
-  it('starts a new exercise with one empty set', () => {
-    expect(emptyExercise().sets).toHaveLength(1);
-  });
 });
 
 describe('running and race forms', () => {

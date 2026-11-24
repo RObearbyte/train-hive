@@ -1,22 +1,18 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useState } from 'react';
-import { Controller, useFieldArray, useForm, useWatch, type Control, type Resolver } from 'react-hook-form';
+import { Controller, useForm, useWatch, type Control, type Resolver } from 'react-hook-form';
 import { View } from 'react-native';
 
 import { ConsentCheckbox } from '@/features/legal/components/ConsentCheckbox';
 import type { WorkoutLogScreen, WorkoutLogType } from '@/lib/database.types';
-import { Banner, Button, Card, IconButton, Text, TextField, useTheme } from '@/ui';
+import { Banner, Button, Card, Text, TextField, useTheme } from '@/ui';
 
 import {
-  EXERCISE_NAME_MAX,
-  MAX_EXERCISES,
-  MAX_SETS,
   NOTES_MAX,
   WORKOUT_CONSENT_LABEL,
   WORKOUT_CONSENT_TEXT,
   buildInput,
   createWorkoutSchema,
-  emptyExercise,
   formFieldFor,
   formValuesFrom,
   livePace,
@@ -24,10 +20,10 @@ import {
   serverFieldMessage,
   timePreview,
   workoutLogErrorMessage,
-  EMPTY_SET,
   type WorkoutFormValues,
 } from '../domain/workoutLog';
 import { useSaveWorkoutLog } from '../hooks/useWorkoutLogs';
+import { StrengthEditor } from './StrengthEditor';
 
 function NotesField({ control }: { control: Control<WorkoutFormValues> }) {
   return (
@@ -50,115 +46,6 @@ function NotesField({ control }: { control: Control<WorkoutFormValues> }) {
         />
       )}
     />
-  );
-}
-
-function StrengthFields({ control }: { control: Control<WorkoutFormValues> }) {
-  const { spacing } = useTheme();
-  const { fields, append, remove } = useFieldArray({ control, name: 'exercises' });
-  return (
-    <View style={{ gap: spacing.md }}>
-      {fields.map((exercise, index) => (
-        <ExerciseCard key={exercise.id} control={control} index={index} onRemove={() => remove(index)} />
-      ))}
-      <Button
-        label="Add exercise"
-        variant="secondary"
-        icon="plus"
-        disabled={fields.length >= MAX_EXERCISES}
-        onPress={() => append(emptyExercise())}
-        testID="workout-add-exercise"
-      />
-    </View>
-  );
-}
-
-function ExerciseCard({
-  control,
-  index,
-  onRemove,
-}: {
-  control: Control<WorkoutFormValues>;
-  index: number;
-  onRemove: () => void;
-}) {
-  const { spacing } = useTheme();
-  const { fields, append, remove } = useFieldArray({ control, name: `exercises.${index}.sets` });
-  return (
-    <Card style={{ gap: spacing.md }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm }}>
-        <Controller
-          control={control}
-          name={`exercises.${index}.name`}
-          render={({ field, fieldState }) => (
-            <TextField
-              ref={field.ref}
-              label={`Exercise ${index + 1}`}
-              value={field.value}
-              onChangeText={field.onChange}
-              onBlur={field.onBlur}
-              error={fieldState.error?.message}
-              maxLength={EXERCISE_NAME_MAX * 2}
-              containerStyle={{ flex: 1 }}
-            />
-          )}
-        />
-        <IconButton icon="trash" color="danger" accessibilityLabel={`Remove exercise ${index + 1}`} onPress={onRemove} />
-      </View>
-      {fields.map((set, setIndex) => (
-        <View key={set.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
-          <Controller
-            control={control}
-            name={`exercises.${index}.sets.${setIndex}.reps`}
-            render={({ field, fieldState }) => (
-              <TextField
-                ref={field.ref}
-                label={`Exercise ${index + 1}, set ${setIndex + 1} reps`}
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={fieldState.error?.message}
-                keyboardType="number-pad"
-                containerStyle={{ flex: 1 }}
-              />
-            )}
-          />
-          <Controller
-            control={control}
-            name={`exercises.${index}.sets.${setIndex}.weight`}
-            render={({ field, fieldState }) => (
-              <TextField
-                ref={field.ref}
-                label={`Exercise ${index + 1}, set ${setIndex + 1} weight (kg)`}
-                helper="Empty = bodyweight"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={fieldState.error?.message}
-                keyboardType="decimal-pad"
-                containerStyle={{ flex: 1 }}
-              />
-            )}
-          />
-          <View style={{ paddingTop: spacing.xl }}>
-            <IconButton
-              icon="close"
-              accessibilityLabel={`Remove set ${setIndex + 1} of exercise ${index + 1}`}
-              disabled={fields.length <= 1}
-              onPress={() => remove(setIndex)}
-            />
-          </View>
-        </View>
-      ))}
-      <Button
-        label="Add set"
-        variant="ghost"
-        size="sm"
-        icon="plus"
-        disabled={fields.length >= MAX_SETS}
-        onPress={() => append({ ...EMPTY_SET })}
-      />
-    </Card>
   );
 }
 
@@ -289,7 +176,7 @@ export function WorkoutLogForm({
     <View style={{ gap: spacing.lg }}>
       {problem ? <Banner tone="error" message={problem} /> : null}
 
-      {logType === 'strength' ? <StrengthFields control={control} /> : <EnduranceFields control={control} logType={logType} />}
+      {logType === 'strength' ? <StrengthEditor control={control} /> : <EnduranceFields control={control} logType={logType} />}
       <NotesField control={control} />
 
       <Card style={{ gap: spacing.sm }}>

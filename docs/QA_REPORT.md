@@ -1365,3 +1365,28 @@ Not run yet. Needs the Supabase setup in `docs/ACCOUNT_RECOVERY_SETUP.md` (email
 185. Live: with two phones, an organizer posts in an event; within a few seconds the other phone's card (Events and Home, no refresh) shows "1 new". Open the discussion on that phone and go back: the chip turns quiet (count only) without pulling to refresh.
 186. Old database without the P4 migration (or offline when the list loads): the lists show normally, no chip, no error banner for the discussion. The details screen entry "Discussion" still works as before.
 187. One request: in the network log there is a single `get_event_feed_unread` call per community when the Events tab or Home opens, however many cards are shown (not one per card).
+
+## Strength log: exercises with sets, collapsible rows (mobile, 2026-11-24)
+
+Not run on a device or browser. Open an ended strength event you can log.
+
+188. Top of the form: "Exercise name", "Sets" (3 by default) and "Add". Press Add with an empty name: hint "Enter the exercise name." under the name; sets 0, 21 or empty: hint "Sets: a whole number from 1 to 20."; nothing is added in both cases. With 30 exercises Add is disabled.
+189. Name "Squat", sets 4, Add: one row "Squat, 4 sets" appears expanded with four rows "Set 1" to "Set 4", each with Reps and Weight (kg); the name field above is cleared, Sets keeps 4. A second exercise is added below (order stays), also expanded; the first stays as the person left it.
+190. Tap a header: it collapses (chevron points right) and expands (chevron points down). Edit the name inside the expanded body: the header text changes with every key; clearing the name shows "Unnamed exercise".
+191. Add set adds a row (up to 20, then disabled); the close button on a set removes it (disabled at one set); the header count follows ("1 set" singular). Data in other sets stays where it was.
+192. Remove exercise: with nothing typed in its sets it disappears at once; with reps or weight typed a "Remove this exercise?" dialog asks first (Keep it / Remove exercise). Nothing is saved until Save.
+193. Save with empty reps or an invalid weight (62.3): the rows with a problem expand by themselves and show the same messages as before ("Enter the repetitions.", "Use steps of 0.25 kg."); a correct log saves exactly as before (bodyweight when the weight is empty). Fix, save, reopen: the exercises load collapsed in the same order with the same numbers.
+194. TalkBack: the header reads "Squat, 4 sets, collapsed" with an expanded hint; the fields read "Exercise 1 Squat, set 2 reps" and "... weight (kg)"; the keyboard does not hide the field being typed in (scrolls into view); the name field accepts Done to add.
+
+## Anonymous comments with nicknames (mobile, 2026-11-24)
+
+Not run on a device or browser; needs the migration `20261204000100` on the server. Use two phones (a member and an organizer) in one event.
+
+195. Member opens the event discussion: a "Write a comment" box at the bottom with a "Post anonymously" switch (off) and the line "Other members and organizers will see a nickname instead of your name." Write a comment with the switch off: it appears with your name; nobody gets a push.
+196. Switch on, post: the comment shows a nickname such as "Sleepy Capybara" on the other phone (dashed colored circle with initials and an "Anonymous" badge, never your name or an Organizer chip); on your phone it reads "You (Sleepy Capybara)" with a Delete button. The switch is off again after sending. A second anonymous comment on the same event keeps the same nickname; on another event you get a different one.
+197. Organizer: the comment box has no anonymous switch; the organizer sees the nickname only and a Delete button on every post, comment and reply. Organizer posts have the teal left edge and "Announcement from an organizer"; member comments are plain cards; replies are indented under a line.
+198. Reply to an organizer post and to a member comment (not to a reply): the reply box has the switch for members only. An anonymous reply notifies the author of the item with "<nickname>: <preview>"; a new comment notifies nobody.
+199. Send 11 anonymous comments or replies within an hour on one event: the 11th shows "You can post up to 10 anonymous comments per event per hour..." and the text stays in the box; named comments are not limited.
+200. Delete your own anonymous comment: gone at once, replies under it too (dialog says so); if the server refuses it comes back. Organizer deletes a member comment: same.
+201. Event closed (30 days after it ended): banner "Discussion closed", no comment box, no reply buttons. Unread "New" cues, the unread chip on event cards and live updates (comment from the other phone appears within seconds) work for comments like posts.
+202. Delete my account on the member phone: its comments and replies are gone for everyone (anonymous ones too); organizer posts stay. Privacy Notice and Terms (Profile): the event discussion text mentions comments, the anonymous option, nicknames, that the operator can technically see the author, and the removal rule.

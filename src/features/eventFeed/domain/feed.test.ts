@@ -4,8 +4,12 @@ import type { EventFeed, EventFeedItem } from '@/lib/database.types';
 import { AppError } from '@/lib/errors';
 
 import {
+  ALIAS_TINTS,
+  ANONYMOUS_HELPER,
   EVENT_POST_MAX,
   accumulateNewIds,
+  aliasInitials,
+  aliasTint,
   authorLabel,
   counterText,
   discussionLabel,
@@ -24,9 +28,12 @@ function item(id: string, overrides: Partial<EventFeedItem> = {}): EventFeedItem
   return {
     id,
     parent_id: null,
+    kind: overrides.parent_id ? 'reply' : 'post',
     author_id: 'u1',
     author_name: 'Ana',
     author_role: 'member',
+    is_anonymous: false,
+    mine: false,
     body: 'hello',
     created_at: '2026-11-20T10:00:00Z',
     is_unread: false,
@@ -44,6 +51,8 @@ function feed(): EventFeed {
     is_open: true,
     can_post: true,
     can_reply: true,
+    can_comment: true,
+    can_comment_anonymously: false,
     last_read_at: null,
     post_count: 4,
     unread_count: 2,
@@ -97,6 +106,17 @@ describe('feedErrorMessage', () => {
     expect(feedErrorMessage(new AppError('forbidden'))).toMatch(/Only an organizer can post/);
     expect(feedErrorMessage(new AppError('forbidden'), 'delete')).toMatch(/no longer delete/);
   });
+  it('says the anonymous limit when the failed write was anonymous', () => {
+    expect(feedErrorMessage(new AppError('rate_limited'), 'post', true)).toMatch(
+      /up to 10 anonymous comments per event per hour/,
+    );
+    expect(feedErrorMessage(new AppError('rate_limited'), 'post', false)).not.toMatch(/anonymous/);
+  });
+  it('explains the anonymity errors', () => {
+    expect(feedErrorMessage(new AppError('anonymous_not_allowed'))).toMatch(/Organizers cannot comment anonymously/);
+    expect(feedErrorMessage(new AppError('alias_pool_exhausted'))).toMatch(/nicknames/);
+    expect(feedErrorMessage({ code: 'P0001', message: 'alias_pool_exhausted' })).toMatch(/nicknames/);
+  });
   it('maps raw backend errors', () => {
     expect(feedErrorMessage({ code: 'P0001', message: 'validation_failed:body' })).toMatch(/message/);
     expect(feedErrorMessage({ code: 'P0001', message: 'rate_limited' })).toMatch(/per hour/);
@@ -128,10 +148,45 @@ describe('author helpers', () => {
     expect(authorLabel({ author_name: null })).toBe('Former member');
     expect(authorLabel({ author_name: 'Ana' })).toBe('Ana');
   });
+  it('shows the nickname of an anonymous item and "You (nickname)" for your own', () => {
+    const anon = { author_name: 'Sleepy Capybara', is_anonymous: true, mine: false };
+    expect(authorLabel(anon)).toBe('Sleepy Capybara');
+    expect(authorLabel({ ...anon, mine: true })).toBe('You (Sleepy Capybara)');
+    expect(authorLabel({ author_name: null, is_anonymous: true, mine: false })).toBe('Anonymous');
+  });
+  it('never calls an anonymous item a former member, and a named item without a name is one', () => {
+    expect(authorLabel({ author_name: null, is_anonymous: false, mine: false })).toBe('Former member');
+  });
+  it('never shows a role on an anonymous item', () => {
+    expect(roleLabel({ author_role: 'organizer', is_anonymous: true })).toBeNull();
+  });
   it('labels organizers only', () => {
     expect(roleLabel({ author_role: 'organizer' })).toBe('Organizer');
     expect(roleLabel({ author_role: 'member' })).toBeNull();
     expect(roleLabel({ author_role: null })).toBeNull();
+  });
+});
+
+describe('alias colors', () => {
+  it('is stable and always one of the theme tokens', () => {
+    const names = ['Sleepy Capybara', 'Grumpy Otter', 'Brave Llama', 'Zesty Yak', '', 'A'];
+    for (const name of names) {
+      expect(aliasTint(name)).toBe(aliasTint(name));
+      expect(ALIAS_TINTS).toContain(aliasTint(name));
+    }
+  });
+  it('spreads different nicknames over several colors', () => {
+    const adjectives = ['Sleepy', 'Grumpy', 'Brave', 'Zesty', 'Jolly', 'Mighty', 'Quiet', 'Witty'];
+    const used = new Set(adjectives.map((a) => aliasTint(`${a} Capybara`)));
+    expect(used.size).toBeGreaterThan(2);
+  });
+  it('makes two-letter initials', () => {
+    expect(aliasInitials('Sleepy Capybara')).toBe('SC');
+    expect(aliasInitials('  ')).toBe('?');
+    expect(aliasInitials('Cat')).toBe('C');
+  });
+  it('has the helper line the owner asked for', () => {
+    expect(ANONYMOUS_HELPER).toBe('Other members and organizers will see a nickname instead of your name.');
   });
 });
 
@@ -155,6 +210,12 @@ describe('removePostFromFeed', () => {
     expect(next.posts.map((post) => post.id)).toEqual(['p1']);
     expect(next.post_count).toBe(2);
     expect(next.unread_count).toBe(0);
+  });
+  it('removes a member comment with its replies like a post', () => {
+    const f = feed();
+    f.posts[0] = { ...f.posts[0]!, kind: 'comment' };
+    const next = removePostFromFeed(f, 'p2');
+    expect(next.posts.map((post) => post.id)).toEqual(['p1']);
   });
   it('removes a reply only', () => {
     const next = removePostFromFeed(feed(), 'r1');

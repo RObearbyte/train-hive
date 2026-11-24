@@ -206,8 +206,9 @@ describe('reply_to_event_post', () => {
     const post = await createPost(w.organizerId, w.event.id);
     await expect(
       admin.query(
-        `insert into public.event_posts (session_id, community_id, author_id, parent_id, body)
-         values ($1, $2, $3, $4, 'x')`,
+        // kind 'reply' (20261204000100): a reply row must say so, or the kind check fires first.
+        `insert into public.event_posts (session_id, community_id, author_id, parent_id, body, kind)
+         values ($1, $2, $3, $4, 'x', 'reply')`,
         [second.id, w.communityId, w.memberIds[0], post.id],
       ),
     ).rejects.toMatchObject({ code: '23503' });

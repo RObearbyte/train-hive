@@ -20,7 +20,7 @@ Placeholders: `[CONTROLLER NAME]`, `[POSTAL ADDRESS]`, `[PRIVACY EMAIL]`, `[DATE
 |---|---|---|---|---|---|---|
 | A1 | Accounts and membership | Run the service, authorization | Members, organizers | Anonymous account id, display name, community membership, role, status, join date | Art. 6(1)(b) contract | The member |
 | A2 | Events, RSVPs, attendance | Plan events, record who took part, club statistics | Members, organizers | RSVP answers, attendance records, attendance change history (with optional organizer note), events organized | 6(1)(b); 6(1)(f) legitimate interest of the community for attendance history (objection possible) | Member (RSVP), organizer (attendance) |
-| A3 | Announcements and event discussions | Community communication | Members, organizers | Announcement text, event posts and replies (text, author, time), read markers | 6(1)(b) | Author |
+| A3 | Announcements and event discussions | Community communication | Members, organizers | Announcement text, event posts, comments and replies (text, author, time), read markers; for anonymous comments and replies the author and a per-event nickname are stored privately (the app shows only the nickname; the operator, with database access, can see the author) | 6(1)(b) | Author |
 | A4 | Notifications and push | Reminders and updates | Members | In-app notifications, push token, platform, device label, notification settings, delivery status | Push: 6(1)(a) consent (and OS permission); in-app: 6(1)(b) | App, server |
 | A5 | About you: birth year and gender | Approximate group totals for organizers | Members who opt in | Birth year, gender | 6(1)(a) explicit consent | Member |
 | A6 | About you: emergency contact and T-shirt size | Safety at events, race kits | Members who opt in; the emergency contact (third party) | Contact name, phone, relationship; T-shirt size | 6(1)(a) consent of the member; for the third party 6(1)(f) (safety), the member is asked to inform them | Member |
@@ -105,7 +105,7 @@ Every table in the `public` and `private` schemas. "Erasure" means `private.eras
 | `public.attendance_audit_log` | Attendance changes, organizer note | Kept as community history; anonymized and note removed on erasure | erasure (ids and `reason` null) — same owner decision |
 | `public.announcements` | Author id, text | Kept while the community exists; author removed on erasure | erasure (`author_id` null) |
 | `public.announcement_reads` | Read markers | Until erasure | erasure (deleted) |
-| `public.event_posts` | Author id, post / reply text | Kept while the event exists; a deleted post loses its text at once; on erasure replies are deleted, top-level posts lose the author | `delete_event_post` (soft delete), erasure |
+| `public.event_posts` | Author id, post / comment / reply text; for an anonymous comment or reply the author id is NOT stored here (null) | Kept while the event exists; a deleted item loses its text at once; on erasure comments and replies (anonymous or not) are deleted, organizer posts lose the author | `delete_event_post` (soft delete), erasure |
 | `public.event_feed_reads` | Read markers | Until erasure | erasure (deleted) |
 | `public.notifications` | In-app notifications | Read: 90 days; unread: 180 days; erasure | `purge_old_notification_data` (daily), erasure |
 | `public.notification_delivery_jobs` | Push delivery status per notification | Finished: 30 days; stale: expiry + 3 days; with their notification | `purge_old_notification_data` (daily) |
@@ -117,6 +117,9 @@ Every table in the `public` and `private` schemas. "Erasure" means `private.eras
 | `public.event_subtypes` | None (lookup) | Permanent | — |
 | `private.member_about_you` | Birth year, gender, emergency contact, T-shirt size | Until cleared, consent withdrawn, or erasure | `clear_my_about_you`, `withdraw_consent`, erasure |
 | `private.workout_logs` | Workout logs (special category) | Until deleted, consent withdrawn, or erasure | `delete_my_workout_log`, `withdraw_consent('workout_logs')`, erasure |
+| `private.event_post_anonymous_authors` | Who wrote each anonymous comment / reply (hidden from every member and organizer in the app; visible only to whoever has database access, i.e. the operator) | With the item; erasure | cascade from the post, erasure (the user's items are deleted) |
+| `private.event_aliases` | A member's nickname per event ("Sleepy Capybara") for their anonymous items; links the nickname to the person (hidden in the app) | With the event; erasure | cascade from the event, erasure (deleted) |
+| `private.event_alias_salt` | None (one random value that makes nicknames unpredictable) | Permanent | — |
 | `private.workout_prompt_runs` | None (event id and time) | With the event | cascade |
 | `private.data_export_log` | Export request times | 1 hour (about a day with the daily job) | `purge_old_notification_data` via `private.purge_old_data_export_log`, the next export, erasure |
 | `private.account_activity` | Last app open (hourly resolution), inactivity notice | Until erasure | erasure (cascade from `auth.users`); notice ended by any activity |

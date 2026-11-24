@@ -9,10 +9,11 @@ import { deviceTimeZone, formatDateTime, isValidTimeZone } from '@/lib/datetime'
 import { toAppError, userMessage } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 import { useNow } from '@/lib/useNow';
-import { Banner, Button, EmptyState, ErrorState, LoadingState, Screen, Text, useTheme } from '@/ui';
+import { Banner, Button, Card, EmptyState, ErrorState, LoadingState, Screen, Text, useTheme } from '@/ui';
 
 import { accumulateNewIds, feedErrorMessage } from '../domain/feed';
 import {
+  useCreateEventComment,
   useCreateEventPost,
   useDeleteEventPost,
   useEventFeed,
@@ -36,6 +37,7 @@ export function EventFeedScreen({ sessionId }: { sessionId: string }) {
   const training = useTraining(sessionId);
   const feed = useEventFeed(sessionId);
   const createPost = useCreateEventPost(sessionId);
+  const createComment = useCreateEventComment(sessionId);
   const reply = useReplyToEventPost(sessionId);
   const remove = useDeleteEventPost(sessionId);
   const markRead = useMarkEventFeedRead(sessionId);
@@ -98,7 +100,9 @@ export function EventFeedScreen({ sessionId }: { sessionId: string }) {
             message={
               data.can_post
                 ? 'Post an update, a question or a reminder. Members going to the event are notified.'
-                : 'Organizers post updates here, and you can reply to them.'
+                : data.can_comment
+                  ? 'Organizers post updates here. Write a comment below or reply to a message.'
+                  : 'Organizers post updates here, and you can reply to them.'
             }
           />
         ) : (
@@ -111,7 +115,10 @@ export function EventFeedScreen({ sessionId }: { sessionId: string }) {
                 zone={zone}
                 now={now}
                 canReply={data.can_reply}
-                onReply={(postId, text) => reply.mutateAsync({ postId, body: text })}
+                canReplyAnonymously={data.can_comment_anonymously}
+                onReply={(postId, text, anonymous) =>
+                  reply.mutateAsync({ postId, body: text, anonymous })
+                }
                 onDelete={(item) => {
                   remove.reset();
                   setToDelete(item);
@@ -120,6 +127,16 @@ export function EventFeedScreen({ sessionId }: { sessionId: string }) {
             ))}
           </View>
         )}
+        {data.can_comment ? (
+          <Card>
+            <PostComposer
+              label="Write a comment"
+              submitLabel="Comment"
+              allowAnonymous={data.can_comment_anonymously}
+              onSubmit={(text, anonymous) => createComment.mutateAsync({ body: text, anonymous })}
+            />
+          </Card>
+        ) : null}
         {feed.isError ? (
           <Banner tone="warning" message="Could not refresh. Showing the last messages we loaded." />
         ) : null}
@@ -157,10 +174,10 @@ export function EventFeedScreen({ sessionId }: { sessionId: string }) {
 
       <ConfirmDialog
         visible={toDelete !== null}
-        title={toDelete?.parent_id === null ? 'Delete this post?' : 'Delete this reply?'}
+        title={`Delete this ${toDelete?.kind ?? 'message'}?`}
         message={
           toDelete?.parent_id === null
-            ? 'The post and all replies under it are removed for everyone. This cannot be undone.'
+            ? `The ${toDelete.kind} and all replies under it are removed for everyone. This cannot be undone.`
             : 'The reply is removed for everyone. This cannot be undone.'
         }
         confirmLabel="Delete"

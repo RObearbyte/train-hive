@@ -144,7 +144,6 @@ export type EnduranceFormValues = { distanceKm: string; time: string; notes: str
 export type WorkoutFormValues = StrengthFormValues & EnduranceFormValues;
 
 export const EMPTY_SET: SetValues = { reps: '', weight: '' };
-export const emptyExercise = (): ExerciseValues => ({ name: '', sets: [{ ...EMPTY_SET }] });
 
 export const EMPTY_FORM_VALUES: WorkoutFormValues = { exercises: [], notes: '', distanceKm: '', time: '' };
 

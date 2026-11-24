@@ -50,6 +50,8 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   get_event_feed_unread: 'authenticated',
   mark_event_feed_read: 'authenticated',
   reply_to_event_post: 'authenticated',
+  // Anonymous comments (20261204000100).
+  create_event_comment: 'authenticated',
   // P3: About you.
   clear_my_about_you: 'authenticated',
   get_community_demographics: 'authenticated',
@@ -320,6 +322,8 @@ describe('QA function privileges', () => {
       ['select public.delete_my_account()', []],
       ['select public.create_event_post($1, $2)', [session.id, 'Hi']],
       ['select public.reply_to_event_post($1, $2)', [session.id, 'Hi']],
+      ['select public.reply_to_event_post($1, $2, $3)', [session.id, 'Hi', true]],
+      ['select public.create_event_comment($1, $2, $3)', [session.id, 'Hi', true]],
       ['select public.delete_event_post($1)', [session.id]],
       ['select public.mark_event_feed_read($1)', [session.id]],
       ['select public.get_event_feed($1)', [session.id]],

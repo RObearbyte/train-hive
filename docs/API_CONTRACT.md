@@ -1162,3 +1162,54 @@ Same body and summary as before; with `false` it skips its last statement (the `
 Responses: `200 { ok: true, ...DeleteMyAccountResult }`; `401 { error: 'not_authenticated' }` (no / malformed / rejected token, or the user is already gone); `405 method_not_allowed`; `409 last_organizer`; `503 auth_unavailable` (Auth unreachable); `500 deletion_failed` (unexpected database error, nothing deleted by the function); `500 { error: 'auth_delete_failed', data_erased: true, retry: true }` (data erased, auth user left: calling again with the same token finishes). Logs carry error codes only (no token, no user id). No CORS handling (not called from a browser today).
 
 TypeScript (`src/lib/database.types.ts`): `create_invitation` Args gain `p_expires_in_hours`; function `admin_erase_user_data`.
+
+---
+
+# Anonymous comments (append-only)
+
+Migration `20261204000100_anonymous_comments.sql`. Tests: `supabase/tests/anonymous-comments.test.ts`, plus `event-feed.test.ts`, the privilege matrix (`qa-privileges.test.ts`) and the GDPR suites. Owner request: "Members should be able to comment anonymously on the events", plus funny nicknames for anonymous authors.
+
+**Interpretation:** (1) every active member (organizers too) writes their own top-level **comments** on an event, not only replies to organizer posts; (2) a member's comment or reply can be posted **anonymously**. Organizers never post anonymously (`anonymous_not_allowed`), and organizer posts (`create_event_post`, unchanged) are never anonymous.
+
+## Anonymity
+
+- An anonymous item is shown with a per-event **nickname** ("Sleepy Capybara": 40 adjectives x 40 animals, family friendly, ASCII) in `author_name`, `author_id: null`, `author_role: null`, `is_anonymous: true`, to every reader, organizers included. The author sees the same plus `mine: true` and may delete it.
+- Nickname: assigned on the person's first anonymous item on that event; stable within the event, unique among the event's anonymous authors, unrelated across events (salted hash start, per-database random salt; next free one on a collision). All 1600 taken: `alias_pool_exhausted`, nothing written. Nicknames go with the event (cascade) and with erasure.
+- The author is never readable through the API: `public.event_posts.author_id` is stored **null** for an anonymous row (so direct selects, Realtime payloads and service_role reads carry no author); the author and the nickname mapping live in `private.event_post_anonymous_authors` / `private.event_aliases` (no privilege for anon, authenticated or service_role). Organizers moderate by content (delete any item), not by identity. Whoever has database access (the operator) can see the author.
+- Notifications: a reply to any top-level item notifies its author (the real one, also when that item is anonymous; never oneself) as `New reply: <event title>` / `<replier name or nickname>: <preview>`. **Top-level comments notify nobody** (decision: comments stay quiet; organizer posts keep notifying going members).
+
+## Rules
+
+- **Window, hygiene, length:** as P4 (until 30 days after the event's end, `event_closed`; `private.clean_required_text`, 1..1000 characters, `validation_failed:body`).
+- **Rate limit:** anonymous writes only (comments and replies together): at most **10 per member per event per rolling hour**, deleted ones included; the 11th is `rate_limited`, nothing written. Exact under concurrency (membership row `FOR NO KEY UPDATE`). Named comments and replies are not limited.
+- **Delete:** organizers any item (as before); the author (still an active member) their own comments and replies, anonymous ones included; never an organizer post. Deleting a top-level comment deletes its replies (like a post).
+- **Leaving:** items stay (anonymous ones stay anonymous with their nickname).
+
+## Table changes
+
+`event_posts` gains `kind text` (`'post'` organizer top-level, `'comment'` member top-level, `'reply'`; existing rows backfilled) and `is_anonymous boolean` (default false). Checks: `kind` matches `parent_id`; `is_anonymous` implies `author_id is null` and `kind <> 'post'`. `author_id` null and `is_anonymous` false = deleted account ("Former member").
+
+## RPCs
+
+`create_event_comment(p_session_id uuid, p_body text, p_anonymous boolean default false) → event_posts` (authenticated)
+- Errors in order: `not_authenticated`, `not_found`, `not_a_member`, `anonymous_not_allowed` (organizer + anonymous), `event_closed`, `validation_failed:body`; after the locks `not_a_member`, `anonymous_not_allowed` (promoted meanwhile), `rate_limited` (anonymous only), `alias_pool_exhausted`. `p_anonymous` null = false. Returns the row (`author_id` null when anonymous).
+
+`reply_to_event_post(p_post_id uuid, p_body text, p_anonymous boolean default false) → event_posts` (replaces the 2-argument function; old named calls resolve through the default). Target: a top-level post **or comment**. Errors as P4 plus `anonymous_not_allowed` (after `not_a_member`), `rate_limited` and `alias_pool_exhausted` (anonymous only). **App:** the contract test requires every declared argument, so send `p_anonymous` (false for a named reply).
+
+`delete_event_post(p_post_id uuid)`: unchanged signature; rules above.
+
+`get_event_feed(p_session_id uuid) → EventFeed`, new fields:
+```
+{ ..., can_comment (is_open), can_comment_anonymously (is_open and not is_organizer),
+  posts: [ { id, parent_id: null, kind ('post'|'comment'), author_id, author_name (nickname when anonymous),
+             author_role, is_anonymous, mine, body, created_at, is_unread, can_delete,
+             replies: [ { ..., kind: 'reply', is_anonymous, mine, ... } ] } ] }
+```
+Top-level list = organizer posts and comments, newest first. `can_delete`: organizer, or the caller's own comment / reply. Counts and unread rules unchanged (the caller's own anonymous items are never unread). `get_event_feed_unread`: same shape, comments counted.
+
+## GDPR
+
+- **Export:** `authored.event_posts` items gain `kind`, `is_anonymous` and `alias` (the caller's own nickname for an anonymous item, else null) and include the caller's anonymous items; new `authored.event_aliases: [ { session_id, community_id, event_title, alias, created_at } ]` (own nicknames only) and `truncated.event_aliases`; README sentence. Nobody else's anonymous items or nicknames.
+- **Erasure:** the user's comments and replies (named or anonymous) are deleted, with the `event_reply` notifications quoting the replies; replies of others under a deleted comment go with it; nicknames deleted; organizer posts stay without author (as before). `private.account_last_activity` also counts anonymous items.
+
+New error codes: `anonymous_not_allowed`, `alias_pool_exhausted`. TypeScript: `EventPostKind`; `event_posts` Row `kind`, `is_anonymous`; `create_event_comment`; `reply_to_event_post` `p_anonymous?`; `EventFeedItem` `kind?`, `is_anonymous?`, `mine?`; `EventFeed` `can_comment?`, `can_comment_anonymously?` (optional only so the current app fixtures compile; always sent); `MyDataExport` additions (optional, absent in older files).

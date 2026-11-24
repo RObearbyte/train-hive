@@ -33,7 +33,7 @@ describe('texts versus what exists', () => {
       { flag: FEATURES.demographics, phrase: 'Birth year and gender', column: 'birth_year' },
       { flag: FEATURES.emergencyContact, phrase: 'Emergency contact and T-shirt size', column: 'tshirt_size' },
       { flag: FEATURES.workoutLogs, phrase: 'Workout logs', column: 'private.workout_logs' },
-      { flag: FEATURES.eventPosts, phrase: 'Announcements, posts and replies in event discussions', column: 'public.event_posts' },
+      { flag: FEATURES.eventPosts, phrase: 'Announcements, posts, comments and replies in event discussions', column: 'public.event_posts' },
     ];
     for (const { flag, phrase, column } of items) {
       // The text mentions the data exactly when the flag is on...
@@ -54,12 +54,42 @@ describe('texts versus what exists', () => {
     expect(privacyText).toContain('first 200 characters of its text');
     expect(migrations).toContain("select left(btrim(regexp_replace(p_body, '\\s+', ' ', 'g')), 200)");
     expect(privacyText).toContain('visible to the active members of that community');
-    expect(privacyText).toContain('A deleted post or reply keeps no text');
+    expect(privacyText).toContain('A deleted post, comment or reply keeps no text');
     expect(migrations).toContain('delete from public.event_posts ep where ep.author_id = p_user_id and ep.parent_id is not null;');
     expect(migrations).toContain('update public.event_posts ep set author_id = null where ep.author_id = p_user_id;');
-    expect(privacyText).toContain('your replies in event discussions');
+    expect(privacyText).toContain('your comments and replies in event discussions');
     expect(privacyText).toContain('posts you wrote in event discussions');
-    expect(termsText).toMatch(/Posts and replies in an event discussion are visible to the active members/);
+    expect(termsText).toMatch(/Posts, comments and replies in an event discussion are visible to the active members/);
+  });
+
+  // Q7-7 (anonymous comments, gap D): every sentence about anonymity is tied to what the migration does.
+  it('Q7-7: the anonymous-comment text matches the migration (author stored apart, nicknames per event, limit, erasure, no notification)', () => {
+    // The author is not hidden from us: it is stored (private tables) and the notice says the operator can see it.
+    expect(migrations).toContain('create table private.event_post_anonymous_authors');
+    expect(migrations).toContain('create table private.event_aliases');
+    expect(privacyText).toContain('The person who operates the database can technically see who wrote it');
+    expect(privacyText).not.toMatch(/fully anonymous|not even we can|completely anonymous/i);
+    // No API role can read the author, so no member or organizer can.
+    expect(migrations).toContain('revoke all on table private.event_post_anonymous_authors from public, anon, authenticated, service_role;');
+    expect(migrations).toContain('revoke all on table private.event_aliases from public, anon, authenticated, service_role;');
+    expect(privacyText).toContain('other members and organizers then see a nickname for that event instead of your name');
+    expect(privacyText).toContain('you get a different nickname on each event');
+    expect(migrations).toContain('constraint event_aliases_pkey primary key (session_id, user_id)');
+    // Organizers cannot be anonymous; the limit is 10 per hour.
+    expect(migrations).toContain('anonymous_not_allowed');
+    expect(privacyText).toContain('Members (not organizers) can choose');
+    expect(privacyText).toContain('at most 10 anonymous comments or replies per person per event per hour');
+    // Erasure: comments and replies (anonymous too) and nicknames go; organizer posts stay without a name.
+    expect(migrations).toContain("delete from public.event_posts ep where ep.author_id = p_user_id and ep.kind = 'comment';");
+    expect(migrations).toContain('delete from private.event_aliases al where al.user_id = p_user_id;');
+    expect(privacyText).toContain('your comments and replies are deleted, anonymous ones included, together with your nicknames');
+    // Comments notify nobody; a reply notifies the author of the item answered, with the nickname when anonymous.
+    expect(privacyText).toContain('New comments do not send any notification');
+    expect(privacyText).toContain('or the nickname if the reply is anonymous');
+    // Terms: no harassment, anonymity does not protect from removal.
+    expect(termsText).toContain('Do not harass, insult or threaten anyone');
+    expect(termsText).toContain('anonymity does not protect a comment from removal');
+    expect(termsText).toContain('TrainHive still stores who wrote the comment');
   });
 
   // Q7-7 (account linking): the optional email lives only in Supabase Auth; the texts say so and the code agrees.

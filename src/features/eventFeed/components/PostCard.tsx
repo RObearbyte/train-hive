@@ -3,9 +3,10 @@ import { View } from 'react-native';
 
 import type { EventFeed, EventFeedItem } from '@/lib/database.types';
 import { formatSessionWhen } from '@/lib/datetime';
-import { Avatar, Button, Card, Divider, Text, useTheme } from '@/ui';
+import { Button, Card, Divider, Text, useTheme } from '@/ui';
 
 import { authorLabel, roleLabel } from '../domain/feed';
+import { AuthorAvatar } from './AuthorAvatar';
 import { PostComposer } from './PostComposer';
 
 type Post = EventFeed['posts'][number];
@@ -19,17 +20,35 @@ type ItemProps = {
 };
 
 function PostHeader({ item, isNew, zone, now, onDelete }: ItemProps) {
-  const { spacing } = useTheme();
+  const { spacing, radii, colors } = useTheme();
   const name = authorLabel(item);
   const role = roleLabel(item);
+  const nickname = item.author_name ?? name;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-      <Avatar name={name} size={32} />
-      <View style={{ flex: 1 }}>
-        <Text variant="label">
-          {name}
-          {role ? ` · ${role}` : ''}
-        </Text>
+      <AuthorAvatar name={item.is_anonymous ? nickname : name} anonymous={item.is_anonymous} size={32} />
+      <View style={{ flex: 1, gap: spacing.xxs }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs }}>
+          <Text variant="label">
+            {name}
+            {role ? ` · ${role}` : ''}
+          </Text>
+          {item.is_anonymous ? (
+            <View
+              style={{
+                borderRadius: radii.pill,
+                borderWidth: 1,
+                borderColor: colors.borderStrong,
+                paddingHorizontal: spacing.sm,
+                paddingVertical: 1,
+              }}
+            >
+              <Text variant="caption" color="textMuted">
+                Anonymous
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <Text variant="caption" color="textMuted">
           {formatSessionWhen(item.created_at, zone, now)}
         </Text>
@@ -45,7 +64,7 @@ function PostHeader({ item, isNew, zone, now, onDelete }: ItemProps) {
           variant="ghost"
           size="sm"
           icon="trash"
-          accessibilityLabel={`Delete message from ${name}`}
+          accessibilityLabel={`Delete ${item.kind} from ${name}`}
           onPress={() => onDelete(item)}
         />
       ) : null}
@@ -59,17 +78,43 @@ type Props = {
   zone: string;
   now: Date;
   canReply: boolean;
-  onReply: (postId: string, body: string) => Promise<unknown>;
+  /** Show the "Post anonymously" switch in the reply box. */
+  canReplyAnonymously: boolean;
+  onReply: (postId: string, body: string, anonymous: boolean) => Promise<unknown>;
   onDelete: (item: EventFeedItem) => void;
 };
 
-/** A top-level post with its replies (oldest first) and a reply box. */
-export function PostCard({ post, newIds, zone, now, canReply, onReply, onDelete }: Props) {
+/**
+ * A top-level item (organizer post or member comment) with its replies (oldest
+ * first) and a reply box. Organizer posts have an accent edge; replies are
+ * indented under a thin line.
+ */
+export function PostCard({
+  post,
+  newIds,
+  zone,
+  now,
+  canReply,
+  canReplyAnonymously,
+  onReply,
+  onDelete,
+}: Props) {
   const { spacing, colors } = useTheme();
   const [replying, setReplying] = useState(false);
+  const isOrganizerPost = post.kind === 'post';
 
   return (
-    <Card style={{ gap: spacing.md }}>
+    <Card
+      style={[
+        { gap: spacing.md },
+        isOrganizerPost ? { borderLeftWidth: 4, borderLeftColor: colors.primary } : null,
+      ]}
+    >
+      {isOrganizerPost ? (
+        <Text variant="caption" color="primary">
+          Announcement from an organizer
+        </Text>
+      ) : null}
       <PostHeader item={post} isNew={newIds.has(post.id)} zone={zone} now={now} onDelete={onDelete} />
       <Text>{post.body}</Text>
 
@@ -99,7 +144,8 @@ export function PostCard({ post, newIds, zone, now, canReply, onReply, onDelete 
               label="Your reply"
               submitLabel="Reply"
               autoFocus
-              onSubmit={(body) => onReply(post.id, body)}
+              allowAnonymous={canReplyAnonymously}
+              onSubmit={(body, anonymous) => onReply(post.id, body, anonymous)}
               onDone={() => setReplying(false)}
               onCancel={() => setReplying(false)}
             />

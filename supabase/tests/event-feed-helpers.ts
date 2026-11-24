@@ -13,6 +13,10 @@ export interface EventPost {
   body: string | null;
   created_at: Date;
   deleted_at: Date | null;
+  /** 'post' (organizer), 'comment' (top-level, any member), 'reply'. */
+  kind: 'post' | 'comment' | 'reply';
+  /** Anonymous rows are stored with author_id null. */
+  is_anonymous: boolean;
 }
 
 export interface FeedRead {
@@ -27,6 +31,9 @@ export interface FeedItem {
   author_id: string | null;
   author_name: string | null;
   author_role: 'organizer' | 'member' | null;
+  kind: 'post' | 'comment' | 'reply';
+  is_anonymous: boolean;
+  mine: boolean;
   body: string;
   created_at: string;
   is_unread: boolean;
@@ -41,6 +48,8 @@ export interface EventFeed {
   is_open: boolean;
   can_post: boolean;
   can_reply: boolean;
+  can_comment: boolean;
+  can_comment_anonymously: boolean;
   last_read_at: string | null;
   post_count: number;
   unread_count: number;
@@ -58,8 +67,40 @@ export function createPost(userId: string, sessionId: string | null, body: unkno
   return asUser(userId, (db) => rpcRow<EventPost>(db, 'create_event_post', [sessionId, body]));
 }
 
-export function replyTo(userId: string, postId: string | null, body: unknown = 'See you there!'): Promise<EventPost> {
-  return asUser(userId, (db) => rpcRow<EventPost>(db, 'reply_to_event_post', [postId, body]));
+export function replyTo(
+  userId: string,
+  postId: string | null,
+  body: unknown = 'See you there!',
+  anonymous?: boolean | null,
+): Promise<EventPost> {
+  return asUser(userId, (db) =>
+    rpcRow<EventPost>(db, 'reply_to_event_post', anonymous === undefined ? [postId, body] : [postId, body, anonymous]),
+  );
+}
+
+/** create_event_comment; `anonymous` omitted = the SQL default (named). */
+export function commentOn(
+  userId: string,
+  sessionId: string | null,
+  body: unknown = 'Count me in.',
+  anonymous?: boolean | null,
+): Promise<EventPost> {
+  return asUser(userId, (db) =>
+    rpcRow<EventPost>(
+      db,
+      'create_event_comment',
+      anonymous === undefined ? [sessionId, body] : [sessionId, body, anonymous],
+    ),
+  );
+}
+
+/** The hidden author of an anonymous item (superuser), or undefined. */
+export async function hiddenAuthor(postId: string): Promise<string | undefined> {
+  const { rows } = await admin.query<{ author_id: string }>(
+    'select author_id from private.event_post_anonymous_authors where post_id = $1',
+    [postId],
+  );
+  return rows[0]?.author_id;
 }
 
 export function deletePost(userId: string, postId: string | null): Promise<EventPost> {

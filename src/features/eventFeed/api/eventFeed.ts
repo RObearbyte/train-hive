@@ -42,17 +42,45 @@ export async function createEventPost(sessionId: string, body: string): Promise<
   return data;
 }
 
-/** Any active member. Throws `not_a_member`, `not_a_top_level_post`, `post_deleted`, `event_closed`, `validation_failed:body`. */
-export async function replyToEventPost(postId: string, body: string): Promise<EventPost> {
-  const { data, error } = await getSupabase().rpc('reply_to_event_post', {
-    p_post_id: postId,
+/**
+ * Any active member: a comment on the event, optionally anonymous (never for organizers).
+ * Throws `not_a_member`, `anonymous_not_allowed`, `event_closed`, `validation_failed:body`,
+ * `rate_limited` (anonymous only), `alias_pool_exhausted`.
+ */
+export async function createEventComment(
+  sessionId: string,
+  body: string,
+  anonymous: boolean,
+): Promise<EventPost> {
+  const { data, error } = await getSupabase().rpc('create_event_comment', {
+    p_session_id: sessionId,
     p_body: body,
+    p_anonymous: anonymous,
   });
   if (error) throw toAppError(error);
   return data;
 }
 
-/** Organizers any post, authors their own reply. Idempotent. */
+/**
+ * Any active member, to a post or a comment (one level), optionally anonymous. Throws
+ * `not_a_member`, `not_a_top_level_post`, `post_deleted`, `event_closed`, `anonymous_not_allowed`,
+ * `validation_failed:body`, `rate_limited` (anonymous only), `alias_pool_exhausted`.
+ */
+export async function replyToEventPost(
+  postId: string,
+  body: string,
+  anonymous: boolean,
+): Promise<EventPost> {
+  const { data, error } = await getSupabase().rpc('reply_to_event_post', {
+    p_post_id: postId,
+    p_body: body,
+    p_anonymous: anonymous,
+  });
+  if (error) throw toAppError(error);
+  return data;
+}
+
+/** Organizers any item, authors their own comments and replies (anonymous ones too). Idempotent. */
 export async function deleteEventPost(postId: string): Promise<void> {
   const { error } = await getSupabase().rpc('delete_event_post', { p_post_id: postId });
   if (error) throw toAppError(error);

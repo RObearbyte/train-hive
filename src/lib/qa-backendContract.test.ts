@@ -321,6 +321,7 @@ describe('QA contract: RPCs called by the app', () => {
         'get_event_feed',
         'get_event_feed_unread',
         'create_event_post',
+        'create_event_comment',
         'reply_to_event_post',
         'delete_event_post',
         'mark_event_feed_read',

@@ -125,6 +125,15 @@ Add to "How long we keep data" (and enable only after this text is published): *
 
 Controller details (P1), DPAs and Supabase region (P20, P22), Firebase Analytics off (P44), e-mail request procedure (P34), breach contacts (P41), lawyer review (`LEGAL_REVIEWED`).
 
+### Gap D (RESOLVED 2026-11-24): anonymous comments and nicknames
+
+Migration `20261204000100_anonymous_comments.sql` lets members write their own comments and post comments and replies anonymously, shown with a per-event nickname. **Resolved in the app change that ships the feature:** `privacy.ts` (inventory row "Announcements, posts, comments and replies in event discussions", who-sees bullet, push paragraph, retention bullet, account-deletion list) and `terms.ts` ("What you post": no harassment, anonymity does not protect from removal, the author is still stored) now state every fact below. Tripwire: `qa-gdprCopy.test.ts` "Q7-7: the anonymous-comment text matches the migration" (private tables and revokes, nickname key per event, `anonymous_not_allowed`, 10 per hour, erase statements, "operator can technically see", no "fully anonymous"); `content.test.ts` event text. Legal version stays 2 (never published to the hosted server). Facts the notice and terms match:
+- Anonymous means hidden **in the app**: other members and organizers see only the nickname. The author is still stored internally (`private.event_post_anonymous_authors`, `private.event_aliases`) for the author's own delete, export, erasure and the spam limit, and is visible to whoever has database access (the operator). Do not claim "fully anonymous" or "not even we can see it".
+- Organizers cannot post anonymously and can delete any comment (moderation by content).
+- Comments notify nobody; a reply notifies the author of the item replied to, quoting the replier's name or nickname and up to 200 characters.
+- Account deletion deletes comments and replies (anonymous ones too), the nicknames and the replies of others under a deleted comment; organizer posts stay without the name. The notice says exactly this.
+- The export lists your anonymous items, flagged, with your nickname per event.
+
 ## 4. How to keep this audit true
 
 Re-run it whenever a migration adds personal data, a `FEATURES` flag changes, or the legal texts change. The register test (`supabase/tests/retention.test.ts`, "retention register") fails when a new table is not listed in `docs/RECORD_OF_PROCESSING.md`.

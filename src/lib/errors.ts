@@ -45,6 +45,8 @@ export const BACKEND_ERROR_CODES = [
   'not_loggable',
   'event_not_ended',
   'not_eligible',
+  'anonymous_not_allowed',
+  'alias_pool_exhausted',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -233,12 +235,15 @@ const MESSAGES: Record<AppErrorCode, string> = {
   cannot_change_own_role: 'You cannot change your own role. Ask another organizer to do it.',
   cannot_remove_self:
     'You cannot remove yourself here. Use "Leave this community" in your profile instead.',
-  not_a_top_level_post: 'You can reply to a post, but not to a reply.',
+  not_a_top_level_post: 'You can reply to a post or a comment, but not to a reply.',
   post_deleted: 'That post was deleted.',
   event_closed: 'The discussion for this event is closed. It stays readable.',
   not_loggable: 'Workouts cannot be logged for this kind of event.',
   event_not_ended: 'This event has not ended yet. You can log your workout once it is over.',
   not_eligible: 'Only members who said they were going, or were marked present, can log this event.',
+  anonymous_not_allowed: 'Organizers cannot comment anonymously. Your name is shown on what you write.',
+  alias_pool_exhausted:
+    'All the nicknames for this event are taken. Please comment with your name instead.',
   app_update_required:
     'Our terms or privacy notice changed and this version of TrainHive cannot show the new text. Please update the app and try again.',
   network_error: 'No connection. Check your internet and try again.',

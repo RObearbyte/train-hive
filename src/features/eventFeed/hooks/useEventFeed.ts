@@ -6,6 +6,7 @@ import { toAppError, type AppError } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 
 import {
+  createEventComment,
   createEventPost,
   deleteEventPost,
   fetchEventFeed,
@@ -50,11 +51,22 @@ export function useCreateEventPost(sessionId: string) {
   });
 }
 
-/** A reply to a top-level post. Not optimistic. */
+/** A top-level comment by a member or organizer, optionally anonymous. Not optimistic (the server picks the nickname). */
+export function useCreateEventComment(sessionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<unknown, AppError, { body: string; anonymous: boolean }>({
+    mutationFn: ({ body, anonymous }) => createEventComment(sessionId, body, anonymous),
+    onError: (error) => reportError('eventFeed.comment', error),
+    onSettled: () => refreshFeed(queryClient, sessionId),
+  });
+}
+
+/** A reply to a post or a comment, optionally anonymous. Not optimistic. */
 export function useReplyToEventPost(sessionId: string) {
   const queryClient = useQueryClient();
-  return useMutation<unknown, AppError, { postId: string; body: string }>({
-    mutationFn: ({ postId, body }) => replyToEventPost(postId, body),
+  return useMutation<unknown, AppError, { postId: string; body: string; anonymous: boolean }>({
+    mutationFn: ({ postId, body, anonymous }) => replyToEventPost(postId, body, anonymous),
+    onError: (error) => reportError('eventFeed.reply', error),
     onSettled: () => refreshFeed(queryClient, sessionId),
   });
 }
