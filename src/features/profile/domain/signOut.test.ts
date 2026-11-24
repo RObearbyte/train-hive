@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { securePromptStorageKey } from '@/features/account/domain/securePrompt';
 import { aboutYouPromptStorageKey } from '@/features/aboutYou/domain/prompt';
 import { activeCommunityStorageKey } from '@/features/community/domain/activeCommunity';
 import { ACCEPTANCE_STORAGE_KEY } from '@/features/legal/domain/acceptance';
@@ -65,13 +66,14 @@ describe('sign-out text for a linked account', () => {
 });
 
 describe('storedKeysToClear', () => {
-  it('covers the session, the first-launch acknowledgement, the push prompt choice, the active community and the About-you note', () => {
+  it('covers the session, the first-launch acknowledgement, the push prompt choice, the active community and the About-you and Secure-account notes', () => {
     expect(storedKeysToClear(INPUT)).toEqual([
       'trainhive-auth',
       ACCEPTANCE_STORAGE_KEY,
       PUSH_PROMPT_DISMISSED_KEY,
       activeCommunityStorageKey(USER),
       aboutYouPromptStorageKey(USER),
+      securePromptStorageKey(USER),
     ]);
   });
 
@@ -93,6 +95,7 @@ describe('runSignOut', () => {
       `remove:${PUSH_PROMPT_DISMISSED_KEY}`,
       `remove:${activeCommunityStorageKey(USER)}`,
       `remove:${aboutYouPromptStorageKey(USER)}`,
+      `remove:${securePromptStorageKey(USER)}`,
       'removeExportedFiles',
       'clearQueryCache',
       'resetInMemoryState',

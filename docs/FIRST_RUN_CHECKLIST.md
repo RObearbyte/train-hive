@@ -82,3 +82,5 @@ Run these after section C. A = organizer, B = member.
 8. **Community workout totals:** they only appear with at least 20 contributors, so A will see "not enough yet" on the test community. That is correct.
 9. **Download my data** on B: the summary names the new parts (About you, workout logs, app activity record).
 10. **Retention:** nothing visible should happen (disabled). Opening the app only records the last open; no banner appears.
+
+11. **Secure your account (one-time page):** a brand-new member (join with a code, or create a community) first sees a full page "Secure your account" with the email field and "Skip for now"; after Skip or Continue the "About you" page follows (never the other way round), then Home. Close and reopen the app: neither page comes back. Try the email flow once on a throwaway address (code, then "Account secured with ..." and Continue). Someone who signs in with an existing email ("I already have an account") sees no Secure page. Sign out and join again: both pages appear again (their notes are cleared). Needs the email setup in docs/ACCOUNT_RECOVERY_SETUP.md; without it the code step shows a friendly error and Skip still works.

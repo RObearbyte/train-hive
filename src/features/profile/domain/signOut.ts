@@ -13,6 +13,7 @@
  *    a warning and the remaining steps still run.
  */
 import { aboutYouPromptStorageKey } from '@/features/aboutYou/domain/prompt';
+import { securePromptStorageKey } from '@/features/account/domain/securePrompt';
 import { activeCommunityStorageKey } from '@/features/community/domain/activeCommunity';
 import { ACCEPTANCE_STORAGE_KEY } from '@/features/legal/domain/acceptance';
 import { PUSH_PROMPT_DISMISSED_KEY } from '@/features/notifications/domain/pushState';
@@ -35,11 +36,15 @@ export function signOutCopy(linked: boolean): { message: string; caption: string
     : { message: SIGN_OUT_MESSAGE, caption: SIGN_OUT_CAPTION };
 }
 
-/** Every record kept on this device that belongs to the account or its choices (including the "About you page seen" note). */
+/** Every record kept on this device that belongs to the account or its choices (including the "Secure your account" and "About you" page-seen notes). */
 export function storedKeysToClear(input: { userId: string | null; authStorageKey: string }): string[] {
   const keys = [input.authStorageKey, ACCEPTANCE_STORAGE_KEY, PUSH_PROMPT_DISMISSED_KEY];
   if (input.userId !== null) {
-    keys.push(activeCommunityStorageKey(input.userId), aboutYouPromptStorageKey(input.userId));
+    keys.push(
+      activeCommunityStorageKey(input.userId),
+      aboutYouPromptStorageKey(input.userId),
+      securePromptStorageKey(input.userId),
+    );
   }
   return keys;
 }

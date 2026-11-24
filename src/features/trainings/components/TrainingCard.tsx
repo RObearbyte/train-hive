@@ -1,5 +1,6 @@
 import { Pressable, View } from 'react-native';
 
+import { DiscussionChip } from '@/features/eventFeed/components/DiscussionChip';
 import { NeedsAttendanceCue } from '@/features/attendance/components/AttendanceEntryPoint';
 import { RsvpControl } from '@/features/rsvp/components/RsvpControl';
 import type { RsvpResponse, TrainingSession } from '@/lib/database.types';
@@ -165,6 +166,9 @@ export function TrainingCard({
           </View>
         )}
       </Pressable>
+
+      {/* Discussion cue: its own button (opens the feed), outside the card button; nothing without posts. */}
+      <DiscussionChip sessionId={session.id} />
 
       {showRsvp ? (
         <View style={{ gap: spacing.md, marginTop: spacing.md }}>

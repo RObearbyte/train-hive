@@ -3,23 +3,9 @@ import { View } from 'react-native';
 import { FEATURES } from '@/features/legal/constants';
 import { Banner, Card, Text, useTheme } from '@/ui';
 
-import { confirmEmailLink, requestEmailLink, resendEmailLink } from '../api/emailAuth';
-import { OTP_LENGTH, linkSentMessage, maskEmail } from '../domain/emailLinking';
+import { OTP_LENGTH, maskEmail } from '../domain/emailLinking';
 import { useAccountKind } from '../hooks/useAccountKind';
-import { EmailCodeFlow, type EmailCodeActions, type EmailCodeCopy } from './EmailCodeFlow';
-
-const LINK_ACTIONS: EmailCodeActions = {
-  request: requestEmailLink,
-  resend: resendEmailLink,
-  confirm: confirmEmailLink,
-};
-
-const LINK_COPY: EmailCodeCopy = {
-  emailHelper: 'Used only to sign you in again and to send you sign-in codes.',
-  sendLabel: 'Send code',
-  confirmLabel: 'Confirm email',
-  sentMessage: (email) => linkSentMessage(maskEmail(email)),
-};
+import { SecureAccountForm } from './SecureAccountForm';
 
 /**
  * Profile -> "Secure your account". An anonymous account can add an email
@@ -63,16 +49,7 @@ export function SecureAccountSection() {
           Add your email so you can get back into this account if you lose or change your phone. It is optional.
           We email you a {OTP_LENGTH}-digit code: no password.
         </Text>
-        <EmailCodeFlow
-          actions={LINK_ACTIONS}
-          copy={LINK_COPY}
-          initialEmail={account.pendingEmail}
-          testIdPrefix="secure-account"
-        />
-        <Text variant="caption" color="textMuted">
-          By adding your email you agree that we store it for this purpose (see the Privacy Notice). You can
-          delete it by deleting your account.
-        </Text>
+        <SecureAccountForm pendingEmail={account.pendingEmail} testIdPrefix="secure-account" />
       </Card>
     </View>
   );

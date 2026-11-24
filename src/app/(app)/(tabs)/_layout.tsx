@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router/js-tabs';
 
-import { AboutYouRedirect } from '@/features/aboutYou/components/AboutYouRedirect';
+import { OneTimePagesRedirect } from '@/features/onboarding/components/OneTimePagesRedirect';
 import { TAB_LABEL_FONT_SIZE } from '@/features/communities/domain/communityTab';
 import { badgeText } from '@/features/notifications/domain/unread';
 import { useActivity } from '@/features/notifications/hooks/useActivity';
@@ -22,7 +22,7 @@ export default function TabsLayout() {
   // Display only: announcements and notifications the server says are unread.
   const unread = badgeText(useActivity().unreadCount);
   return (
-    <AboutYouRedirect>
+    <OneTimePagesRedirect>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -54,6 +54,6 @@ export default function TabsLayout() {
         <Tabs.Screen name="community" options={{ title: 'Community', tabBarIcon: tabIcon('people') }} />
         <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('person') }} />
       </Tabs>
-    </AboutYouRedirect>
+    </OneTimePagesRedirect>
   );
 }

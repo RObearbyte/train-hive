@@ -164,6 +164,7 @@ describe('local cleanup after sign out and account deletion', () => {
       'authStorageKey',
       'activeCommunityStorageKey',
       'aboutYouPromptStorageKey',
+      'securePromptStorageKey',
     ]) {
       expect(signOut).toContain(key);
     }
