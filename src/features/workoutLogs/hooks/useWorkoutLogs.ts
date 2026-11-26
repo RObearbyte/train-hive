@@ -5,7 +5,11 @@ import { consentKeys } from '@/features/legal/api/keys';
 import type {
   CommunityWorkoutStats,
   DeleteWorkoutLogResult,
+  LiftKey,
+  MaxEffortCandidates,
+  MaxEffortConfirmation,
   MyWorkoutStats,
+  PersonalRecords,
   StatisticsWindow,
   WorkoutLog,
   WorkoutLogInput,
@@ -16,14 +20,18 @@ import { toAppError, type AppError } from '@/lib/errors';
 import { reportError } from '@/lib/logger';
 
 import {
+  confirmMaxEffort,
   deleteWorkoutLog,
   fetchCommunityWorkoutStats,
+  fetchMaxEffortCandidates,
   fetchMyWorkoutStats,
+  fetchPersonalRecords,
   fetchWorkoutLogPage,
   fetchWorkoutLogScreen,
   saveWorkoutLog,
 } from '../api/workoutLogs';
 import { workoutKeys } from '../api/keys';
+import { applyConfirmation } from '../domain/personalRecords';
 
 /**
  * Workout data is health-related: it is read again every time a screen asks and
@@ -122,6 +130,73 @@ export function useMyWorkoutStats(communityId: string | null) {
   return useQuery<MyWorkoutStats, AppError>({
     queryKey: workoutKeys.myStats(userId, communityId),
     queryFn: () => fetchMyWorkoutStats(communityId).catch((error: unknown) => Promise.reject(toAppError(error))),
+    enabled: userId !== null,
+    ...SENSITIVE,
+  });
+}
+
+/**
+ * The max-effort question of my log of an event. `enabled`: only for a strength log that exists
+ * (the server answers `not_found` without a log).
+ */
+export function useMaxEffortCandidates(sessionId: string, enabled: boolean) {
+  const { userId } = useSession();
+  return useQuery<MaxEffortCandidates, AppError>({
+    queryKey: workoutKeys.candidates(sessionId),
+    queryFn: () => fetchMaxEffortCandidates(sessionId).catch((error: unknown) => Promise.reject(toAppError(error))),
+    enabled: enabled && userId !== null,
+    ...SENSITIVE,
+  });
+}
+
+/** Reads the max-effort question fresh from the server (right after a save) and caches it. */
+export function useLoadMaxEffortCandidates(sessionId: string) {
+  const queryClient = useQueryClient();
+  return () =>
+    queryClient.fetchQuery<MaxEffortCandidates, AppError>({
+      queryKey: workoutKeys.candidates(sessionId),
+      queryFn: () => fetchMaxEffortCandidates(sessionId).catch((error: unknown) => Promise.reject(toAppError(error))),
+      staleTime: 0,
+      gcTime: SENSITIVE.gcTime,
+    });
+}
+
+export type MaxEffortAnswer = { lift: LiftKey; reps: number; weightKg: number; confirmed: boolean };
+
+/**
+ * Yes / No to one candidate. Not optimistic: the server checks the set and decides whether it is
+ * a record; its answer is written into the question and the records are read again.
+ */
+export function useConfirmMaxEffort(sessionId: string) {
+  const queryClient = useQueryClient();
+  const { userId } = useSession();
+  return useMutation<MaxEffortConfirmation, AppError, MaxEffortAnswer>({
+    mutationFn: async (answer) => {
+      try {
+        return await confirmMaxEffort(sessionId, answer);
+      } catch (error) {
+        throw toAppError(error);
+      }
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData<MaxEffortCandidates>(workoutKeys.candidates(sessionId), (current) =>
+        current ? applyConfirmation(current, result) : current,
+      );
+    },
+    onError: (error) => reportError('workoutLogs.confirmMaxEffort', error.code),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: workoutKeys.records(userId) });
+      void queryClient.invalidateQueries({ queryKey: workoutKeys.candidates(sessionId) });
+    },
+  });
+}
+
+/** My personal bests. */
+export function useMyPersonalRecords() {
+  const { userId } = useSession();
+  return useQuery<PersonalRecords, AppError>({
+    queryKey: workoutKeys.records(userId),
+    queryFn: () => fetchPersonalRecords().catch((error: unknown) => Promise.reject(toAppError(error))),
     enabled: userId !== null,
     ...SENSITIVE,
   });

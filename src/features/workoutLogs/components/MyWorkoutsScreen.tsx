@@ -2,7 +2,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useMemo } from 'react';
 import { View } from 'react-native';
 
-import { workoutLogHref } from '@/features/notifications/components/routes';
+import { personalBestsHref, workoutLogHref } from '@/features/notifications/components/routes';
 import type { WorkoutLog } from '@/lib/database.types';
 import { deviceTimeZone, formatDateTime } from '@/lib/datetime';
 import { reportError } from '@/lib/logger';
@@ -94,6 +94,13 @@ export function MyWorkoutsScreen() {
       </View>
       <Text variant="title">My workouts</Text>
       <Text color="textMuted">Private to you. Organizers never see individual logs.</Text>
+      <Button
+        label="Personal bests"
+        variant="secondary"
+        icon="trophy"
+        onPress={() => router.push(personalBestsHref)}
+        testID="my-workouts-personal-bests"
+      />
       {body}
     </Screen>
   );

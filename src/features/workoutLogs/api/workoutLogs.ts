@@ -2,7 +2,11 @@ import { recordConsent } from '@/features/legal/api/consents';
 import type {
   CommunityWorkoutStats,
   DeleteWorkoutLogResult,
+  LiftKey,
+  MaxEffortCandidates,
+  MaxEffortConfirmation,
   MyWorkoutStats,
+  PersonalRecords,
   StatisticsWindow,
   WorkoutLog,
   WorkoutLogInput,
@@ -12,6 +16,7 @@ import type {
 import { AppError, toAppError } from '@/lib/errors';
 import { getSupabase } from '@/lib/supabase';
 
+import { isMaxEffortCandidates, isMaxEffortConfirmation, isPersonalRecords } from '../domain/personalRecords';
 import {
   isCommunityWorkoutStats,
   isMyWorkoutStats,
@@ -85,6 +90,45 @@ export async function fetchMyWorkoutStats(communityId: string | null): Promise<M
   });
   if (error) throw toAppError(error);
   if (!isMyWorkoutStats(data)) throw unexpected('get_my_workout_stats');
+  return data;
+}
+
+/**
+ * The qualifying sets of my log of an event (heaviest set per record lift x 1-3 reps).
+ * Throws AppError `not_found` when I have no log of it.
+ */
+export async function fetchMaxEffortCandidates(sessionId: string): Promise<MaxEffortCandidates> {
+  const { data, error } = await getSupabase().rpc('get_max_effort_candidates', { p_session_id: sessionId });
+  if (error) throw toAppError(error);
+  if (!isMaxEffortCandidates(data)) throw unexpected('get_max_effort_candidates');
+  return data;
+}
+
+/**
+ * Confirms (true) or removes (false) a maximal effort. Throws AppError `set_not_found`,
+ * `consent_required` (field `workout_logs`), `not_found`, `validation_failed:<lift|reps|weight_kg|confirmed>`.
+ */
+export async function confirmMaxEffort(
+  sessionId: string,
+  answer: { lift: LiftKey; reps: number; weightKg: number; confirmed: boolean },
+): Promise<MaxEffortConfirmation> {
+  const { data, error } = await getSupabase().rpc('confirm_max_effort', {
+    p_session_id: sessionId,
+    p_lift: answer.lift,
+    p_reps: answer.reps,
+    p_weight_kg: answer.weightKg,
+    p_confirmed: answer.confirmed,
+  });
+  if (error) throw toAppError(error);
+  if (!isMaxEffortConfirmation(data)) throw unexpected('confirm_max_effort');
+  return data;
+}
+
+/** My personal bests (running computed from my logs, lifts from confirmed max efforts). */
+export async function fetchPersonalRecords(): Promise<PersonalRecords> {
+  const { data, error } = await getSupabase().rpc('get_my_personal_records');
+  if (error) throw toAppError(error);
+  if (!isPersonalRecords(data)) throw unexpected('get_my_personal_records');
   return data;
 }
 

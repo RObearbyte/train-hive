@@ -134,6 +134,15 @@ Migration `20261204000100_anonymous_comments.sql` lets members write their own c
 - Account deletion deletes comments and replies (anonymous ones too), the nicknames and the replies of others under a deleted comment; organizer posts stay without the name. The notice says exactly this.
 - The export lists your anonymous items, flagged, with your nickname per event.
 
+### Gap E (RESOLVED 2026-11-26): personal records are part of the workout logs
+
+Migration `20261205000100_personal_records.sql`. **Resolved in the app change that ships the feature:** `privacy.ts` (inventory row "Personal records (part of your workout logs)", who-sees sentence "Your personal records are private to you as well", retention bullet "Personal records: they go with your workout logs", rights: where to see them and how to remove a lift record, the download includes them, the account-deletion list names them), all behind `FEATURES.workoutLogs`. Terms unchanged (they say nothing about workouts). Tripwire: `qa-gdprCopy.test.ts` "Q7-7: the personal-records text matches the migration" (private table and revoke, consent message, cascade from the log, export key, no "verified"); `content.test.ts` "describes personal records as part of the workout logs". Legal version stays 2 (never published to the hosted server). Facts the notice matches:
+- Running bests (5 km, 10 km, half marathon, marathon, longest distance) are computed from the member's own running and race logs; nothing extra is stored.
+- Lift records exist only for sets the member confirms as a maximal effort; the confirmation (lift, reps, weight, event, time of confirming) is stored in `private.lift_max_efforts`, under the same `workout_logs` consent (confirming needs it).
+- Owner only: no organizer sees them, no community total uses them.
+- Deleted with the set (a re-saved log without it), the log, the withdrawal of the `workout_logs` consent and the account; included in the export (`extensions.personal_records`).
+- Do not claim the records are "verified" or "official": they are the member's own entries.
+
 ## 4. How to keep this audit true
 
 Re-run it whenever a migration adds personal data, a `FEATURES` flag changes, or the legal texts change. The register test (`supabase/tests/retention.test.ts`, "retention register") fails when a new table is not listed in `docs/RECORD_OF_PROCESSING.md`.

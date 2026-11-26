@@ -37,6 +37,11 @@ describe('export_my_data: content', () => {
       },
       // P5: the victim withdrew the workout_logs consent, which deletes every log.
       workout_logs: [],
+      // Personal records: the logs are gone, so are the confirmations and the running bests.
+      personal_records: {
+        lift_max_efforts: [],
+        running: { best_5k: null, best_10k: null, best_half: null, best_marathon: null, longest: null },
+      },
       // G3: the victim never called record_app_open and has no inactivity notice.
       account_activity: null,
     });

@@ -67,6 +67,10 @@ const PUBLIC_FUNCTIONS: Record<string, 'authenticated' | 'service_role'> = {
   get_my_workout_stats: 'authenticated',
   list_my_workout_logs: 'authenticated',
   save_workout_log: 'authenticated',
+  // Personal records (20261205000100).
+  confirm_max_effort: 'authenticated',
+  get_max_effort_candidates: 'authenticated',
+  get_my_personal_records: 'authenticated',
   // G3: retention of inactive accounts.
   admin_set_retention_enabled: 'service_role',
   record_app_open: 'authenticated',
@@ -341,6 +345,9 @@ describe('QA function privileges', () => {
       ['select public.get_my_workout_stats($1, $2, $3)', [communityId, null, null]],
       ['select public.get_community_workout_stats($1, $2)', [communityId, '30d']],
       ['select public.record_app_open()', []],
+      ['select public.get_max_effort_candidates($1)', [session.id]],
+      ['select public.confirm_max_effort($1, $2, $3, $4, $5)', [session.id, 'deadlift', 1, 100, true]],
+      ['select public.get_my_personal_records()', []],
     ];
     for (const [sql, params] of calls) {
       await expect(asService((db) => db.query(sql, params)), sql).rejects.toMatchObject(denied);
@@ -501,11 +508,11 @@ describe('QA table privileges', () => {
     expect(rows).toEqual([]);
   });
 
-  it('the workout log tables in private grant nothing to any API role (P5)', async () => {
+  it('the workout log and personal record tables in private grant nothing to any API role (P5)', async () => {
     const { rows } = await admin.query<{ role: string; table: string; privilege: string }>(
       `select r.role, t.name as table, p.privilege
        from unnest(array['anon', 'authenticated', 'service_role']) as r(role)
-       cross join unnest(array['private.workout_logs', 'private.workout_prompt_runs']) as t(name)
+       cross join unnest(array['private.workout_logs', 'private.workout_prompt_runs', 'private.lift_max_efforts']) as t(name)
        cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(privilege)
        where has_table_privilege(r.role, t.name, p.privilege)
           or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')

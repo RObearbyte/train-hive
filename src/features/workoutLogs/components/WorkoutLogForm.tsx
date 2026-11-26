@@ -4,7 +4,7 @@ import { Controller, useForm, useWatch, type Control, type Resolver } from 'reac
 import { View } from 'react-native';
 
 import { ConsentCheckbox } from '@/features/legal/components/ConsentCheckbox';
-import type { WorkoutLogScreen, WorkoutLogType } from '@/lib/database.types';
+import type { WorkoutLog, WorkoutLogScreen, WorkoutLogType } from '@/lib/database.types';
 import { Banner, Button, Card, Text, TextField, useTheme } from '@/ui';
 
 import {
@@ -119,7 +119,7 @@ export function WorkoutLogForm({
 }: {
   screen: WorkoutLogScreen;
   logType: WorkoutLogType;
-  onSaved: () => void;
+  onSaved: (saved: WorkoutLog) => void;
 }) {
   const { spacing } = useTheme();
   const save = useSaveWorkoutLog(screen.session_id);
@@ -159,7 +159,7 @@ export function WorkoutLogForm({
     save.mutate(
       { input: buildInput(logType, values), recordConsent: needsConsent },
       {
-        onSuccess: onSaved,
+        onSuccess: (saved) => onSaved(saved),
         onError: (error) => {
           const field = error.code === 'validation_failed' ? formFieldFor(error.field, logType) : null;
           if (field === 'notes' || field === 'distanceKm' || field === 'time') {

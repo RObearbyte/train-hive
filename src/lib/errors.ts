@@ -47,6 +47,7 @@ export const BACKEND_ERROR_CODES = [
   'not_eligible',
   'anonymous_not_allowed',
   'alias_pool_exhausted',
+  'set_not_found',
 ] as const;
 
 export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
@@ -244,6 +245,8 @@ const MESSAGES: Record<AppErrorCode, string> = {
   anonymous_not_allowed: 'Organizers cannot comment anonymously. Your name is shown on what you write.',
   alias_pool_exhausted:
     'All the nicknames for this event are taken. Please comment with your name instead.',
+  set_not_found:
+    'That set is no longer in your log (it may have just been changed). Open the log again and answer once more.',
   app_update_required:
     'Our terms or privacy notice changed and this version of TrainHive cannot show the new text. Please update the app and try again.',
   network_error: 'No connection. Check your internet and try again.',
@@ -300,6 +303,8 @@ const FIELD_LABELS: Record<string, string> = {
   duration_s: 'time',
   notes: 'notes (at most 1000 characters)',
   range: 'date range',
+  lift: 'lift',
+  confirmed: 'answer (yes or no)',
 };
 
 /** `consent_required:<purpose>` on the About-you page: which agreement is missing. */

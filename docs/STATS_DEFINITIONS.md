@@ -106,3 +106,31 @@ There is no per-member breakdown, no per-event breakdown and no strength volume 
 ### Edge cases covered by `supabase/tests/workout-logs.test.ts`
 
 Pace rounding (x.5 up, distance-only and duration-only logs), strength volume with fractional weights and bodyweight sets, community and window filters, the 19/20 contributor boundary, a metric with fewer than 20 contributors, a member leaving, an event moved out of the window, a cancelled event, empty statistics, the nested-window band rule (no band, a 1-member band, an older log of a member in the smaller window, a 20-member band where one metric has only 19), the plausibility range. `supabase/tests/qa-workout-logs.test.ts` adds the QA scenarios: 4 puppets + 1 member, 19 puppets + 1 member (known limit, 10 km), 5 + 1 and 20 + 1 members across windows, a suppressed middle window, removal of a member (at and below the rounding), the 19/20/22/23 rounding edges with half-way values.
+
+## Personal records
+
+Owner only (`get_my_personal_records`, migration `20261205000100_personal_records.sql`); organizers never see them and no community total uses them. Tests: `supabase/tests/personal-records.test.ts`.
+
+### Running bests (computed from the member's own `running` and `race` logs, nothing stored)
+
+| Record | D |
+|---|---|
+| `best_5k` | 5 000 m |
+| `best_10k` | 10 000 m |
+| `best_half` | 21 097.5 m |
+| `best_marathon` | 42 195 m |
+
+- **Counts for D:** a log with a duration whose distance lies in **[floor(D), D × 1.05]** metres, both inclusive (logged distance slightly over is common; distances are whole metres, so the half marathon is reached at 21 097 m, which scales by 0.5 m). **A log under D never counts** (no extrapolation). Upper bounds: 5 250, 10 500, 22 152 and 44 204 m.
+- **Counted time:** `round(duration_s × D / distance_m)` seconds (the logged time scaled to exactly D by the log's average pace), half away from zero. Pace shown: `round(time_s × 1000 / D)` s/km.
+- **Best:** the shortest counted time; ties go to the earliest event start, then the smallest session id.
+- **Longest distance:** the largest `distance_m` of any running or race log (a duration is not needed; its pace is the log's, null without a duration); ties as above.
+- One log can hold several records (a 42.4 km run is the marathon best candidate and the longest distance).
+
+### Lift records (confirmed by the member)
+
+- Lifts: deadlift, bench press, back squat, front squat, strict press, push press. Exercise names are mapped by `private.normalize_lift_name`: lowercase; whitespace, `-`, `_`, `/` become one space; other non `a-z0-9` characters are removed; then exact names. The app's list names (`Deadlift`, `Bench press`, `Back squat`, `Front squat`, `Strict press`, `Push press`, any case) and the synonyms `dl`, `conventional deadlift`; `bench`, `bp`, `flat bench`; `squat`, `bs`, `high bar squat`, `low bar squat`; `fs`; `press`, `overhead press`, `ohp`, `military press`, `shoulder press`; `pp`. Anything else (plurals, variants like "sumo deadlift", other languages) is not a lift.
+- **Qualifying set:** recognized lift, **reps 1, 2 or 3**, **weight_kg > 0**. Bodyweight sets never qualify.
+- **Only confirmed sets count:** after saving, the app asks whether a qualifying set was a maximal effort; the confirmation is stored per (event, lift, reps) with its weight.
+- **Record** per lift × reps (1RM, 2RM, 3RM): the highest confirmed weight; ties go to the earliest event start, then the earliest confirmation, then the smallest session id. A 2RM heavier than the 1RM is shown as it is (no cross-rep inference, no estimated 1RM).
+- "New record" (`is_new_record`): the set would rank first under the rule above among the member's confirmations of other events (an equal weight from an earlier event keeps the record).
+- A confirmation disappears when its set leaves the log (re-save with another weight, reps or a name that no longer maps), with the log, on withdrawal of the `workout_logs` consent and on account deletion.

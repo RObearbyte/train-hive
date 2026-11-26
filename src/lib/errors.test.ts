@@ -58,6 +58,7 @@ describe('contract coverage', () => {
         'session_not_confirmed',
         'session_not_editable',
         'session_not_ended',
+        'set_not_found',
         'stale_data',
         'validation_failed',
       ].sort(),
@@ -340,5 +341,25 @@ describe('GDPR G2 organizer tools', () => {
     expect(userMessage('cannot_change_own_role')).toMatch(/own role/i);
     expect(userMessage('cannot_remove_self')).toMatch(/leave this community/i);
     expect(userMessage('validation_failed', 'role')).toContain('role');
+  });
+});
+
+describe('Personal records codes', () => {
+  it('parses set_not_found, validation_failed:lift / :confirmed and consent_required:workout_logs from confirm_max_effort', () => {
+    expect(toAppError(pgError('set_not_found')).code).toBe('set_not_found');
+    expect(toAppError(pgError('validation_failed:lift'))).toMatchObject({ code: 'validation_failed', field: 'lift' });
+    expect(toAppError(pgError('validation_failed:confirmed'))).toMatchObject({ code: 'validation_failed', field: 'confirmed' });
+    expect(toAppError(pgError('consent_required:workout_logs'))).toMatchObject({ code: 'consent_required', field: 'workout_logs' });
+  });
+
+  it('words each one without the raw code', () => {
+    expect(userMessage('set_not_found')).toMatch(/no longer in your log/);
+    expect(userMessage('validation_failed', 'lift')).toBe('The lift is not valid. Please check it and try again.');
+    expect(userMessage('validation_failed', 'confirmed')).toMatch(/answer \(yes or no\)/);
+    for (const [code, field] of [['set_not_found', undefined], ['validation_failed', 'lift'], ['validation_failed', 'confirmed']] as const) {
+      const text = userMessage(code, field);
+      expect(text).not.toBe(GENERIC);
+      expect(text).not.toMatch(/set_not_found|validation_failed/);
+    }
   });
 });

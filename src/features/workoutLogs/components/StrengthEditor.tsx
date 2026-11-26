@@ -17,7 +17,8 @@ import {
   validateNewExercise,
   type NewExerciseProblems,
 } from '../domain/strengthEditor';
-import { EXERCISE_NAME_MAX, MAX_EXERCISES, MAX_SETS, type WorkoutFormValues } from '../domain/workoutLog';
+import { MAX_EXERCISES, MAX_SETS, type WorkoutFormValues } from '../domain/workoutLog';
+import { ExerciseNameField } from './ExerciseNameField';
 
 /**
  * Strength part of the log form: add an exercise with a name and a number of sets, then edit every set
@@ -34,6 +35,7 @@ export function StrengthEditor({ control }: { control: Control<WorkoutFormValues
   const [problems, setProblems] = useState<NewExerciseProblems>({});
   const [removing, setRemoving] = useState<number | null>(null);
   const [expectCount, setExpectCount] = useState<number | null>(null);
+  const [addCount, setAddCount] = useState(0);
 
   // A new exercise starts expanded (adjusted while rendering, once the list has grown).
   if (expectCount !== null && fields.length >= expectCount) {
@@ -54,6 +56,7 @@ export function StrengthEditor({ control }: { control: Control<WorkoutFormValues
     setExpectCount(fields.length + 1);
     append(newExercise(name, count));
     setName('');
+    setAddCount((n) => n + 1);
   }
 
   const removeIndex = removing;
@@ -61,20 +64,21 @@ export function StrengthEditor({ control }: { control: Control<WorkoutFormValues
     <View style={{ gap: spacing.md }}>
       <Card style={{ gap: spacing.sm }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
-          <TextField
-            label="Exercise name"
-            value={name}
-            onChangeText={(text) => {
-              setName(text);
-              if (problems.name || problems.limit) setProblems({ ...problems, name: undefined, limit: undefined });
-            }}
-            error={problems.name}
-            maxLength={EXERCISE_NAME_MAX * 2}
-            returnKeyType="done"
-            onSubmitEditing={add}
-            containerStyle={{ flex: 3 }}
-            testID="workout-new-name"
-          />
+          <View style={{ flex: 3 }}>
+            <ExerciseNameField
+              // A new field after each add: the next exercise starts from the list again.
+              key={addCount}
+              label="Exercise name"
+              value={name}
+              onChange={(text) => {
+                setName(text);
+                if (problems.name || problems.limit) setProblems({ ...problems, name: undefined, limit: undefined });
+              }}
+              error={problems.name}
+              onSubmitEditing={add}
+              testID="workout-new-name"
+            />
+          </View>
           <TextField
             label="Sets"
             value={setsText}
@@ -205,14 +209,14 @@ function ExerciseBody({
         control={control}
         name={`exercises.${index}.name`}
         render={({ field, fieldState }) => (
-          <TextField
-            ref={field.ref}
+          <ExerciseNameField
+            inputRef={field.ref}
             label={`Exercise ${index + 1} name`}
             value={field.value}
-            onChangeText={field.onChange}
+            onChange={field.onChange}
             onBlur={field.onBlur}
             error={fieldState.error?.message}
-            maxLength={EXERCISE_NAME_MAX * 2}
+            testID={`workout-exercise-${index}-name`}
           />
         )}
       />

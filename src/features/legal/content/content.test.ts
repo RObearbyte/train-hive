@@ -294,6 +294,19 @@ describe('later-phase features appear in the texts only when their flag is on', 
     expect(text).toMatch(/Profile, then My workouts/);
   });
 
+  it('privacy (shipped): describes personal records as part of the workout logs, and only with that flag', () => {
+    const text = textOf(buildLegalDocument('privacy', FAKE));
+    expect(text).toContain('Personal records (part of your workout logs)');
+    expect(text).toMatch(/best running times \(5 km, 10 km, half marathon and marathon\) and your longest distance are computed/);
+    expect(text).toMatch(/Lift records .* come only from sets you confirm as a maximal effort/);
+    expect(text).toMatch(/Your personal records are private to you as well/);
+    expect(text).toMatch(/Personal records: they go with your workout logs/);
+    expect(text).toMatch(/Profile, then My workouts, then Personal bests/);
+    expect(text).toMatch(/including your workout logs and personal records/);
+    const off = textOf(buildLegalDocument('privacy', FAKE, { ...SHIPPED, workoutLogs: false }));
+    expect(off).not.toMatch(/personal record|maximal effort/i);
+  });
+
   it('privacy (shipped): says who sees event posts, how long they stay, what deletion does and what the push shows', () => {
     const text = textOf(buildLegalDocument('privacy', FAKE));
     expect(text).toContain('Announcements, posts, comments and replies in event discussions');

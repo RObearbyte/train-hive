@@ -837,8 +837,14 @@ describe('GDPR: export and erasure', () => {
     const pack = await createPack(2);
     const [m, m2] = pack.memberIds;
     const year = await serverYear();
-    // P5 added extensions.workout_logs (empty here), G3 extensions.account_activity (null here).
-    expect((await exportMyData(m)).extensions).toEqual({ about_you: null, workout_logs: [], account_activity: null });
+    // P5 added extensions.workout_logs (empty here), G3 extensions.account_activity (null here),
+    // personal records (20261205000100) extensions.personal_records (empty here).
+    expect((await exportMyData(m)).extensions).toEqual({
+      about_you: null,
+      workout_logs: [],
+      personal_records: { lift_max_efforts: [], running: { best_5k: null, best_10k: null, best_half: null, best_marathon: null, longest: null } },
+      account_activity: null,
+    });
 
     await grantConsents(m, BOTH);
     await grantConsents(m2, BOTH);
@@ -855,6 +861,7 @@ describe('GDPR: export and erasure', () => {
         updated_at: expect.any(String),
       },
       workout_logs: [],
+      personal_records: { lift_max_efforts: [], running: { best_5k: null, best_10k: null, best_half: null, best_marathon: null, longest: null } },
       account_activity: null,
     });
     expect(JSON.stringify(ex)).not.toContain('Other Contact');

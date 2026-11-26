@@ -3,18 +3,27 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { ConfirmDialog } from '@/features/community/components/ConfirmDialog';
+import { personalBestsHref } from '@/features/notifications/components/routes';
 import { KeyboardScreen } from '@/features/onboarding/components/KeyboardScreen';
+import type { WorkoutLog } from '@/lib/database.types';
 import { deviceTimeZone, formatDateTime } from '@/lib/datetime';
 import { reportError } from '@/lib/logger';
 import { Banner, Button, Card, ErrorState, LoadingState, Text, useTheme } from '@/ui';
 
+import { maxEffortErrorMessage, needsMaxEffortQuestion } from '../domain/personalRecords';
 import {
   cannotLogMessage,
   logSummary,
   logTypeLabel,
   workoutLogErrorMessage,
 } from '../domain/workoutLog';
-import { useDeleteWorkoutLog, useWorkoutLogScreen } from '../hooks/useWorkoutLogs';
+import {
+  useDeleteWorkoutLog,
+  useLoadMaxEffortCandidates,
+  useMaxEffortCandidates,
+  useWorkoutLogScreen,
+} from '../hooks/useWorkoutLogs';
+import { MaxEffortSheet } from './MaxEffortSheet';
 import { WorkoutLogForm } from './WorkoutLogForm';
 
 /**
@@ -28,6 +37,26 @@ export function WorkoutLogScreen({ sessionId }: { sessionId: string }) {
   const remove = useDeleteWorkoutLog(sessionId);
   const [notice, setNotice] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [maxEffortsOpen, setMaxEffortsOpen] = useState(false);
+  const [maxEffortsProblem, setMaxEffortsProblem] = useState<string | null>(null);
+  const strengthLog = query.data?.log?.log_type === 'strength';
+  const candidates = useMaxEffortCandidates(sessionId, strengthLog);
+  const loadCandidates = useLoadMaxEffortCandidates(sessionId);
+
+  const onSaved = (saved: WorkoutLog) => {
+    setNotice('Saved. Your workout log is up to date.');
+    setMaxEffortsProblem(null);
+    if (saved.log_type !== 'strength') return;
+    // Ask right away about heavy sets of the record lifts that have no answer yet.
+    loadCandidates()
+      .then((data) => {
+        if (needsMaxEffortQuestion(data)) setMaxEffortsOpen(true);
+      })
+      .catch((error: unknown) => {
+        reportError('workoutLogs.candidates', error);
+        setMaxEffortsProblem(`Your log is saved, but we could not check your sets for maximal efforts. ${maxEffortErrorMessage(error)}`);
+      });
+  };
 
   const leave = () => {
     if (router.canGoBack()) router.back();
@@ -93,12 +122,36 @@ export function WorkoutLogScreen({ sessionId }: { sessionId: string }) {
         />
       ) : null}
       {notice ? <Banner tone="success" message={notice} /> : null}
+      {maxEffortsProblem ? (
+        <Banner
+          tone="warning"
+          message={maxEffortsProblem}
+          action={{
+            label: 'Try again',
+            onPress: () => {
+              setMaxEffortsProblem(null);
+              setMaxEffortsOpen(true);
+            },
+          }}
+        />
+      ) : null}
+      {strengthLog && candidates.data && candidates.data.candidates.length > 0 ? (
+        <Button
+          label="Max efforts"
+          variant="secondary"
+          icon="trophy"
+          fullWidth
+          accessibilityHint="Tell TrainHive which heavy sets were maximal efforts, for your lift records"
+          onPress={() => setMaxEffortsOpen(true)}
+          testID="workout-max-efforts"
+        />
+      ) : null}
 
       {screen.can_log && screen.event !== null && logType !== null ? (
         <WorkoutLogForm
           screen={screen}
           logType={logType}
-          onSaved={() => setNotice('Saved. Your workout log is up to date.')}
+          onSaved={onSaved}
         />
       ) : (
         <>
@@ -151,6 +204,15 @@ export function WorkoutLogScreen({ sessionId }: { sessionId: string }) {
           remove.reset();
         }}
       />
+
+      {screen.log?.log_type === 'strength' ? (
+        <MaxEffortSheet
+          sessionId={sessionId}
+          visible={maxEffortsOpen}
+          onClose={() => setMaxEffortsOpen(false)}
+          onShowRecords={() => router.push(personalBestsHref)}
+        />
+      ) : null}
     </KeyboardScreen>
   );
 }

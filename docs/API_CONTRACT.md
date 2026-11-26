@@ -1213,3 +1213,59 @@ Top-level list = organizer posts and comments, newest first. `can_delete`: organ
 - **Erasure:** the user's comments and replies (named or anonymous) are deleted, with the `event_reply` notifications quoting the replies; replies of others under a deleted comment go with it; nicknames deleted; organizer posts stay without author (as before). `private.account_last_activity` also counts anonymous items.
 
 New error codes: `anonymous_not_allowed`, `alias_pool_exhausted`. TypeScript: `EventPostKind`; `event_posts` Row `kind`, `is_anonymous`; `create_event_comment`; `reply_to_event_post` `p_anonymous?`; `EventFeedItem` `kind?`, `is_anonymous?`, `mine?`; `EventFeed` `can_comment?`, `can_comment_anonymously?` (optional only so the current app fixtures compile; always sent); `MyDataExport` additions (optional, absent in older files).
+
+---
+
+# Personal records (append-only)
+
+Migration `20261205000100_personal_records.sql`. Definitions: `docs/STATS_DEFINITIONS.md` "Personal records". Tests: `supabase/tests/personal-records.test.ts`, plus `qa-privileges.test.ts`, `qa-workout-logs.test.ts` (reviewed readers), `data-export.test.ts`. Owner request: keep a record of the member's best efforts. All functions: `security definer`, `set search_path = ''`, **`authenticated` only** (anon and service_role: no execute); errors raised (`P0001`, message = code). **Records are private to the member:** no function returns another member's records, organizers included; there is no community aggregate.
+
+## Exercise names (app)
+
+The app picks strength exercises from a list (owner decision 2026-11-26). For the record lifts it must save **exactly** these names: **`Deadlift`**, **`Bench press`**, **`Back squat`**, **`Front squat`**, **`Strict press`**, **`Push press`**. Other list entries and "Other" stay free text (1..80, as today; names are not validated against the list). The server maps the six names (any case) and older free-text synonyms (`dl`, `bench`, `ohp`, ... see STATS_DEFINITIONS) to the lift keys `deadlift`, `bench_press`, `back_squat`, `front_squat`, `strict_press`, `push_press`.
+
+## Storage
+
+`private.lift_max_efforts(user_id, session_id, lift, reps 1..3, weight_kg numeric(6,2) > 0, confirmed_at)`, primary key `(user_id, session_id, lift, reps)`, foreign key `(user_id, session_id) → private.workout_logs (user_id, session_id) on delete cascade`. No API role holds any privilege. Running bests are computed, not stored.
+
+## RPCs
+
+`get_max_effort_candidates(p_session_id uuid) → jsonb` (`MaxEffortCandidates`) — call after `save_workout_log` succeeds for a strength log.
+```
+{ session_id, log_type, event_title, event_starts_at, has_consent,
+  candidates: [ { lift, label, reps (1|2|3), weight_kg, confirmed, confirmed_weight_kg | null,
+                  previous_best_kg | null, is_new_record } ] }
+```
+- One candidate per lift × reps of the caller's log: the heaviest qualifying set (recognized lift, reps 1-3, weight > 0). Order: lift display order (deadlift, bench press, back squat, front squat, strict press, push press), then reps. Empty for a running / race log.
+- `confirmed`: a confirmation of that lift × reps exists for the event (`confirmed_weight_kg` its weight, normally `weight_kg`). `previous_best_kg`: best confirmed weight in the caller's other events. `is_new_record`: confirming `weight_kg` now makes it (or it already is) the record; an equal weight from an earlier event keeps the record.
+- Errors: `not_authenticated`, `not_found` (no log of the caller for that event, also null).
+- App suggestion: ask "Was this a max effort?" only for candidates with `confirmed: false`; highlight `is_new_record`.
+
+`confirm_max_effort(p_session_id uuid, p_lift text, p_reps integer, p_weight_kg numeric, p_confirmed boolean) → jsonb` (`MaxEffortConfirmation`)
+```
+{ lift, reps, weight_kg, confirmed, is_new_record }      -- is_new_record false when removing
+```
+- `p_lift`: a lift key (send the candidate's `lift`) or an exercise name that maps to one. `true` stores the confirmation or updates its weight (one per event × lift × reps; re-confirming the same weight keeps the original `confirmed_at`); the set must exist in the caller's current log of that event (same lift after mapping, exactly `p_reps`, exactly `p_weight_kg`). `false` removes the confirmation of that lift × reps for the event, whatever its weight (no consent needed; nothing to remove is not an error).
+- Errors in order: `not_authenticated`, `validation_failed:lift` (null / not a lift), `validation_failed:reps` (not 1..3), `validation_failed:weight_kg` (null, <= 0, > 1000), `validation_failed:confirmed` (null); then (after the per-user consent lock and a share lock on the log) `not_found` (no own log of that event), `consent_required:workout_logs` (confirming only), `set_not_found` (confirming only).
+
+`get_my_personal_records() → jsonb` (`PersonalRecords`)
+```
+{ running: { best_5k, best_10k, best_half, best_marathon: RunningBest | null, longest: LongestRun | null },
+  lifts: [ { lift, label, one_rm, two_rm, three_rm: LiftRecord | null } ]     -- always all six, display order
+}
+RunningBest = { distance_m (D; 21097.5 for the half), time_s, pace_s_per_km, logged_distance_m, logged_duration_s,
+                session_id, event_title, event_starts_at, log_type ('running'|'race') }
+LongestRun  = { distance_m, duration_s | null, pace_s_per_km | null, session_id, event_title, event_starts_at, log_type }
+LiftRecord  = { weight_kg, session_id, event_title, event_starts_at, achieved_at (= event_starts_at), confirmed_at }
+```
+- Own logs in every community (also ones left). No membership or consent needed to read. Event title / start come from the log's snapshot. Errors: `not_authenticated`.
+
+## Consistency and GDPR
+
+- `save_workout_log` (signature and result unchanged) deletes, after the write, the confirmations of that event whose (lift, reps, weight) is no longer a qualifying set of the new log.
+- `delete_my_workout_log`, `withdraw_consent('workout_logs')` and erasure delete the confirmations through the foreign-key cascade from the log (functions unchanged).
+- **Export:** `extensions.personal_records: { lift_max_efforts: [ { session_id, event_title, event_starts_at, lift, reps, weight_kg, confirmed_at } ], running: RunningBests }` (oldest confirmation first, at most 5000) and `truncated.lift_max_efforts`; README sentence.
+
+New error codes: `set_not_found`, `validation_failed:lift`, `validation_failed:confirmed` (`validation_failed:reps`, `validation_failed:weight_kg`, `consent_required:workout_logs`, `not_found`, `not_authenticated` already exist). TypeScript (`src/lib/database.types.ts`): functions `get_max_effort_candidates`, `confirm_max_effort`, `get_my_personal_records`; types `LiftKey`, `MaxEffortCandidate`, `MaxEffortCandidates`, `MaxEffortConfirmation`, `RunningBest`, `LongestRun`, `RunningBests`, `LiftRecord`, `PersonalRecords`; `MyDataExport.extensions.personal_records?` and `truncated.lift_max_efforts?` (absent in older files).
+
+Legal: the privacy notice must mention personal records as part of the workout logs before the app ships (`docs/CLAIMS_AUDIT.md` gap E).

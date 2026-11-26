@@ -18,3 +18,5 @@ export const eventFeedHref = (sessionId: string) => `/events/${sessionId}/feed` 
 export const workoutLogHref = (sessionId: string) => `/events/${sessionId}/log` as Href;
 /** The member's own list of logged workouts. */
 export const myWorkoutsHref = '/my-workouts' as Href;
+/** The member's own personal bests (running bests and confirmed lift records). */
+export const personalBestsHref = '/personal-bests' as Href;

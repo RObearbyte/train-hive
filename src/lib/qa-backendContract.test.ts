@@ -335,6 +335,8 @@ describe('QA contract: RPCs called by the app', () => {
         'list_my_workout_logs',
         'get_my_workout_stats',
         'get_community_workout_stats',
+        'get_max_effort_candidates',
+        'confirm_max_effort',
       ]),
     );
   });

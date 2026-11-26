@@ -138,7 +138,8 @@ describe('posting window: until 30 days after the event ends', () => {
 
     const feed = await eventFeed(w.organizerId, w.event.id);
     expect(feed).toMatchObject({ is_open: false, can_post: false, can_reply: false, is_organizer: true });
-    expect(new Date(feed.closes_at).getTime()).toBeLessThanOrEqual(Date.now());
+    // The server's clock and this process's clock can differ by a few milliseconds: allow 1 s.
+    expect(new Date(feed.closes_at).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
     await markFeedRead(w.memberIds[0], w.event.id);
     expect((await deletePost(w.memberIds[0], reply.id)).deleted_at).not.toBeNull();
     expect((await deletePost(w.organizerId, post.id)).deleted_at).not.toBeNull();

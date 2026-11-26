@@ -141,6 +141,13 @@ describe('QA: who can reach private.workout_logs', () => {
     // API role can execute it; its callers return counts / timestamps, never log content.
     'private.account_last_activity',
     'private.erase_user',
+    // Personal records (20261205000100, reviewed): no API role can run these; each filters on the
+    // user id its caller passes, and the public callers below pass only auth.uid().
+    'private.lift_is_record',
+    'private.lift_records',
+    'private.running_bests',
+    'public.confirm_max_effort',
+    'public.get_max_effort_candidates',
     'public.delete_my_workout_log',
     'public.enqueue_workout_log_prompts',
     'public.export_my_data',

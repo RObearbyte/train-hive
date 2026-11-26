@@ -6,6 +6,7 @@ import { View } from 'react-native';
 import { CommunityProfileCard } from '@/features/aboutYou/components/CommunityProfileCard';
 import { useCurrentMembership } from '@/features/community/hooks/useCurrentMembership';
 import { FEATURES } from '@/features/legal/constants';
+import { PersonalBestsCard } from '@/features/workoutLogs/components/PersonalBestsCard';
 import { CommunityWorkoutCard, MyWorkoutStatsCard } from '@/features/workoutLogs/components/WorkoutStatsCards';
 import { ScreenHeader } from '@/features/shell/components/ScreenHeader';
 import type { StatisticsWindow } from '@/lib/database.types';
@@ -65,6 +66,7 @@ function MyParticipation({
       <MemberStatsView stats={stats.data} />
       <HistorySection history={history} />
       {FEATURES.workoutLogs ? <MyWorkoutStatsCard communityId={communityId} /> : null}
+      {FEATURES.workoutLogs ? <PersonalBestsCard /> : null}
     </View>
   );
 }

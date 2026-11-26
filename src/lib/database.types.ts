@@ -1534,6 +1534,37 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      // Personal records (20261205000100).
+      /**
+       * The qualifying sets of the caller's log of an event (best weight per lift x reps). Returns
+       * `MaxEffortCandidates`. Raises `not_authenticated`, `not_found` (no own log of that event).
+       */
+      get_max_effort_candidates: {
+        Args: { p_session_id: string };
+        Returns: Json;
+      };
+      /**
+       * Confirms (true) or removes (false) a maximal effort of the caller's log. Returns
+       * `MaxEffortConfirmation`. Raises `not_authenticated`, `validation_failed:lift`,
+       * `validation_failed:reps`, `validation_failed:weight_kg`, `validation_failed:confirmed`,
+       * `not_found`, `consent_required:workout_logs` (confirming only), `set_not_found`.
+       */
+      confirm_max_effort: {
+        Args: {
+          p_session_id: string;
+          /** A `LiftKey` (or an exercise name that maps to one). */
+          p_lift: string;
+          p_reps: number;
+          p_weight_kg: number;
+          p_confirmed: boolean;
+        };
+        Returns: Json;
+      };
+      /** The caller's records. Returns `PersonalRecords`. Raises `not_authenticated`. */
+      get_my_personal_records: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
       // GDPR G3: retention of inactive accounts.
       /**
        * G3: call on app start and on return to the foreground (signed in). Records that the app
@@ -1896,6 +1927,108 @@ export type DeleteWorkoutLogResult = { session_id: string; deleted: boolean };
 
 /** P5: result of `list_my_workout_logs`; pass `next_before` as `p_before` for the next page. */
 export type WorkoutLogPage = { logs: WorkoutLog[]; next_before: string | null };
+
+// Personal records (20261205000100; docs/API_CONTRACT.md "Personal records") ----------------------
+
+/**
+ * The record lifts, in display order. The app saves these exact exercise names for them (owner
+ * decision 2026-11-26): 'Deadlift', 'Bench press', 'Back squat', 'Front squat', 'Strict press',
+ * 'Push press'; the server maps them (any case) and older free-text synonyms to a key.
+ */
+export type LiftKey = 'deadlift' | 'bench_press' | 'back_squat' | 'front_squat' | 'strict_press' | 'push_press';
+
+/** One qualifying set (lift recognized, 1-3 reps, weight > 0) of the caller's log. */
+export type MaxEffortCandidate = {
+  lift: LiftKey;
+  label: string;
+  reps: 1 | 2 | 3;
+  /** The heaviest set of this lift x reps in the log. */
+  weight_kg: number;
+  /** A confirmation of this lift x reps exists for this event. */
+  confirmed: boolean;
+  /** The confirmed weight (normally `weight_kg`); null when not confirmed. */
+  confirmed_weight_kg: number | null;
+  /** Best confirmed weight of this lift x reps in the caller's other events; null when none. */
+  previous_best_kg: number | null;
+  /** Confirming `weight_kg` now would make it (or it already is) the record. */
+  is_new_record: boolean;
+};
+
+/** Result of `get_max_effort_candidates`. */
+export type MaxEffortCandidates = {
+  session_id: string;
+  log_type: WorkoutLogType;
+  event_title: string;
+  event_starts_at: string;
+  has_consent: boolean;
+  /** Lift display order, then reps; empty for a running / race log. */
+  candidates: MaxEffortCandidate[];
+};
+
+/** Result of `confirm_max_effort` (`is_new_record` is false when removing). */
+export type MaxEffortConfirmation = {
+  lift: LiftKey;
+  reps: number;
+  weight_kg: number;
+  confirmed: boolean;
+  is_new_record: boolean;
+};
+
+/** A best time over a record distance D, from a log of D..D x 1.05 scaled to exactly D. */
+export type RunningBest = {
+  /** The record distance D in metres (21097.5 for the half marathon). */
+  distance_m: number;
+  /** The logged time scaled to exactly D, rounded to the second. */
+  time_s: number;
+  pace_s_per_km: number;
+  logged_distance_m: number;
+  logged_duration_s: number;
+  session_id: string;
+  event_title: string;
+  event_starts_at: string;
+  log_type: 'running' | 'race';
+};
+
+export type LongestRun = {
+  distance_m: number;
+  duration_s: number | null;
+  pace_s_per_km: number | null;
+  session_id: string;
+  event_title: string;
+  event_starts_at: string;
+  log_type: 'running' | 'race';
+};
+
+export type RunningBests = {
+  best_5k: RunningBest | null;
+  best_10k: RunningBest | null;
+  best_half: RunningBest | null;
+  best_marathon: RunningBest | null;
+  longest: LongestRun | null;
+};
+
+/** A lift record: the highest confirmed weight (ties: earliest event, then earliest confirmation). */
+export type LiftRecord = {
+  weight_kg: number;
+  session_id: string;
+  event_title: string;
+  event_starts_at: string;
+  /** The day of the effort (= event_starts_at). */
+  achieved_at: string;
+  confirmed_at: string;
+};
+
+/** Result of `get_my_personal_records`; `lifts` always lists all six lifts in display order. */
+export type PersonalRecords = {
+  running: RunningBests;
+  lifts: {
+    lift: LiftKey;
+    label: string;
+    one_rm: LiftRecord | null;
+    two_rm: LiftRecord | null;
+    three_rm: LiftRecord | null;
+  }[];
+};
 
 /** P5: result of `get_my_workout_stats` (docs/STATS_DEFINITIONS.md, "Workout statistics (P5)"). */
 export type MyWorkoutStats = {
@@ -2376,6 +2509,19 @@ export type MyDataExport = {
     } | null;
     /** P5: the caller's workout logs, oldest event first (absent in files exported before P5). */
     workout_logs?: (Omit<WorkoutLog, 'id'> & { log_id: string })[];
+    /** Personal records: confirmed maximal efforts and running bests (absent in older files). */
+    personal_records?: {
+      lift_max_efforts: {
+        session_id: string;
+        event_title: string;
+        event_starts_at: string;
+        lift: LiftKey;
+        reps: number;
+        weight_kg: number;
+        confirmed_at: string;
+      }[];
+      running: RunningBests;
+    };
     /**
      * G3: when the app last recorded an app open, and a pending inactivity notice; null when
      * neither exists (absent in files exported before G3).
@@ -2405,7 +2551,7 @@ export type MyDataExport = {
     boolean
   > &
     /** Anonymous comments (20261204000100); absent in files exported before. */
-    Partial<Record<'event_aliases', boolean>>;
+    Partial<Record<'event_aliases' | 'lift_max_efforts', boolean>>;
 };
 
 /** Keys shared by every event kind in `create_training` / `update_training`. */

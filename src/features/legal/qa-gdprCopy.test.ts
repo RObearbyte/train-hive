@@ -92,6 +92,36 @@ describe('texts versus what exists', () => {
     expect(termsText).toContain('TrainHive still stores who wrote the comment');
   });
 
+  // Q7-7 (personal records, gap E): what the notice says about records is what the migration does.
+  it('Q7-7: the personal-records text matches the migration (stored only when confirmed, owner only, cascades, export)', () => {
+    expect(FEATURES.workoutLogs).toBe(true);
+    // Lift records: one stored row per confirmation (lift, reps, weight, event, time), no API privilege.
+    expect(migrations).toContain('create table private.lift_max_efforts');
+    expect(migrations).toContain('revoke all on table private.lift_max_efforts from public, anon, authenticated, service_role;');
+    expect(privacyText).toContain('Personal records (part of your workout logs)');
+    expect(privacyText).toContain('come only from sets you confirm as a maximal effort');
+    expect(privacyText).toContain('we then store the lift, the repetitions, the weight, the event and when you confirmed it');
+    // Running bests are computed, not stored (no table for them).
+    expect(migrations).not.toMatch(/create table [\w.]*running/i);
+    expect(privacyText).toContain('nothing extra is stored for them');
+    // Same consent: confirming needs it.
+    expect(migrations).toContain("message = 'consent_required:workout_logs'");
+    expect(privacyText).toContain('under the same explicit consent as your workout logs (confirming a set needs it)');
+    // Owner only: no organizer reads them, no aggregate.
+    expect(privacyText).toContain('no member and no organizer can see them, and no community total uses them');
+    // Deleted with the set, the log (cascade), the withdrawal and the account; included in the download.
+    expect(migrations).toContain('references private.workout_logs (user_id, session_id) on delete cascade');
+    expect(privacyText).toContain('A confirmed lift record is deleted when its set is no longer in the log');
+    expect(privacyText).toContain(', all your workout logs and personal records');
+    expect(migrations).toContain("'personal_records', jsonb_build_object(");
+    expect(privacyText).toContain('including your workout logs and personal records');
+    // Never "verified" or "official": they are the member's own entries.
+    expect(privacyText).toContain('Records are your own entries, not verified or official results');
+    expect(privacyText).not.toMatch(/(?<!not )verified records|official records/i);
+    // The Terms say nothing about workouts or records.
+    expect(termsText).not.toMatch(/personal record|max(imal)? effort/i);
+  });
+
   // Q7-7 (account linking): the optional email lives only in Supabase Auth; the texts say so and the code agrees.
   it('Q7-7: the notice and terms describe the optional email exactly when accountLinking is on, and the migrations never copy it into TrainHive tables', () => {
     expect(FEATURES.accountLinking).toBe(true);

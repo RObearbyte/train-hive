@@ -130,6 +130,11 @@ export function buildPrivacyNotice(
                       value:
                         "Only if you choose to save them, after an event you took part in: exercises (names, repetitions and weights), distance, time, pace and notes, together with the title, date and type of the event. They are used to show you your own history and totals, and to give organizers rounded community totals. Because this can reveal health-related information, we treat it as special-category data. Basis: your explicit consent, which you can withdraw at any time. They are kept until you delete them, withdraw your consent or delete your account.",
                     },
+                    {
+                      label: 'Personal records (part of your workout logs)',
+                      value:
+                        'Your best running times (5 km, 10 km, half marathon and marathon) and your longest distance are computed from your own run and race logs whenever you open them; nothing extra is stored for them. Lift records (the heaviest weight for 1, 2 or 3 repetitions of deadlift, bench press, back squat, front squat, strict press and push press) come only from sets you confirm as a maximal effort after saving a strength log: we then store the lift, the repetitions, the weight, the event and when you confirmed it. Records are your own entries, not verified or official results. They are used only to show you your own records, under the same explicit consent as your workout logs (confirming a set needs it).',
+                    },
                   ]
                 : []),
               {
@@ -172,7 +177,7 @@ export function buildPrivacyNotice(
                 : []),
               ...(features.workoutLogs
                 ? [
-                    'Your workout logs are private to you: no member and no organizer can see an individual log. Organizers see only approximate community totals (for example the total distance and the number of sessions logged), and only once at least 20 members have contributed to the period shown. The values are rounded and approximate. The totals count only members who are still in the community and have agreed to workout logs. You can delete a log at any time.',
+                    'Your workout logs are private to you: no member and no organizer can see an individual log. Organizers see only approximate community totals (for example the total distance and the number of sessions logged), and only once at least 20 members have contributed to the period shown. The values are rounded and approximate. The totals count only members who are still in the community and have agreed to workout logs. You can delete a log at any time. Your personal records are private to you as well: no member and no organizer can see them, and no community total uses them.',
                   ]
                 : []),
               ...(features.accountLinking
@@ -264,6 +269,7 @@ export function buildPrivacyNotice(
               ...(features.workoutLogs
                 ? [
                     'Workout logs: kept until you delete them, withdraw your consent (which deletes all of them) or delete your account. If you leave a community, your logs stay yours but no longer count in its totals.',
+                    'Personal records: they go with your workout logs. A confirmed lift record is deleted when its set is no longer in the log (for example after you change the weight), when you delete the log, when you withdraw your consent to workout logs and when you delete your account. Running records disappear with the logs they are computed from.',
                   ]
                 : []),
               ...(features.emergencyContact
@@ -310,13 +316,15 @@ export function buildPrivacyNotice(
                 : []),
               ...(features.workoutLogs
                 ? [
-                    'Change or delete your workout logs: Profile, then My workouts, then open a log. Withdrawing the consent in Profile, then Privacy, deletes all of them.',
+                    'Change or delete your workout logs: Profile, then My workouts, then open a log. Withdrawing the consent in Profile, then Privacy, deletes all of them. See your personal records: Profile, then My workouts, then Personal bests. To remove a lift record, open its log and answer No under Max efforts.',
                   ]
                 : []),
-              'Download your data: Profile, then Privacy, then Download my data. You get a file with the data we hold about you. You can do this up to 10 times per hour.',
+              `Download your data: Profile, then Privacy, then Download my data. You get a file with the data we hold about you${
+                features.workoutLogs ? ', including your workout logs and personal records' : ''
+              }. You can do this up to 10 times per hour.`,
               `Delete your account: Profile, then Privacy, then Delete my account. This deletes your profile, memberships, RSVPs, notifications, push devices, read markers, invitation code records, the log of your data downloads, your app activity record and consent records${
                 features.demographics || features.emergencyContact ? ', your About you details' : ''
-              }${features.workoutLogs ? ', all your workout logs' : ''}${
+              }${features.workoutLogs ? ', all your workout logs and personal records' : ''}${
                 features.eventPosts ? ', your comments and replies in event discussions (anonymous ones too) and your nicknames' : ''
               }${features.accountLinking ? ', the email address you added' : ''}, and it cannot be undone. Attendance counts and the attendance change history stay without your name or any link to you, so past statistics stay correct, and announcements you published${
                 features.eventPosts ? ', posts you wrote in event discussions' : ''
